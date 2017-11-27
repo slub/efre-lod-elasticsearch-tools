@@ -91,3 +91,30 @@ esfstats
         -marc   ignore Marc identifier field if you are analysing an index of marc records
 ```
 
+# entityfacts-bot.py - enrich your elasticSearch index with facts from entityfacts
+
+entityfacts-bot.py is a Python3 program that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys.
+
+
+It connects to an elasticSearch node and updates the given index.
+
+## Usage
+
+```
+./entityfacts-bot.py
+        -help   print this help
+	-host	hostname or IP-Address of the ElasticSearch-node to use
+	-port	port of the ElasticSearch-node to use, default is 9200
+	-index  ElasticSearch index to use
+	-type	ElasticSearch doc_type to use
+```
+
+## Requirements
+
+python3-elasticsearch
+
+e.g. (ubuntu)
+```
+sudo apt-get install python3-elasticsearch
+```
+
