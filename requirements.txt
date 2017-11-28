@@ -1,0 +1,5 @@
+elasticsearch==1.9.0
+jsonpath-rw==1.4.0
+pyelasticsearch==1.4
+rdflib==4.2.2
+
