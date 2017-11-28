@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 from datetime import datetime
 from elasticsearch import Elasticsearch
 import collections
@@ -63,8 +64,8 @@ if __name__ == "__main__":
             body = {},
             size=0
             )['hits']['total']
-    print '{:11s}|{:3s}|{:11s}|{:40s}'.format("existing","%","notexisting","field name")
-    print "-----------|---|-----------|----------------------------------------"
+    print('{:11s}|{:3s}|{:11s}|{:40s}'.format("existing","%","notexisting","field name"))
+    print("-----------|---|-----------|----------------------------------------"))
     sortedstats=collections.OrderedDict(sorted(stats.items()))
     for key, value in sortedstats.iteritems():
-        print '{:>11s}|{:>3s}|{:>11s}| {:40s}'.format(str(value),str(int((float(value)/float(hitcount))*100)),str(hitcount-int(value)),str(key).replace("."," > "))
+        print('{:>11s}|{:>3s}|{:>11s}| {:40s}'.format(str(value),str(int((float(value)/float(hitcount))*100)),str(hitcount-int(value)),str(key).replace("."," > ")))
