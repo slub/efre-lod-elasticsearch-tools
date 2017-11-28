@@ -12,10 +12,13 @@ import os.path
 import signal
 import urllib3.request
 from multiprocessing import Pool
+sys.path.append('~/slub-lod-elasticsearch-tools/')
+from getindex import esgenerator
 
 
 es=None
 args=None
+
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)   
@@ -70,37 +73,14 @@ def entityfacts(record):
     else:
         return [0,0]
 
-def esgenerator():
-    try:
-        page = es.search(
-            index = args.index,
-            doc_type = args.type,
-            scroll = '14d',
-            size = 1000)
-    except elasticsearch.exceptions.NotFoundError:
-        sys.stderr.write("not found: "+args.host+":"+args.port+"/"+args.index+"/"+args.type+"/_search\n")
-        exit(-1)
-    sid = page['_scroll_id']
-    scroll_size = page['hits']['total']
-    stats = {}
-    for hits in page['hits']['hits']:
-        yield hits
-    while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='14d')
-        sid = pages['_scroll_id']
-        scroll_size = len(pages['hits']['hits'])
-        for hits in pages['hits']['hits']:
-            yield hits
-            
 def process_stuff(jline):
-    length=len(jline['_source'].items())
-    if "_source" in jline:
-        body=entityfacts(jline['_source'])
-        if (len(body) > length):
-            fes=Elasticsearch([{'host':args.host}],port=args.port)  
-            fes.index(index=args.index,doc_type=args.type,body=body,id=body["identifier"])
-            print("updated: "+str(jline['_id']))
-            return
+    length=len(jline.items())
+    body=entityfacts(jline)
+    if (len(body) > length):
+        fes=Elasticsearch([{'host':args.host}],port=args.port)  
+        fes.index(index=args.index,doc_type=args.type,body=body,id=body["identifier"])
+        print("updated: "+str(jline['identifier']))
+        return
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='enrich your ElasticSearch Search Index with data from entityfacts!')
@@ -108,12 +88,7 @@ if __name__ == "__main__":
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
-    parser.add_argument('-pickle',type=str,help="use pickle for store/retrieve")
     args=parser.parse_args()
-    es=Elasticsearch([{'host':args.host}],port=args.port)  
-    
-    #for page in esgenerator():
-    #    process_stuff(page)
     pool = Pool(16)
-    pool.map(process_stuff, esgenerator())
+    pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
     

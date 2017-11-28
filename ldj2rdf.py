@@ -11,40 +11,22 @@ from elasticsearch import Elasticsearch
 from datetime import datetime
 from multiprocessing import Pool
 
+sys.path.append('~/slub-lod-elasticsearch-tools/')
+from getindex import esgenerator
+
 global args
 global es
 global out
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)    
-    
-def esgenerator():
-    try:
-        page = es.search(
-            index = args.index,
-            doc_type = args.type,
-            scroll = '14d',
-            size = 1000)
-    except elasticsearch.exceptions.NotFoundError:
-        sys.stderr.write("not found: "+args.host+":"+args.port+"/"+args.index+"/"+args.type+"/_search\n")
-        exit(-1)
-    sid = page['_scroll_id']
-    scroll_size = page['hits']['total']
-    stats = {}
-    for hits in page['hits']['hits']:
-        yield hits
-    while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='14d')
-        sid = pages['_scroll_id']
-        scroll_size = len(pages['hits']['hits'])
-        for hits in pages['hits']['hits']:
-            yield hits
+
 
 def process_stuff(doc):
     if isinstance(doc,str):
         ldj=json.loads(doc)
-    if '_source' in doc:
-        ldj=doc['_source']
+    elif isinstance(doc,dict):
+        ldj=doc
     #if isinstance(ldj['@id'],list):
         #ppn=ldj['@id'][0]
     #else:
@@ -52,10 +34,13 @@ def process_stuff(doc):
     #ldj['@id']="http://data.slub-dresden.de/person/"+str(ppn)
     #add context:
     ldj.pop("identifier")
+    if "@context" not in ldj:
+        ldj["@context"]="http://schema.org"
     try:
         g = Graph().parse(data=json.dumps(ldj), format='json-ld')
         triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
         print(triple,file=out)
+        print(triple)
     except:
         eprint(ldj)
         return
@@ -80,13 +65,12 @@ if __name__ == "__main__":
         pool.map(process_stuff,inp)
         inp.close()
     elif args.scroll:
-        es=Elasticsearch([{'host':args.host}],port=args.port)  
         if not args.debug:
             pool = Pool(256)
-            pool.map(process_stuff, esgenerator())
+            pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
         else:
-            for doc in esgenerator():
-                process_stuff(doc)
+            for doc in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True):
+                process_stuff()
     elif args.doc:
         es=Elasticsearch([{'host':args.host}],port=args.port)  
         process_stuff(es.get(index=args.index,doc_type=args.type,id=args.doc))

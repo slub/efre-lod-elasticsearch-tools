@@ -17,18 +17,17 @@ import itertools
 import sys
 import io
 import subprocess
+sys.path.append('~/slub-lod-elasticsearch-tools/')
+from getindex import esgenerator
 
 
-selectedschema = "schemaorg"
 
 baseuri="http://data.slub-dresden.de/"
-
-entity="Person"
 
 args=None
 estarget=None
 outstream=None
-count=None
+count=0
 actions=[]
 es_totalsize=0
 totalcount=0
@@ -250,9 +249,10 @@ def gnd2uri(string):
     return ArrayOrSingleValue(ret)
 
 def id2uri(string):
-    if entity=="Person":
+    global args
+    if args.entity=="Person":
         return baseuri+"persons/"+string
-    elif entity=="CreativeWork":
+    elif args.entity=="CreativeWork":
         return baseuri+"resource/"+string
 
 def handletit(jline,schemakey,schemavalue):
@@ -695,13 +695,14 @@ schematas = {
 }
 
 def process_mapping():
+    global args
     esmapping=""
-    esmapping+="{\"mappings\":{\""+selectedschema+"\":{\"properties\":{"
+    esmapping+="{\"mappings\":{\""+args.schema+"\":{\"properties\":{"
     items=0
-    for k, v in schematas[selectedschema].items():
+    for k, v in schematas[args.schema].items():
         items+=1
         esmapping+="\""+str(k)+"\":{\"type\":\"text\",\"fields\":{\"keyword\":{\"type\":\"keyword\",\"ignore_above\":256} } }"
-        if items<len(schematas[selectedschema]):
+        if items<len(schematas[args.schema]):
             esmapping+=","
     esmapping+="} } } }"
     return esmapping
@@ -729,24 +730,7 @@ def schemas():
     for k,v in traverse(schematas,""):
         if k and v:
             print(k,v)
-
-"""        
-def getmarc(regex,json):
-    eprint(regex)
-    ret=[]
-    if isinstance(regex,list):
-        for string in regex:
-            ret.append(getmarc(string,json))
-    elif isinstance(regex,str):
-        newregex="$"
-        for field in regex.split('.'):
-            if isint(field):
-                newregex+=".\""+str(field)+"\""
-            else:
-                newregex+="."+field
-        return ArrayOrSingleValue([match.value for match in parse(newregex).find(json)])        
-    return ArrayOrSingleValue(ret)
-"""
+    exit(0)
 
 def mergelists(one,two):
     ret=[]
@@ -816,15 +800,12 @@ def process_stuff(jline):
     global args
     global outstream
     global estarget
-    global selectedschema
     global actions
     global totalcount
     global es_totalsize
-    if '_source' in jline:
-        jline=jline['_source']
     mapline=dict()
     global count
-    if entity=="Person":
+    if args.entity=="Person":
         if getmarc("079..b",jline)=="p":
             notEntity=False
             mapline["@type"]=URIRef(u'http://schema.org/Person')
@@ -832,10 +813,10 @@ def process_stuff(jline):
         else:
             mapline["@type"]=URIRef(u'http://schema.org/CreativeWork')
             mapline["@context"]='http://schema.org'
-    if selectedschema not in schematas:
-        sys.stderr.write("Warning! selectedschema not in schematas! Correct your mistakes and edit this file!\n")
+    if args.schema not in schematas:
+        sys.stderr.write("Warning! selected schema not in schematas! Correct your mistakes and edit this file!\n")
         exit(1)
-    for k,v in schematas[selectedschema].items():
+    for k,v in schematas[args.schema].items():
         value=None
         if not isinstance(v,list):
             value=getmarc(v,jline)
@@ -872,7 +853,7 @@ def process_stuff(jline):
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
         mapline=check(mapline)
-        if "finc" in selectedschema:
+        if "finc" in args.schema:
             mapline=handlefinc(mapline)
         count+=1
         if outstream:
@@ -881,7 +862,7 @@ def process_stuff(jline):
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
         else:
-            actions.append({"_index":args.toindex,"_type":selectedschema,"_id":mapline["@id"],"_source":mapline})    
+            actions.append({"_index":args.toindex,"_type":args.schema,"_id":mapline["@id"],"_source":mapline})    
             if count==1000:
                 helpers.bulk(estarget,actions)
                 actions=[]
@@ -912,6 +893,7 @@ def setup_output():
     else:
         return
     #nothing to do here, if we're here, that means: stdout
+    
 
 if __name__ == "__main__":
     #argstuff
@@ -927,64 +909,27 @@ if __name__ == "__main__":
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-i',type=str,help='Input file to process! Default is stdin if no arg is given. Faster than stdin because of multiprocessing!')
     parser.add_argument('-o',type=str,help='Output file to dump! Default is stdout if -in or -srchost is given is given')
-    parser.add_argument('-schema',type=str,default="schemaorg",help='Select which schema to use! use -show_schemas to see the defined schemas')
-    parser.add_argument('-entity',type=str,help='Select entity. Supported Entities: Person, CreativeWork')
+    parser.add_argument('-schema',type=str,default="person",help='Select which schema to use! use -show_schemas to see the defined schemas')
+    parser.add_argument('-entity',type=str,default="person",help='Select entity. Supported Entities: Person, CreativeWork')
     args=parser.parse_args()
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
-    if args.schema:
-        if args.schema in schematas:
-            selectedschema=args.schema
-        else:
+    if args.schema not in schematas:
             sys.stderr.write("schema doesn't exist!\n")
             sys.stderr.write("existing schemas:\n")
             schemas()
             exit(-1)
-    
-    if args.entity:
-        entity=args.entity
-    
-    
-    if args.show_schemas:
-        print(schemas())
-        exit(0)
-        
+    elif args.show_schemas:
+        schemas()
     setup_output()
-    count=0
-    #first attempt to read vom -inf
-    if args.i:
+    if args.i: #first attempt to read vom -inf
         with codecs.open(args.i,'r',encoding='utf-8') as f: #use with parameter to close stream after context
             for line in f:
                 process_stuff(json.loads(line))
-        #  done !
-        if not outstream:
-            exit(0)
-    #if inf not set, than try elasticsearch
-    if args.host:
+    elif args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
-            es=Elasticsearch([{'host':args.host}],port=args.port)  
-            try:
-                page = es.search(
-                    index = args.index,
-                    doc_type = args.type,
-                    scroll = '2m',
-                    size = 1000)
-            except elasticsearch.exceptions.NotFoundError:
-                sys.stderr.write("not found: "+args.host+":"+args.port+"/"+args.index+"/"+args.type+"/_search\n")
-                exit(-1)
-            sid = page['_scroll_id']
-            
-            scroll_size = page['hits']['total']
-            es_totalsize=scroll_size
-            stats = {}
-            for hits in page['hits']['hits']:
+            for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
                 process_stuff(hits)
-            while (scroll_size > 0):
-                pages = es.scroll(scroll_id = sid, scroll='2m')
-                sid = pages['_scroll_id']
-                scroll_size = len(pages['hits']['hits'])
-                for hits in pages['hits']['hits']:
-                    process_stuff(hits)
         else:
             sys.stderr.write("Error! no Index/Type set but -host! add -index and -type or disable -host if you read from stdin/file Aborting...\n")
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
