@@ -6,7 +6,10 @@ import argparse
 #from getindex import eprint
 from dpath.util import get 
 from pprint import pprint
-from multiprocessing import Pool
+from multiprocessing import Pool, Lock, Manager
+from functools import partial
+
+lock=None
 
 def lido(record,target,attribut,path):
     try:
@@ -14,8 +17,13 @@ def lido(record,target,attribut,path):
             target[attribut]=get(record,path)
     except:
         pass
+    
+def init(l):
+    global lock
+    lock = l
 
-def process_stuff(record):
+
+def process_stuff(l, record):
         data=json.loads(record)
         target={}
         #1:1
@@ -54,15 +62,21 @@ def process_stuff(record):
                 target['mentions'].append(tag)
         except:
             pass
+        lock.acquire()
         sys.stdout.write(json.dumps(target)+"\n")
-        
+        lock.release()
 
 if __name__ == "__main__":
     #parser=argparse.ArgumentParser(description='heidicon to schemaorg')
     #parser.add_argument('-i',type=str,help='Input file to process.')
     #args=parser.parse_args()
     
-    pool = Pool()
-    pool.map(process_stuff,sys.stdin)
+    m = Manager()
+    l = m.Lock()
+    pool = Pool(initializer=init,initargs=(l,))
+    func = partial(process_stuff,l)
+    pool.map(func,sys.stdin)
+    pool.close()
+    pool.join()
             #print(json.dumps(data,indent=4))
         
