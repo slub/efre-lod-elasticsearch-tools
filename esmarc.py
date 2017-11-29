@@ -3,12 +3,10 @@
 from datetime import datetime
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
-from jsonpath_rw import jsonpath, parse ### so slow!
 from rdflib import URIRef
 from pprint import pprint
 from multiprocessing import Pool
 from time import sleep
-import re
 import json
 import urllib.request
 import codecs
@@ -17,8 +15,8 @@ import itertools
 import sys
 import io
 import subprocess
-sys.path.append('~/slub-lod-elasticsearch-tools/')
 from getindex import esgenerator
+from getindex import eprint
 
 
 
@@ -38,9 +36,6 @@ def isint(num):
         return True
     except:
         return False
-    
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)    
     
 def ArrayOrSingleValue(array):
     if array:
@@ -255,30 +250,28 @@ def id2uri(string):
     elif args.entity=="CreativeWork":
         return baseuri+"resource/"+string
 
-def handletit(jline,schemakey,schemavalue):
-    data=None
-    if schemakey=="inlanguage":
-        return
 
 def getmarc(regex,json):
     ret=[]
-    if len(regex)==3:
-        if regex in json:
+    try:
+        if len(regex)==3:
             return ArrayOrSingleValue(json[regex])
-    if isinstance(regex,list):
-        for string in regex:
-            ret.append(getmarc(string,json))
-    elif isinstance(regex,str):
-        if str(regex[0:3]) in json:             ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!!
-            json=json[regex[0:3]]
-            if isinstance(json,list):
-                for elem in json:
-                    if isinstance(elem,dict):
-                        for k,v in elem.items():
-                            if isinstance(elem[k],list):
-                                for final in elem[k]:
-                                    if regex[-1] in final:
-                                        ret.append(final[regex[-1]])        
+        if isinstance(regex,list):
+            for string in regex:
+                ret.append(getmarc(string,json))
+        elif isinstance(regex,str):
+            if str(regex[0:3]) in json:             ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!!
+                json=json[regex[0:3]]
+                if isinstance(json,list):
+                    for elem in json:
+                        if isinstance(elem,dict):
+                            for k,v in elem.items():
+                                if isinstance(elem[k],list):
+                                    for final in elem[k]:
+                                        if regex[-1] in final:
+                                            ret.append(final[regex[-1]])        
+    except:
+        pass
     if ret:
         return ArrayOrSingleValue(ret)
     
@@ -289,142 +282,146 @@ def handlerelative(jline,schemakey,schemavalue):
     
     if schemakey=="relatedTo":
         data=[]
-        if schemavalue:
-            if schemavalue[0][0:3] in jline:
-                jline=jline[schemavalue[0][0:3]]
-                for i in jline[0]:
+        try:
+            for i in jline[schemavalue[0][0:3]][0]:
+                for j in jline[schemavalue[0][0:3]][0][i]:
+                    sset={}
                     person={}
-                    for j in jline[0][i]:
-                        for key in schemavalue:
-                            if key[-1] in dict(j):
-                                if key[-1]=='9':
-                                    if isinstance(dict(j)[key[-1]],list):
-                                        notfound=True     # we iterate 4 times over the dict because we first want to match the exact types, then we match the not-exact types...
-                                        for k,v in marc2relation.items():
-                                            if k.lower()==str(dict(j)[key[-1]][1]).lower():
-                                                notfound=False
-                                                person["_key"]=v
-                                                break
-                                        if notfound:
-                                            for k, v in marc2relation.items():
-                                                if k.lower() in str(dict(j)[key[-1]][1]).lower():
-                                                    notfound=False
-                                                    person["_key"]=v
-                                                    break   
-                                            for k, v in marc2relation.items():
-                                                if k.lower()==str(dict(j)[key[-1]][0]).lower():
-                                                    person["_key"]=v
-                                                    notfound=False
-                                                    break
-                                            for k, v in marc2relation.items():
-                                                if k.lower() in str(dict(j)[key[-1]][0]).lower():
-                                                    notfound=False
-                                                    person["_key"]=v
-                                                    break
-                                        if notfound:
-                                            sys.stderr.write(str(dict(j)[key[-1]][1])+" "+str(dict(j)[key[-1]][0])+"\n")
-                                            sys.stderr.flush()
-                                            person["_key"]="knows"
-                                elif key[-1]=='0':
-                                    _id=dict(j)[key[-1]]
-                                    if isinstance(_id,list):
-                                        for uri in _id:
-                                            if "(DE-576)" in uri:
-                                                person["@id"]=gnd2uri(uri)
-                                    if isinstance(_id,str) and "(DE-576)" in _id:
-                                        person["@id"]=gnd2uri(_id)
-                                elif key[-1]=='a':
-                                    person["name"]=str(dict(j)[key[-1]])
-                    
+                    for k in jline[schemavalue[0][0:3]][0][i]:
+                        for c,w in k.items():
+                            sset[c]=w
+                    for key, value in sset.items():
+                        if key=='9':
+                            notfound=True
+                            if isinstance(value,list):
+                                for val in value:
+                                    for k,v in marc2relation.items():
+                                        if k.lower()==val:
+                                            notfound=False
+                                            person["_key"]=v
+                                            break
+                                if notfound:
+                                    for k, v in marc2relation.items():
+                                        if k.lower() in val.lower():
+                                            notfound=False
+                                            person["_key"]=v
+                                            break  
+                            elif isinstance(value,str):
+                                for k,v in marc2relation.items():
+                                    if k.lower()==value:
+                                        notfound=False
+                                        person["_key"]=v
+                                        break
+                                if notfound:
+                                    for k, v in marc2relation.items():
+                                        if k.lower() in value.lower():
+                                            notfound=False
+                                            person["_key"]=v
+                                            break  
+                            if notfound:
+                                    person["_key"]="knows"
+                        elif key=='0':
+                            _id=value
+                            if isinstance(_id,list):
+                                for uri in _id:
+                                    if "(DE-576)" in uri:
+                                        person["@id"]=gnd2uri(uri)
+                            elif isinstance(_id,str) and "(DE-576)" in _id:
+                                person["@id"]=gnd2uri(_id)
+                        elif key=='a':
+                            person["name"]=value
                     if person not in data:
                         data.append(person) ###filling the array with the person(s)
+        except:
+            pass
     elif schemakey=="@id":
         data=id2uri(getmarc(ArrayOrSingleValue(schemavalue),jline))
     elif "Place" in schemakey:
         data=[]
-        place={}        #yes, Elasticsearch is that stupid that we have to put this dict into the array declared above
-        if schemavalue:
-            if schemavalue[0][0:3] in jline:
-                jline=jline[schemavalue[0][0:3]]
-                for i in jline:
-                    sset={}
-                    for c,w in i.items():
-                        for elem in w:
-                            for k,v in elem.items():
-                                sset[k]=v
-                    conti=False
-                    if "9" in sset:
-                        if sset["9"]=='4:ortg' and schemakey=="birthPlace":
-                                conti=True
-                        elif sset["9"]=='4:orts' and schemakey=="deathPlace":
-                                conti=True
-                    if conti:
-                        if "a" in sset:
-                            place["name"]=sset["a"]
-                        if "0" in sset:
-                            place["@id"]=gnd2uri(sset["0"])
-                        data.append(place)
+        place={}        
+        try:
+            for i in jline[schemavalue[0][0:3]][0]:
+                sset={}
+                for c,w in i.items():
+                    for elem in w:
+                        for k,v in elem.items():
+                            sset[k]=v
+                conti=False
+                if "9" in sset:
+                    if sset["9"]=='4:ortg' and schemakey=="birthPlace":
+                        conti=True
+                    elif sset["9"]=='4:orts' and schemakey=="deathPlace":
+                        conti=True
+                if conti:
+                    if "a" in sset:
+                        place["name"]=sset["a"]
+                    if "0" in sset:
+                        place["@id"]=gnd2uri(sset["0"])
+                if place:
+                    data.append(place)
+        except:
+            pass
     elif schemakey=="honoricSuffix":
         data=[]
-        if schemavalue:
-            if schemavalue[0][0:3] in jline:
-                jline=jline[schemavalue[0][0:3]]
-                for i in jline[0]:
-                    sset={}
-                    for j in jline[0][i]:
-                        for k,v in dict(j).items():
-                            sset[k]=v
+        try:
+            for i in jline[schemavalue[0][0:3]][0]:
+                sset={}
+                for j in jline[schemavalue[0][0:3]][0][i]:
+                    for k,v in dict(j).items():
+                        sset[k]=v
                     conti=False
                     if "9" in sset:
                         if sset["9"]=='4:adel' or sset["9"]=='4:akad':
                                 conti=True
                     if conti and "a" in sset:
                         data.append(sset["a"])
+        except:
+            pass
     elif schemakey=="hasOccupation":
-        if schemavalue:
-            if schemavalue[0][0:3] in jline:
-                jline=jline[schemavalue[0][0:3]]
-                data=[]
-                for i in jline: # i = {'__': [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]}
-                    conti=False
-                    job={}
-                    sset={}
-                    for k,v in i.items():               # v = [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]
-                        for w in v:                     # w = {'0': ['(DE-576)210258373', '(DE-588)4219681-4']}
-                            for c,y in dict(w).items(): # c =0 y = ['(DE-576)210258373', '(DE-588)4219681-4']
-                                sset[c]=y
-                    if "9" in sset:                     #sset = {'a': 'Romanist', 'w': 'r', '0': ['(DE-576)210258373', '(DE-588)4219681-4'], 'i': 'Charakteristischer Beruf', '9': '4:berc'}
-                        if sset["9"]=='4:berc' or sset["9"]=='4:beru' or sset['9']=='4:akti':
-                                conti=True
-                    if conti:
-                        for key in schemavalue:
-                            if key[-1] in sset and key[-1]=='0':
-                                if isinstance(sset[key[-1]],list):
-                                    for field in sset[key[-1]]:
-                                        if "(DE-588)" in field:
-                                            job["@id"]=gnd2uri(field)
-                            elif key[-1]=='a':
-                                if key[-1] in sset:
-                                    job["name"]=str(sset[key[-1]])
-                    if "name" in job and "@id" in job:
-                        data.append(job)
+        try:
+            data=[]
+            for i in jline[schemavalue[0][0:3]]:
+                conti=False
+                job={}
+                sset={}
+                for k,v in i.items():               # v = [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]
+                    for w in v:                     # w = {'0': ['(DE-576)210258373', '(DE-588)4219681-4']}
+                        for c,y in dict(w).items(): # c =0 y = ['(DE-576)210258373', '(DE-588)4219681-4']
+                            sset[c]=y
+                if "9" in sset:                     #sset = {'a': 'Romanist', 'w': 'r', '0': ['(DE-576)210258373', '(DE-588)4219681-4'], 'i': 'Charakteristischer Beruf', '9': '4:berc'}
+                    if sset["9"]=='4:berc' or sset["9"]=='4:beru' or sset['9']=='4:akti':
+                            conti=True
+                if conti:
+                    for key in schemavalue:
+                        if key[-1] in sset and key[-1]=='0':
+                            if isinstance(sset[key[-1]],list):
+                                for field in sset[key[-1]]:
+                                    if "(DE-588)" in field:
+                                        job["@id"]=gnd2uri(field)
+                        elif key[-1]=='a':
+                            if key[-1] in sset:
+                                job["name"]=str(sset[key[-1]])
+                        if "name" in job and "@id" in job:
+                            data.append(job)
+        except:
+            pass
     elif schemakey=="birthDate" or schemakey=="deathDate" or schemakey=="Birth" or schemakey=="Death":
-        data=[]
-        if schemavalue:
-            if schemavalue[0][0:3] in jline:
-                jline=jline[schemavalue[0][0:3]]
-                for i in jline[0]:
-                    sset={}
-                    for j in jline[0][i]:
-                        for k,v in dict(j).items():
-                            sset[k]=v
-                    if "9" in sset:
-                        if sset['9']=='4:datx':
-                                if "a" in sset:
-                                    data.append(dateToEvent(sset['a'],schemakey))
-                        elif sset['9']=='4:datl':
-                                if "a" in sset:
-                                    data.append(dateToEvent(sset['a'],schemakey))
+        try:
+            data=[]
+            for i in jline[schemavalue[0][0:3]][0]:
+                sset={}
+                for j in jline[schemavalue[0][0:3]][0][i]:
+                    for k,v in dict(j).items():
+                        sset[k]=v
+                if "9" in sset:
+                    if sset['9']=='4:datx':
+                        if "a" in sset:
+                             data.append(dateToEvent(sset['a'],schemakey))
+                    elif sset['9']=='4:datl':
+                        if "a" in sset:
+                            data.append(dateToEvent(sset['a'],schemakey))
+        except:
+            pass
     #else:
         #if schemavalue:
             #if schemavalue[0][0:3] in jline:
