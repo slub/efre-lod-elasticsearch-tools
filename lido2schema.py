@@ -63,7 +63,8 @@ def process_stuff(l, record):
         except:
             pass
         lock.acquire()
-        sys.stdout.write(json.dumps(target)+"\n")
+        sys.stdout.write(json.dumps(target)+"\n"),
+        sys.stdout.flush()
         lock.release()
 
 if __name__ == "__main__":
