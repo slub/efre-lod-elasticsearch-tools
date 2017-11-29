@@ -118,3 +118,20 @@ e.g. (ubuntu)
 sudo apt-get install python3-elasticsearch
 ```
 
+
+# lido2schema.py - transform lido metadata to schema.org
+
+This small pythonscript transforms the lido metadata to schema.org. The outcome is line-delimited json as well and can be indexed to an ElasticSearch-Index via esbulk.
+
+prerequisites: transform the XML data via helperscripts/xml-json (uses node.js) to line-delimited json.
+
+## Requirements
+
+python-dpath
+
+```
+pip install dpath
+```
+
+##TODO
+ElasticSearch ingest
