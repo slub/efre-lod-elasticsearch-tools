@@ -54,7 +54,7 @@ def process_stuff(record):
                 target['mentions'].append(tag)
         except:
             pass
-        sys.stdout.write(json.dumps(target))
+        sys.stdout.write(json.dumps(target)+"\n")
         
 
 if __name__ == "__main__":
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     #parser.add_argument('-i',type=str,help='Input file to process.')
     #args=parser.parse_args()
     
-    pool = Pool(8)
+    pool = Pool()
     pool.map(process_stuff,sys.stdin)
             #print(json.dumps(data,indent=4))
         
