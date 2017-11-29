@@ -12,8 +12,7 @@ def lido(record,target,attribut,path):
         if attribut not in target:
             target[attribut]=get(record,path)
     except:
-        #pprint(record["lido:descriptiveMetadata"]["lido:eventWrap"])
-        return
+        pass
     
 
 if __name__ == "__main__":
@@ -23,6 +22,7 @@ if __name__ == "__main__":
     for record in sys.stdin:
         data=json.loads(record)
         target={}
+        #1:1
         target["@context"]="http://schema.org"
         lido(data,target,"name",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:titleWrap/lido:titleSet/lido:appellationValue/_')
         lido(data,target,"identifier",'lido:lidoRecID/_')
@@ -32,8 +32,9 @@ if __name__ == "__main__":
         lido(data,target,"license","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsType/lido:conceptID/_")
         lido(data,target,"citation","lido:descriptiveMetadata/lido:objectRelationWrap/lido:relatedWorksWrap/lido:relatedWorkSet/lido:relatedWork/lido:object/lido:objectNote/_")
         lido(data,target,"genre","lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_")
+        lido(data,target,"comment",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_')
         
-        #bnodes
+        #bnodes 1:1
         target["mainEntity"]={"preferredName":"HeidICON : Die Heidelberger Bilddatenbank / Universitätsbibliothek Heidelberg","@id":"http://d-nb.info/104709214X"}
         target['author']={}
         lido(data,target['author'],"preferredName","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:nameActorSet/lido:appellationValue/_")
@@ -41,16 +42,23 @@ if __name__ == "__main__":
         
         target['copyrightHolder']={}
         lido(data,target['copyrightHolder'],"preferredName","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyName/lido:appellationValue/_")
-        lido(data,target['copyrightHolder'],"sameAs","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyID/_")
+        lido(data,target['copyrightHolder'],"@id","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyID/_")
         
         target['placePublished']={}
-        
-        
-        #pprint(data)
+        lido(data,target['placePublished'],"@id","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:placeID/_")
+        lido(data,target['placePublished'],"@preferredName","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:namePlaceSet/lido:appellationValue/_")
+            
+        #bnodes 1:n
+        target['mentions']=[]
         try:
-            target["physical"]=get(data,'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_')
+            for i in get(data,"lido:descriptiveMetadata/lido:objectRelationWrap/lido:subjectWrap/lido:subjectSet/lido:subject/lido:subjectConcept"):
+                tag={}
+                tag['@id']=get(i,"lido:conceptID/_")
+                tag['preferredName']=get(i,"lido:term")
+                target['mentions'].append(tag)
         except:
             pass
+        
             #print(json.dumps(data,indent=4))
         pprint(target)
         
