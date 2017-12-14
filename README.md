@@ -135,3 +135,17 @@ pip install dpath
 
 ##TODO
 ElasticSearch ingest
+
+
+# fieldstats-ldj.py - return occurency statistics of a single field of an line delimited json stream
+
+This small pythonscript reads a line delimited json stream and returns the occurency statistics of a field given via -path Parameter.
+
+## Requirements
+
+python3-numpy
+
+
+
+
+

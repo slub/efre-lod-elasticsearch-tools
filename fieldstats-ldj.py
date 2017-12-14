@@ -36,7 +36,7 @@ if __name__ == "__main__":
     parser.add_argument('-path',type=str,help='which path to examine!')
     args=parser.parse_args()
     if args.help:
-        print("ldj-marc-valstats.py\n"\
+        print("fieldstats-ldj.py\n"\
 "        -help      print this help\n"\
 "        -marc      switch for marc21-data\n"\
 "        -path      which JSON Path to examine!\n")
