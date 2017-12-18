@@ -65,6 +65,7 @@ if __name__ == "__main__":
             for i in range(0,plen):
                 if parr[i] in jline:
                     jline=jline.pop(parr[i])
+                    print(jline)
             if isinstance(jline,str):
                 if jline not in stats:
                     stats[jline]=1
