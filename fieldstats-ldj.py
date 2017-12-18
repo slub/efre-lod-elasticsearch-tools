@@ -40,11 +40,12 @@ if __name__ == "__main__":
 "        -help      print this help\n"\
 "        -marc      switch for marc21-data\n"\
 "        -path      which JSON Path to examine!\n")
-    if args.marc:
+    if '.' in args.path:
         plen = len(args.path.split('.'))
         parr = args.path.split('.')
     else:
         parr = args.path
+        plen=0
     for line in sys.stdin:
         jline=json.loads(line)
         if args.marc:
