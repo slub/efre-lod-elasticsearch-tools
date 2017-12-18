@@ -61,6 +61,10 @@ if __name__ == "__main__":
                     except TypeError:
                         continue
         else: #ok, analyzing some flat schema like lido or finc
+            for i in range(0,plen):
+                print(i)
+                if parr[i] in jline:
+                    jline=jline[parr[i]]
             if parr in jline:
                 if isinstance(jline[parr],str):
                     if jline[parr] not in stats:
