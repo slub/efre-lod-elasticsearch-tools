@@ -60,7 +60,7 @@ def removebraces(string):
 
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream. navigate into nested fields via dots (.) wildcard operator is: *.')
+    parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream.\nOutput is a 2 coloumn CSV-Sheet.\nNavigate into nested fields via dots (.) wildcard operator is: *..')
     parser.add_argument('-help',action="store_true",help='print more help')
     parser.add_argument('-path',type=str,help='which path to examine!')
     args=parser.parse_args()
@@ -83,7 +83,6 @@ if __name__ == "__main__":
                         stats[elem]=1
                     elif elem in stats:
                         stats[elem]+=1
-                        
     for w in sorted(stats, key=stats.get, reverse=True):
       sys.stdout.write("\""+str(w)+"\";"+str(stats[w])+"\n")
         
