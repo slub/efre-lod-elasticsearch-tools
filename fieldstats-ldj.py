@@ -63,21 +63,19 @@ if __name__ == "__main__":
                         continue
         else: #ok, analyzing some flat schema like lido or finc
             for i in range(0,plen):
-                print(i)
                 if parr[i] in jline:
                     jline=jline[parr[i]]
-            if parr in jline:
-                if isinstance(jline[parr],str):
-                    if jline[parr] not in stats:
-                        stats[jline[parr]]=1
-                    elif jline[parr] in stats:
-                        stats[jline[parr]]+=1
-                elif isinstance(jline[parr],list):
-                    for elem in jline[parr]:
-                        if elem not in stats:
-                            stats[elem]=1
-                        elif elem in stats:
-                            stats[elem]+=1
+            if isinstance(jline,str):
+                if jline not in stats:
+                    stats[jline]=1
+                elif jline in stats:
+                    stats[jline]+=1
+            elif isinstance(jline,list):
+                for elem in jline:
+                    if elem not in stats:
+                        stats[elem]=1
+                    elif elem in stats:
+                        stats[elem]+=1
                         
     for w in sorted(stats, key=stats.get, reverse=True):
       sys.stdout.write("\""+str(w)+"\";"+str(stats[w])+"\n")
