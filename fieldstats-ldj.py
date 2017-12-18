@@ -32,13 +32,6 @@ def travpath(dol, path):
                 for i in travpath(elem[path[0]],path[1:]):
                     yield i
 
-def removebraces(string):
-    if string[-1]==']':
-        string=string[:-1]
-    if string[0]=='[':
-        string=string[1:]
-    return string
-
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream.\nOutput is a 2 coloumn CSV-Sheet.\nNavigate into nested fields via dots (.) wildcard operator is: *..')
     parser.add_argument('-help',action="store_true",help='print more help')
