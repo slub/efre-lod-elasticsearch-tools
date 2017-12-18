@@ -39,6 +39,8 @@ if __name__ == "__main__":
     args=parser.parse_args()
     if args.help:
         print("fieldstats-ldj.py\n"\
+"return single field statistics of an line-delimited JSON Input-Stream.\n"\
+"Output is a 2 coloumn CSV-Sheet.\nNavigate into nested fields via dots (.) wildcard operator is: *..\n\n"\
 "        -help      print this help\n"\
 "        -path      which JSON Path to examine!\n")
     parr = args.path.split('.')
@@ -59,5 +61,3 @@ if __name__ == "__main__":
                         stats[elem]+=1
     for w in sorted(stats, key=stats.get, reverse=True):
       sys.stdout.write("\""+str(w)+"\";"+str(stats[w])+"\n")
-        
-        
