@@ -21,6 +21,36 @@ def traverse(dict_or_list, path):
             for k, v in traverse(v, path + str([k])):
                 yield k, v
 
+
+def travpath(dol, path):
+    if path and path[0]=="*":
+        if isinstance(dol,dict):
+            for k,v in dol.items():
+                for i in travpath(v,path[1:]):
+                    yield i
+        elif isinstance(dol,list):
+            for elem in dol:
+                for i in travpath(elem,path[:]):
+                    yield i
+    if len(path)==1:
+        if isinstance(dol,dict):
+            if path[0] in dol:
+                yield dol[path[0]]
+        elif isinstance(dol,list):
+            for elem in dol:
+                if path[0] in elem:
+                    yield elem[path[0]]
+    elif isinstance(dol,dict):
+        if path[0] in dol:
+            for i in travpath(dol[path[0]],path[1:]):
+                yield i
+    elif isinstance(dol,list):
+        for elem in dol:
+            if path[0] in elem:
+                for i in travpath(elem[path[0]],path[1:]):
+                    yield i
+
+
 def removebraces(string):
     if string[-1]==']':
         string=string[:-1]
@@ -30,49 +60,25 @@ def removebraces(string):
 
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream')
+    parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream. navigate into nested fields via dots (.) wildcard operator is: *.')
     parser.add_argument('-help',action="store_true",help='print more help')
-    parser.add_argument('-marc',action="store_true",help='switch for marc21-data')
     parser.add_argument('-path',type=str,help='which path to examine!')
     args=parser.parse_args()
     if args.help:
         print("fieldstats-ldj.py\n"\
 "        -help      print this help\n"\
-"        -marc      switch for marc21-data\n"\
 "        -path      which JSON Path to examine!\n")
-    if '.' in args.path:
-        plen = len(args.path.split('.'))
-        parr = args.path.split('.')
-    else:
-        parr = args.path
-        plen=0
+    parr = args.path.split('.')
     for line in sys.stdin:
         jline=json.loads(line)
-        if args.marc:
-            if parr[0] in jline:
-                jline=jline[parr[0]]
-                for k,v in traverse(jline,""):
-                    try:
-                        if isinstance(v,dict):
-                            if parr[-1] in v:
-                                if(v[parr[-1]]) not in stats:
-                                    stats[v[parr[-1]]]=1
-                                elif v[parr[-1]] in stats:
-                                    stats[v[parr[-1]]]+=1
-                    except TypeError:
-                        continue
-        else:
-            for i in range(0,plen):
-                if parr[i] in jline:
-                    jline=jline.pop(parr[i])
-                    print(jline)
-            if isinstance(jline,str):
-                if jline not in stats:
-                    stats[jline]=1
-                elif jline in stats:
-                    stats[jline]+=1
-            elif isinstance(jline,list):
-                for elem in jline:
+        for v in travpath(jline,parr):
+            if isinstance(v,str):
+                if v not in stats:
+                    stats[v]=1
+                elif v in stats:
+                    stats[v]+=1
+            elif isinstance(v,list):
+                for elem in v:
                     if elem not in stats:
                         stats[elem]=1
                     elif elem in stats:
