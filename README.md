@@ -146,6 +146,15 @@ This small pythonscript reads a line delimited json stream and returns the occur
 python3-numpy
 
 
+# gnd2swb.py
+
+This small pythonscripts converts the D-NB IDs in your elasticSearch bibliographic works index to SWB IDs. You need an Index with both SWB and D-NB IDs.
+
+## Requirements
+
+python3-elasticsearch
+
+
 
 
 
