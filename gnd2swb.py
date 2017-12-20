@@ -52,7 +52,7 @@ if __name__ == "__main__":
     args=parser.parse_args()
     
     if args.mp:
-        pool = Pool(128)
+        pool = Pool(32)
         pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
     else:
         for record in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True):
