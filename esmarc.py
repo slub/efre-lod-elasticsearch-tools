@@ -15,8 +15,9 @@ import itertools
 import sys
 import io
 import subprocess
-from getindex import esgenerator
-from getindex import eprint
+from es2json import esgenerator
+from es2json import esgenerator
+from ldj2rdf import get_rdf
 
 
 
@@ -195,41 +196,28 @@ marc2relation = {
     "v:Modell und Lebensgefährtin":"relatedTo",
     "v:Liebesbeziehung":"relatedTo",
     
-    "v:publizistische Zusammenarbeit und gemeinsame öffentliche Auftritte": "collegue",
-    "v:Sekretär": "collegue", 
-    "v:Privatsekretär": "collegue", 
-    "v:Kolleg": "collegue", 
-    "v:Mitarbeiter": "collegue", 
-    "v:Kommilitone": "collegue", 
-    "v:Zusammenarbeit mit": "collegue", 
-    "v:gemeinsames Atelier": "collegue", 
-    "v:Geschäftspartner": "collegue" , 
-    "v:musik. Partnerin": "collegue" ,
-    "v:Künstler. Partner": "collegue" ,  
-    "assistent": "collegue",
+    "v:publizistische Zusammenarbeit und gemeinsame öffentliche Auftritte": "colleague",
+    "v:Sekretär": "colleague", 
+    "v:Privatsekretär": "colleague", 
+    "v:Kolleg": "colleague", 
+    "v:Mitarbeiter": "colleague", 
+    "v:Kommilitone": "colleague", 
+    "v:Zusammenarbeit mit": "colleague", 
+    "v:gemeinsames Atelier": "colleague", 
+    "v:Geschäftspartner": "colleague" , 
+    "v:musik. Partnerin": "colleague" ,
+    "v:Künstler. Partner": "colleague" ,  
+    "assistent": "colleague",
     
     
     #generic marc fields!
     "bezf":"relatedTo",
-    "bezb":"collegue",
+    "bezb":"colleague",
     "beza":"knows",
     "4:bete": "contributor",
     "4:rela":"knows",
     "4:affi":"knows"
 }
-
-               
-def findrelation(string):
-    if string:
-        for k,v in marc2relation.items():
-            if k.lower()==string.lower():
-                return v
-        for k, v in marc2relation.items():
-            if k.lower() in string.lower():
-                return v
-        sys.stderr.write(string+"\n")
-        sys.stderr.flush()
-    return "knows"
 
 def gnd2uri(string):
     ret=[]
@@ -279,7 +267,6 @@ def getmarc(regex,json):
 
 def handlerelative(jline,schemakey,schemavalue):
     data=None
-    
     if schemakey=="relatedTo":
         data=[]
         try:
@@ -361,7 +348,7 @@ def handlerelative(jline,schemakey,schemavalue):
                     data.append(place)
         except:
             pass
-    elif schemakey=="honoricSuffix":
+    elif schemakey=="honorificSuffix":
         data=[]
         try:
             for i in jline[schemavalue[0][0:3]][0]:
@@ -422,25 +409,9 @@ def handlerelative(jline,schemakey,schemavalue):
                             data.append(dateToEvent(sset['a'],schemakey))
         except:
             pass
-    #else:
-        #if schemavalue:
-            #if schemavalue[0][0:3] in jline:
-                #data=[]
-                #for i in jline[0]:
-                    #for j in jline[0][i]:
-                        #for key in schemavalue:
-                            #if key[-1] in dict(j):
-                                #data.append(dict(j)[key[-1]][1])
     if data:
         return data
             
-def handleliteral(jline,schemakey,schemavalue):
-    for v in schemavalue:
-        marcvalue=marc2stringarray(jline,v)
-    if isinstance(marcvalue,list):
-        marcvalue=marcvalue[0]
-    return marcvalue
-
 #make finc more RDF
 def handlefinc(ldj):
     if 'author_id' in ldj:
@@ -449,14 +420,16 @@ def handlefinc(ldj):
         if isinstance(ldj['author_id'],list):
             for j in ldj['author_id']: #iterate through IDs if multiple:
                 author=dict()
-                author['@id']="http://d-nb.info/gnd/"+j
+                if " " not in j:
+                    author['@id']="http://d-nb.info/gnd/"+j
                 if not 'author' in ldj:
                     ldj['author']=[]
                 if author:
                     ldj['author'].append(author)
         elif isinstance(ldj['author_id'],str):
                 author=dict()
-                author['@id']="http://d-nb.info/gnd/"+ldj['author_id']
+                if " " not in ldj["author_id"]:
+                    author['@id']="http://d-nb.info/gnd/"+ldj['author_id']
                 if not 'author' in ldj:
                     ldj['author']=[]
                 if author:
@@ -471,6 +444,47 @@ def handlefinc(ldj):
             for elem in ldj['oclc_num']:
                 ldj['sameAs'].append("http://www.worldcat.org/oclc/"+str(ArrayOrSingleValue(elem))+".rdf")
             ldj.pop('oclc_num')
+    if 'genre' in ldj:
+        genre=ldj.pop('genre')
+        ldj['genre']={}
+        ldj['genre']['@type']="Text"
+        ldj['genre']["Text"]=genre
+    if 'bookEdition' in ldj:
+        be=ldj.pop('genre')
+        ldj['bookEdition']={}
+        ldj['bookEdition']['@type']="Book"
+        ldj['bookEdition']["Text"]=be
+    if 'numberOfPages' in ldj:
+        numstring=ldj.pop('numberOfPages')
+        try:
+            if isint(numstring.split(' ')[0]):
+                if numstring.split(' ')[1] == "S.":
+                    num=int(numstring.split(' ')[0])
+                    ldj['numberOfPages']=num
+        except IndexError:
+            if isint(numstring):
+                ldj['numberOfPages']=numstring
+            else:
+                pass
+        except AttributeError:
+            pass
+    if '@id' in ldj:
+        num=ldj.pop('@id')
+        ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
+    for pers in ["publisher","contributor"]:
+        if pers in ldj:
+            person = ldj.pop(pers)
+            ldj[pers]={}
+            ldj[pers]["name"]=person
+    for label in ["name","alternativeHeadline"]:
+        if label in ldj:
+            if ldj[label][-2:]==" /":
+                name=ldj.pop(label)
+                ldj[label]=name[:-2]
+    if "publisherImprint" in ldj:
+        ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
+    if "isbn" in ldj:
+        ldj["@type"].append(URIRef(u'http://schema.org/Book'))
     return removeNone(ldj)
 
 def finc(jline,schemakey,schemavalue):
@@ -496,49 +510,6 @@ def handleisbn(jline,schemakey,schemavalue):
 
 
 schematas = {
-    #"finc2wikidata":{
-        #"PPN"           :[finc,"record_id"],
-        #"P1476"         :[finc,"title"],
-        #"P1680"         :[finc,"title_sub"],
-        #"P50"           :[finc,"author"],
-        #"P767"          :[finc,"author2"],
-        #"P227"          :[finc,"author_id"],
-        #"P291"          :[finc,"publish_place"],
-        #"P123"          :[finc,"publisher"],
-        #"P577"          :[finc,"publishDate"],
-        #"P236"          :[finc,"issn"],
-        #"P957"          :[handleisbn,"isbn"],
-        #"P212"          :[handleisbn,"isbn"],
-        #"P1208"         :[finc,"ismn"],
-        #"P136"          :[finc,"genre","genrefacet"],
-        #"P179"          :[finc,"container_reference"],
-        #"P364"          :[finc,"language"],
-        #"P1104"         :[finc,"physical"],
-        #"P747"          :[finc,"ediditon"]
-        #},
-    #"finc2kim":{
-        #"PPN"           :[finc,"record_id"],
-        #"dcelements:title"    :[finc,"title"],
-        #"rdau:P60493"         :[finc,"title_sub"],
-        #"rdau:P60493"         :[finc,"title_part"],
-        #"dcterms:alternative" :[finc,"title_alt"],
-        #"dcterms:creator"     :[finc,"author"],
-        #"dcterms:contributor" :[finc,"author2"],
-        #"rdau:P60333"         :[finc,"imprint"],
-        #"rdau:P60163"         :[finc,"publish_place"],
-        #"dcterms:publisher"   :[finc,"publisher"],
-        #"dcterms:issued"      :[finc,"publishDate"],
-        #"rdau:p60489"         :[finc,"dissertation_note"],
-        #"bibo:issn"           :[finc,"issn"],
-        #"bibo:isbn"           :[finc,"isbn"],
-        #"bibo:ismn"           :[finc,"ismn"],
-        #"rdau:60049"          :[finc,"genre","genrefacet"],
-        #"dcterms:hasPart"     :[finc,"container_reference"],
-        #"dcterms:isPartOf"    :[finc,"container_title"],
-        #"dcterms:language"    :[finc,"language"],
-        #"isbd:P1053"          :[finc,"physical"],
-        #"bibo:edition"        :[finc,"editon"]
-        #},
     "resource.finc":{
         "@id"                   :[finc,"record_id"],
         "name"                  :[finc,"title"],
@@ -553,21 +524,21 @@ schematas = {
         "genre"                 :[finc,"genre","genre_facet"],
         "hasPart"               :[finc,"container_reference"],
         "isPartOf"              :[finc,"container_title"],
-        "availableLanguage"     :[finc,"language"],
+        "inLanguage"     :[finc,"language"],
         "numberOfPages"         :[finc,"physical"],
         "description"           :[finc,"description"],
-        "workExample"           :[finc,"edition"],
+        "bookEdition"           :[finc,"edition"],
         "comment"               :[finc,"contents"],
-        "oclc_num"              :[finc,"oclc_num"]
+        "oclc_num"              :[finc,"oclc_num"],
+        "identifier"            :[finc,"record_id"],
         },
    "resource.mrc":{
         "@id":  ["001"],
-        "name"    :["245.*.a","245.*.b"],
-        "name"         :["245.*.n","245.*.p"],
+        "name"    :["245.*.a","245.*.b","245.*.n","245.*.p"],
         "alternateName" :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
         "author"     :["100.*.a","700.*.a"],
-        "author_id"  :["100.*.0","700.*.0"],
-        "contributor" :["700.*.a","700.*.b"],
+        "author_id"  :["100.*.0"],
+        "contributor" :["700.*.a","700.*.b","700.*.0"],
         "publisher"         :["260.*.a","260.*.b","260.*.c","264.*.a","264.*.b","264.*.c"],
         "publisher"         :["260.*.a","264.*.a"],
         "datePublished"      :["264.*.c","260.*.c"],
@@ -582,76 +553,7 @@ schematas = {
         "numberOfPages"          :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
         "date" :["362.*.a"]
         },
-   
-   #"marc2kim":{
-        #"PPN":  ["001"],
-        #"dcelements:title"    :["245.*.a","245.*.b"],
-        #"rdau:P60493"         :["245.*.n","245.*.p","245.*.b"],
-        #"dcterms:alternative" :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
-        #"dcterms:creator"     :["100.*.a","700.*.a"],
-        #"dcterms:contributor" :["700.*.a","700.*.b"],
-        #"rdau:P60333"         :["260.*.a","260.*.b","260.*.c","264.*.a","264.*.b","264.*.c"],
-        #"rdau:P60163"         :["260.*.a","264.*.a"],
-        #"dcterms:publisher"   :["260.*.a","264.*.a"],
-        #"dcterms:issued"      :["264.*.c","260.*.c"],
-        #"rdau:p60489"         :["502.*.a","502.*.b","502.*.c","502.*.d"],
-        #"bibo:issn"           :["022.*.a","022.*.y","022.*.z","029.*.a","490.*.x","730.*.x","773.*.x","776.*.x","780.*.x","785.*.x","800.*.x","810.*.x","811.*.x","830.*.x"],
-        #"bibo:isbn"           :["022.*.a","022.*.z","776.*.z","780.*.z","785.*.z"],
-        #"bibo:ismn"           :["024.*.a","028.*.a",],
-        #"rdau:60049"          :["655.*.a","600.*.v","610.*.v","611.*.v","630.*.v","648.*.v","650.*.v","651.*.v","655.*.v"],
-        #"dcterms:hasPart"     :["773.*.g"],
-        #"dcterms:isPartOf"    :["773.*.s"],
-        #"dcterms:language"    :["041.*.a","041.*.d","130.*.l","730.*.l"],
-        #"isbd:P1053"          :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
-        #"dcterms:bibliographicCitation" :["362.*.a"]
-        #},
-        
-        
-    #"voidschema": {
-        #"PPN":  ["001"],
-        #"URI":  "024.*.a",
-        #"GND_ID":   "035.*.a",
-        #"name":    "100.*.a",
-        #"lifespan": [handlerelative,"100.*.d"],
-        #"sex":  [handlesex,"375.*.a"],
-        #"name_variants":    "400.*.a",
-        #"related": [handlerelative,
-            #"500.*.0",
-            #"500.*.a",
-            #"500.*.9"
-        #],
-        #"Birth":    [handlerelative,"548.*.a"],
-        #"Death":    [handlerelative,"548.*.a"],
-        #"tags":    "550.*.a",
-        #"name_pref":    "700.*.a"
-    #},
-    "bf:person": {
-        "@id":  ["001"],
-        "authorityLink": [
-            "024.*.a",
-            "035.*.a"
-        ],
-        "name": "100.*.a",
-        "gender":   [handlesex,"375.*.a"],
-        "name_variants":    "400.*.a",
-        "related": [handlerelative,
-            "500.*.0",
-            "500.*.a",
-            "500.*.9"
-        ],
-        "Birth":[handlerelative,
-                       "551..0",
-                       "551..a",
-                       "551..9"
-                       ],
-        "Death": [handlerelative,
-                       "551..0",
-                       "551..a",
-                       "551..9"
-                       ],
-        "tags": "550.*.a"
-    },
-    "person": {
+    "person.mrc": {
         "identifier":  ["001"],
         "@id":  [handlerelative,"001"],
         "name": "100..a",
@@ -685,7 +587,7 @@ schematas = {
             "550..a",
             "550..9"
         ],
-        "jobTitle":["678..b"],
+       # "jobTitle":["678..b"],
         "birthDate":    [handlerelative,"548..a","548..9"],
         "deathDate":    [handlerelative,"548..a","548..9"]
     }
@@ -742,14 +644,26 @@ def mergelists(one,two):
             ret.append([one[i],two[i]])
     return ret
 
+def progress():
+    global count
+    global totalcount
+    count+=1
+    if count==1000:
+        totalcount+=count
+        if(es_totalsize > 0):
+            printProgressBar(float(totalcount/1000),float(es_totalsize/1000), prefix = 'Progress:', suffix = 'Complete', length = 100)
+        count=0
+    
+
+
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    eprint('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
     # Print New Line on Complete
     if iteration == total: 
-        print()
+        eprint()
 
 
 def removeNone(obj):
@@ -801,15 +715,16 @@ def process_stuff(jline):
     global totalcount
     global es_totalsize
     mapline=dict()
+    mapline["@context"]=[URIRef(u'http://schema.org')]
     global count
     if args.entity=="Person":
         if getmarc("079..b",jline)=="p":
             notEntity=False
             mapline["@type"]=URIRef(u'http://schema.org/Person')
-            mapline["@context"]='http://schema.org'
-        else:
-            mapline["@type"]=URIRef(u'http://schema.org/CreativeWork')
-            mapline["@context"]='http://schema.org'
+    else:
+        mapline["@type"]=[]
+        mapline["@type"].append(URIRef(u'http://schema.org/CreativeWork'))
+        mapline["@type"].append(URIRef(u'http://purl.org/ontology/bibo/Document'))
     if args.schema not in schematas:
         sys.stderr.write("Warning! selected schema not in schematas! Correct your mistakes and edit this file!\n")
         exit(1)
@@ -852,63 +767,29 @@ def process_stuff(jline):
         mapline=check(mapline)
         if "finc" in args.schema:
             mapline=handlefinc(mapline)
-        count+=1
+            if "identifier" not in mapline:
+                return
+        progress()
         if outstream:
             outstream.write(json.dumps(mapline,indent=None)+"\n")   
-        elif args.tohost is None:
+        else:
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
-        else:
-            actions.append({"_index":args.toindex,"_type":args.schema,"_id":mapline["@id"],"_source":mapline})    
-            if count==1000:
-                helpers.bulk(estarget,actions)
-                actions=[]
-                count=0
-        if count==1000:
-            totalcount+=count
-            if(es_totalsize > 0):
-                printProgressBar(float(totalcount/1000),float(es_totalsize/1000), prefix = 'Progress:', suffix = 'Complete', length = 100)
-            count=0
             
-def setup_output():
-    global args
-    global outstream
-    global estarget
-    #setup outputfile or elasticsearch indexing and then process data per line function
-    if args.o:
-        outstream=codecs.open(args.o,'w',encoding='utf-8')
-    if args.same:
-        args.tohost=args.host
-    if args.tohost or args.same:
-        if args.toindex:
-            estarget=Elasticsearch([{'host':args.tohost}],port=args.toport)
-            body=json.loads(process_mapping())
-            estarget.indices.create(index=args.toindex,body=body)
-        else:
-            sys.stderr.write("toIndex/toType not set! aborting.\n")
-            exit(1)
-    else:
-        return
-    #nothing to do here, if we're here, that means: stdout
-    
-
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='return field statistics of an ElasticSearch Search Index')
-    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we print ldj to stdout.')
-    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
-    parser.add_argument('-tohost',type=str,help='hostname or IP-Address of the ElasticSearch-node to use for ingesting the processed data.')
-    parser.add_argument('-toport',type=int,default=9200,help='Port of the ElasticSearch-node to use for -tohost, default is 9200')
-    parser.add_argument('-toindex',type=str,help='ElasticSearch Search Index to use to harvest data')
-    parser.add_argument('-same', action='store_true',help='index new data on the same machine as -host|-port')
-    parser.add_argument('-show_schemas', action='store_true',help='show the schemas defined in the sourcecode')
-    parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
-    parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
-    parser.add_argument('-i',type=str,help='Input file to process! Default is stdin if no arg is given. Faster than stdin because of multiprocessing!')
-    parser.add_argument('-o',type=str,help='Output file to dump! Default is stdout if -in or -srchost is given is given')
     parser.add_argument('-schema',type=str,default="person",help='Select which schema to use! use -show_schemas to see the defined schemas')
     parser.add_argument('-entity',type=str,default="person",help='Select entity. Supported Entities: Person, CreativeWork')
+    parser.add_argument('-i',type=str,help='Input file to process! Default is stdin if no arg is given. Faster than stdin because of multiprocessing!')
+    parser.add_argument('-o',type=str,help='Output file to dump! Default is stdout if -in or -srchost is given is given')
+    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we print ldj to stdout.')
+    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
+    parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-show_schemas', action='store_true',help='show the schemas defined in the sourcecode')
     args=parser.parse_args()
+    
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 
     if args.schema not in schematas:
@@ -918,7 +799,9 @@ if __name__ == "__main__":
             exit(-1)
     elif args.show_schemas:
         schemas()
-    setup_output()
+    if args.o:
+        outstream=codecs.open(args.o,'w',encoding='utf-8')
+    
     if args.i: #first attempt to read vom -inf
         with codecs.open(args.i,'r',encoding='utf-8') as f: #use with parameter to close stream after context
             for line in f:
@@ -932,6 +815,6 @@ if __name__ == "__main__":
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         for line in input_stream:
             process_stuff(json.loads(line))
+            
     if outstream:
         outstream.close()
-        

@@ -12,8 +12,8 @@ import signal
 import urllib3.request
 from multiprocessing import Pool
 sys.path.append('~/slub-lod-elasticsearch-tools/')
-from getindex import esgenerator
-from getindex import eprint
+from es2json import esgenerator
+from es2json import eprint
 
 
 es=None

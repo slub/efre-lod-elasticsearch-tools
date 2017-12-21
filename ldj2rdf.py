@@ -9,20 +9,26 @@ from rdflib import ConjunctiveGraph,Graph, URIRef, Namespace, Literal
 from pprint import pprint
 from elasticsearch import Elasticsearch
 from datetime import datetime
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
+from functools import partial
 
 sys.path.append('~/slub-lod-elasticsearch-tools/')
-from getindex import esgenerator
+from es2json import eprint
+from es2json import esgenerator
 
 global args
 global es
 global out
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)    
+def init(l):
+    global lock
+    lock = l
+
+def wrap_mp(l,doc):
+    get_rdf(doc,True)
 
 
-def process_stuff(doc):
+def get_rdf(doc,mp):
     if isinstance(doc,str):
         ldj=json.loads(doc)
     elif isinstance(doc,dict):
@@ -33,17 +39,25 @@ def process_stuff(doc):
         #ppn=ldj['@id']
     #ldj['@id']="http://data.slub-dresden.de/person/"+str(ppn)
     #add context:
-    ldj.pop("identifier")
+    if "identifier" in ldj:
+        ldj.pop("identifier")
     if "@context" not in ldj:
         ldj["@context"]="http://schema.org"
+    #try:
     try:
         g = Graph().parse(data=json.dumps(ldj), format='json-ld')
         triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
-        print(triple,file=out)
-        print(triple)
     except:
-        eprint(ldj)
+        eprint("couldn't serialize json! "+str(ldj))
         return
+    if mp:
+        lock.acquire()
+    print(triple)
+    if mp:
+        lock.release()
+    #except:
+        #eprint(ldj)
+        
             
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='ElasticSearch/ld-json to RDF!!')
@@ -61,16 +75,27 @@ if __name__ == "__main__":
     
     if args.inp:
         inp=open(args.inp,"r")
-        pool = Pool(256)
-        pool.map(process_stuff,inp)
+        m = Manager()
+        l = m.Lock()
+        pool = Pool(initializer=init,initargs=(l,))
+        func = partial(wrap_mp,l)
+        pool.map(func,inp)
+        pool.close()
+        pool.join()
         inp.close()
     elif args.scroll:
         if not args.debug:
-            pool = Pool(256)
-            pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
+            m = Manager()
+            l = m.Lock()
+            pool = Pool(128,initializer=init,initargs=(l,))
+            func = partial(wrap_mp,l)
+            pool.map(func, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
+            pool.close()
+            pool.join()
+            
         else:
             for doc in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True):
-                process_stuff()
+                wrap_mp(doc,True)
     elif args.doc:
         es=Elasticsearch([{'host':args.host}],port=args.port)  
         process_stuff(es.get(index=args.index,doc_type=args.type,id=args.doc))

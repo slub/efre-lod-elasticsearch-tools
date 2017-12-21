@@ -1,43 +1,12 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from elasticsearch import Elasticsearch
-import elasticsearch
 import json
 from pprint import pprint
 import argparse
 import sys
+from es2json import esgenerator
 
-
-def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,headless=False):
-    es=Elasticsearch([{'host':host}],port=port)
-    try:
-        page = es.search(
-            index = index,
-            doc_type = type,
-            scroll = '2m',
-            size = 1000,
-            body = body,
-            _source=source)
-    except elasticsearch.exceptions.NotFoundError:
-        sys.stderr.write("not found: "+host+":"+port+"/"+index+"/"+type+"/_search\n")
-        exit(-1)
-    sid = page['_scroll_id']
-    scroll_size = page['hits']['total']
-    for hits in page['hits']['hits']:
-        if headless:
-            yield hits['_source']
-        else:
-            yield hits
-    while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='2m')
-        sid = pages['_scroll_id']
-        scroll_size = len(pages['hits']['hits'])
-        for hits in pages['hits']['hits']:
-            if headless:
-                yield hits['_source']
-            else:
-                yield hits
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='simple ES.Getter!')

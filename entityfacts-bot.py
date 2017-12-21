@@ -1,28 +1,24 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
-import elasticsearch
 from elasticsearch import Elasticsearch
 import json
 from pprint import pprint
 import argparse
 import sys
-import pickle
 import os.path
 import signal
 import urllib3.request
 from multiprocessing import Pool
 sys.path.append('~/slub-lod-elasticsearch-tools/')
-from getindex import esgenerator
+from es2json import esgenerator
+from es2json import esgenerator
 
 
 es=None
 args=None
 
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)   
-    
 schema2entity = {
     "forename":"givenName",
     "surname":"familyName",
