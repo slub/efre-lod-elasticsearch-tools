@@ -11,6 +11,9 @@ from functools import partial
 
 lock=None
 
+
+baseuri="http://data.slub-dresden.de/"
+
 def lido(record,target,attribut,path):
     try:
         if attribut not in target:
@@ -45,14 +48,16 @@ def process_stuff(l, record):
         target["@context"]="http://schema.org"
         target["@type"]='http://schema.org/CreativeWork'
         lido(data,target,"name",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:titleWrap/lido:titleSet/lido:appellationValue/_')
-        lido(data,target,"identifier",'lido:lidoRecID/_')
         lido(data,target,"image",'lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:resourceRepresentation/0/lido:linkResource')
-        lido(data,target,"@id",'lido:administrativeMetadata/lido:recordWrap/lido:recordInfoSet/lido:recordInfoLink/_')
-        lido(data,target,"datepublished","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventDate/lido:displayDate/_")
+        lido(data,target,"url",'lido:administrativeMetadata/lido:recordWrap/lido:recordInfoSet/lido:recordInfoLink/_')
+        lido(data,target,"datePublished","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventDate/lido:displayDate/_")
         lido(data,target,"license","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsType/lido:conceptID/_")
         lido(data,target,"citation","lido:descriptiveMetadata/lido:objectRelationWrap/lido:relatedWorksWrap/lido:relatedWorkSet/lido:relatedWork/lido:object/lido:objectNote/_")
         #lido(data,target,"genre","lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_")
         lido(data,target,"comment",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_')
+        
+        lido(data,target,"identifier",'lido:lidoRecID/_')
+        target["@id"]=baseuri+"resources"+"/hcn-"+str(target.pop("identifier").rsplit('-')[-1])
         
         #bnodes 1:1
         target["mainEntity"]={"preferredName":"HeidICON : Die Heidelberger Bilddatenbank / Universitätsbibliothek Heidelberg","@id":"http://d-nb.info/104709214X"}
