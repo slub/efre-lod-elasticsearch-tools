@@ -12,7 +12,34 @@ from functools import partial
 lock=None
 
 
-baseuri="http://data.slub-dresden.de/"
+baseuri="http://data.slub-dresden.de/resources/hcn-"
+
+
+schema = {
+    "name"          :   "lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:titleWrap/lido:titleSet/lido:appellationValue/_",
+    "image"         :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:resourceRepresentation/0/lido:linkResource",
+    "url"           :   "lido:administrativeMetadata/lido:recordWrap/lido:recordInfoSet/lido:recordInfoLink/_",
+    "datePublished" :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventDate/lido:displayDate/_",
+    "license"       :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsType/lido:conceptID/_",
+    "citation"      :   "lido:descriptiveMetadata/lido:objectRelationWrap/lido:relatedWorksWrap/lido:relatedWorkSet/lido:relatedWork/lido:object/lido:objectNote/_",
+    "comment"       :   "lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_",
+    "genre"         :   "lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_",
+    "comment"       :   "lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_",
+    "identifier"    :   "lido:lidoRecID/_",
+    "author"        :   {
+        "sameAs"        :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:actorID/_",
+        "name"          :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:nameActorSet/lido:appellationValue/_"
+            },
+    "copyrightHolder" : {
+        "name"          :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyName/lido:appellationValue/_",
+        "sameAs"        :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyID/_"
+            },
+    "placePublished" :  {
+        "sameAs"        :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:placeID/_",
+        "name"          :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:namePlaceSet/lido:appellationValue/_"
+            }
+}
+
 
 def lido(record,target,attribut,path):
     try:
@@ -29,8 +56,10 @@ def init(l):
     lock = l
 
 def checkids(record):
-    if " " in record["@id"]:
-        record.pop("@id")
+    for _id in ["sameAs","@id"]:
+        if _id in record:
+            if " " in record[_id]:
+                record.pop(_id)
     for key in ["author", "copyrightHolder", "placePublished","mentions"]:
         if key in record:
             if isinstance(record[key],list):
@@ -47,39 +76,23 @@ def process_stuff(l, record):
         #1:1
         target["@context"]="http://schema.org"
         target["@type"]='http://schema.org/CreativeWork'
-        lido(data,target,"name",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:titleWrap/lido:titleSet/lido:appellationValue/_')
-        lido(data,target,"image",'lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:resourceRepresentation/0/lido:linkResource')
-        lido(data,target,"url",'lido:administrativeMetadata/lido:recordWrap/lido:recordInfoSet/lido:recordInfoLink/_')
-        lido(data,target,"datePublished","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventDate/lido:displayDate/_")
-        lido(data,target,"license","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsType/lido:conceptID/_")
-        lido(data,target,"citation","lido:descriptiveMetadata/lido:objectRelationWrap/lido:relatedWorksWrap/lido:relatedWorkSet/lido:relatedWork/lido:object/lido:objectNote/_")
-        #lido(data,target,"genre","lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_")
-        lido(data,target,"comment",'lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_')
         
-        lido(data,target,"identifier",'lido:lidoRecID/_')
-        target["@id"]=baseuri+"resources"+"/hcn-"+str(target.pop("identifier").rsplit('-')[-1])
-        
-        #bnodes 1:1
-        target["mainEntity"]={"preferredName":"HeidICON : Die Heidelberger Bilddatenbank / Universitätsbibliothek Heidelberg","@id":"http://d-nb.info/104709214X"}
-        target['author']={}
-        lido(data,target['author'],"preferredName","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:nameActorSet/lido:appellationValue/_")
-        lido(data,target['author'],"sameAs","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:actorID/_")
-        
-        target['copyrightHolder']={}
-        lido(data,target['copyrightHolder'],"preferredName","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyName/lido:appellationValue/_")
-        lido(data,target['copyrightHolder'],"@id","lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyID/_")
-        
-        target['placePublished']={}
-        lido(data,target['placePublished'],"@id","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:placeID/_")
-        lido(data,target['placePublished'],"@preferredName","lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:namePlaceSet/lido:appellationValue/_")
-            
+        for k,v in schema.items():
+            if isinstance(v,dict):
+                target[k]={}
+                for c,w in v.items():
+                    lido(data,target[k],c,w)
+            elif isinstance(v,str):
+                lido(data,target,k,v)
+        #generate @id
+        target["@id"]=baseuri+str(target.pop("identifier").rsplit('-')[-1])
         #bnodes 1:n
         target['mentions']=[]
         try:
             for i in get(data,"lido:descriptiveMetadata/lido:objectRelationWrap/lido:subjectWrap/lido:subjectSet/lido:subject/lido:subjectConcept"):
                 tag={}
-                tag['@id']=get(i,"lido:conceptID/_")
-                tag['preferredName']=get(i,"lido:term")
+                tag['sameAs']=get(i,"lido:conceptID/_")
+                tag['name']=get(i,"lido:term")
                 target['mentions'].append(tag)
         except:
             pass
