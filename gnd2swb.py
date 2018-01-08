@@ -19,6 +19,8 @@ from es2json import eprint
 es=None
 args=None
 
+author_gnd_key="sameAs"
+
 ### replace DNB IDs by SWB IDs in your ElasticSearch Index.
 ### example usage: ./gnd2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
 
@@ -26,10 +28,10 @@ def process_stuff(jline):
     tes=Elasticsearch(host=args.host)
     if "author" in jline:
         for author in jline["author"]:
-            if "@id" in author:
+            if author_gnd_key in author:
                 http = urllib3.PoolManager()
                 try:
-                    url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author["@id"])+"\""
+                    url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author[author_gnd_key])+"\""
                     r=http.request('GET',url)
                     data = json.loads(r.data.decode('utf-8'))
                 except:
