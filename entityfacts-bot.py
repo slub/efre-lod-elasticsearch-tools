@@ -32,7 +32,17 @@ schema2entity = {
     "placeOfBirth":"birthPlace",
     "sameAs":"sameAs"
 }
+
+
+def push_ppns(host,port,ppns): #expecting a python-array here!
+    message=json.dumps(ppn)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((host,port))
+    sock.send(message.encode('utf-8'))
+    sock.close()
     
+
+
 def entityfacts(record):
     changed=False
     if 'sameAs' in record:
@@ -144,7 +154,7 @@ class entityfactsd(Daemon):
             pool = Pool(16)
             pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
         else:
-            ThreadedServer('localhost',6969).listen()
+            ThreadedServer(args.address,args.socketport).listen()
             
         
         
@@ -152,7 +162,7 @@ class entityfactsd(Daemon):
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='enrich your ElasticSearch Search Index with data from entityfacts!')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
-    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    parser.add_argument('-port',type=int,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-file',type=str,help='File with line-delimited IDs to update')
@@ -162,19 +172,69 @@ if __name__ == "__main__":
     parser.add_argument('-full_index',action="store_true",help='update full index')
     parser.add_argument('-listen',action="store_true",help='listen for PPNs')
     parser.add_argument('-debug',action="store_true",help='no deaemon')
+    parser.add_argument('-pid_file',type=str,help="Path to store the pid_file of the daemon")
+    parser.add_argument('-conf',type=str,help='Daemon config file')
+    parser.add_argument('-address',type=str,default="127.0.0.1",help='address of the interface to listen to')
+    parser.add_argument('-socketport',type=int,help='port to listen for')
     args=parser.parse_args()
+    if args.conf:
+        with open(args.conf,'r') as cfg:
+            config = json.loads(cfg.read().replace('\n',''))
+            if not args.index and not 'index' in config:
+                sys.stderr.write("no ElasticSearch index defined in config or -index parameter. exiting.\n")
+                exit(-1)
+            elif not args.index and 'index' in config:
+                args.index=config['index']
+                
+            if not args.type and not 'type' in config:
+                sys.stderr.write("no ElasticSearch doc type defined in config -type parameter. exiting\n")
+                exit(-1)
+            elif not args.type and 'type' in config:
+                args.type=config['type']
+                
+            if not args.host and not 'host' in config:
+                sys.stderr.write("no elasticsearch host defined in config or -host parameter. exiting\n")
+                exit(-1)
+            elif not args.host and 'host' in config:
+                args.host = config['host']
+            
+            if not args.port and not 'port' in config:
+                sys.stderr.write("no elasticsearch port defined in config or -host parameter. exiting\n")
+                exit(-1)
+            elif not args.port and 'port' in config:
+                args.port = config['port']
+                
+            if not args.address and not 'ef_host' in config:
+                sys.stderr.write("no ef_host defined in config or -address parameter. exiting\n")
+                exit(-1)
+            elif not args.address and 'ef_host' in config:
+                args.address=config['ef_host']
+            
+            if not args.socketport and not 'ef_port' in config:
+                sys.stderr.write("no ef_port defined in config or -socketport parameter. exiting\n")
+                exit(-1)
+            elif not args.socketport and 'ef_port' in config:
+                args.socketport=int(config['ef_port'])
+                
+            if args.start or args.stop or args.restart:
+                if not args.pid_file and not 'pid_file' in config:
+                    sys.stderr.write("no pid_file defined in config or paramter. exiting\n")
+                    exit(-1)
+                if not args.pid_file and 'pid_file' in config:
+                    args.pid_file=config['pid_file']
+                    
     es=Elasticsearch([{'host':args.host}],port=args.port)
     if args.start:
-        daemon = entityfactsd('/tmp/entityfacts.pid')
+        daemon = entityfactsd(args.pid_file)
         daemon.start()
     elif args.stop:
-        daemon = entityfactsd('/tmp/entityfacts.pid')
+        daemon = entityfactsd(args.pid_file)
         daemon.stop()
     elif args.restart:
-        daemon = entityfactsd('/tmp/entityfacts.pid')
+        daemon = entityfactsd(args.pid_file)
         daemon.restart()
     elif args.debug:
-        entityfactsd('/tmp/entityfacts.pid').run()
+        entityfactsd(args.pid_file).run()
     elif args.file:
         with codecs.open(args.file,'r',encoding='utf-8') as f: #use with parameter to close stream after context
             ppns=[]

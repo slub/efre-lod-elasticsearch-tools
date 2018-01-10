@@ -1,0 +1,9 @@
+{
+"host"		: "127.0.0.1",
+"port"		: "9200",
+"ef_host"	: "127.0.0.1",
+"ef_port"	: 6969,
+"index" 	: "source-schemaorg",
+"type"		: "schemaorg",
+"pid_file"	: "/tmp/entityfacts.pid"
+}
