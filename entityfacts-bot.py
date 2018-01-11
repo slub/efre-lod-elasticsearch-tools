@@ -151,9 +151,12 @@ class ThreadedServer(object):
 class entityfactsd(Daemon):
     def run(self): 
         if args.full_index:
+            syslog.syslog("going to update the full index: "+args.host+":"+args.port+"/"+args.index+"/"+args.type)
             pool = Pool(16)
             pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
+            syslog.syslog("finished updating the full index! "+args.index)
         else:
+            syslog.syslog("started. waiting for connections on "+str(args.address)+":"+str(args.socketport))
             ThreadedServer(args.address,args.socketport).listen()
             
         
