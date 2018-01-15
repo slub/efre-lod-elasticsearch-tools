@@ -5,7 +5,7 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 
 [getindex](#getindex.py)
 
-[esmarc](#esmarc.py)
+[esmarc](#esmarcpy)
 
 [esfstats-python](#esfstats-python.py)
 
@@ -58,8 +58,10 @@ e.g.
 ```
 sudo apt-get install python3-elasticsearch
 ```
-<a name="esmarc.py"/>
+<a name="esmarcpy"/>
+
 # esmarc
+
 esmarc is a python3 tool to read line-delimited JSON from a file, from stdin or from an elasticSearch index, perform a simple mapping and writes out to stdout, a file or writes it via the bulk-endpoint into a new elasticSearch index.
 
 dependencies:
@@ -127,6 +129,7 @@ esfstats
         -marc   ignore Marc identifier field if you are analysing an index of marc records
 ```
 <a name="entityfacts-bot.py"/>
+
 # entityfacts-bot.py 
 
 entityfacts-bot.py is a Python3 program/daemon that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys. It can be either run standalone or as a service. In case of running it as a service there are two options. Either it runs in the background and enriches all the data in the specified index or it opens a TCP Socket to wait for a list of id's to enrich in the elasticsearch Index. Configuration can also be done over a json-formatted file.
