@@ -159,17 +159,18 @@ It connects to an elasticSearch node and updates the given index.
 	-conf		Path to load the configuration
 ```
 ## configuration example
+```
 /etc/conf.d/entityfacts-bot.cfg
 {
 "host"		: "127.0.0.1",
 "port"		: "9200",			
 "ef\_host"	: "127.0.0.1",
-"ef\port"	: "6969",
+"ef\_port"	: "6969",
 "index"		: "source-schemaorg",
 "type"		: "schemaorg,"
 "pid\_file"	" "/var/tmp/entityfacts.pid"
 }
-
+```
 
 
 ## Requirements
