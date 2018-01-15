@@ -23,27 +23,31 @@ author_gnd_key="sameAs"
 
 ### replace DNB IDs by SWB IDs in your ElasticSearch Index.
 ### example usage: ./gnd2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
-
-def process_stuff(jline):
+def handle_author(author,jline):
     tes=Elasticsearch(host=args.host)
-    if "author" in jline:
-        for author in jline["author"]:
-            if author_gnd_key in author:
-                http = urllib3.PoolManager()
-                try:
-                    url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author[author_gnd_key])+"\""
-                    r=http.request('GET',url)
-                    data = json.loads(r.data.decode('utf-8'))
-                except:
-                    print(url)
-                if data["hits"]["total"]==1:
-                    for hits in data["hits"]["hits"]:
-                        author["@id"]=hits["_source"]["@id"]
-                        tes.index(index=args.index,doc_type=args.type,body=jline,id=jline["identifier"])
+    if author_gnd_key in author:
+        http = urllib3.PoolManager()
+        url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author[author_gnd_key])+"\""
+        try:
+            r=http.request('GET',url)
+            data = json.loads(r.data.decode('utf-8'))
+            if data["hits"]["total"]==1:
+                for hits in data["hits"]["hits"]:
+                    author["@id"]=str(hits["_source"]["@id"])
+                    tes.index(index=args.index,doc_type=args.type,body=jline,id=jline["identifier"])
+        except:
+            print(url)
     
+def process_stuff(jline):
+    if "author" in jline:
+        if isinstance(jline["author"],list):
+            for author in jline["author"]:
+                handle_author(author,jline)
+        elif isinstance(jline["author"],dict):
+            handle_author(jline["author"],jline)
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='enrich your ElasticSearch Search Index with data from entityfacts!')
+    parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')

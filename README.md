@@ -21,17 +21,6 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 <a name="getindex.py"/>
 
 # getindex.py
@@ -69,33 +58,21 @@ python3-elasticsearch
 
 run:
 
-`$ esmarc.py <OPTARG>`
-
-valid options are:
-
--host 		hostname or IP-Address of the ElasticSearch-node to use for Input. If None we read from a file or stdin.
-
--port   	Port of the ElasticSearch-node which is set by -host. default is 9200.
-
--index		ElasticSearch index to use to harvest the data.
-
--type		ElasticSearch type to use to harvest the data.
-
--tohost 	hostname or IP-Address of the ElasticSearch-node to use for Output.
-
--toport		Port of the ElasticSearch-node which is set by -tohost. default is 9200.
-
--same		Select this switch if the source- and target ElasticSearch-node are the same.
-
--toindex	ElasticSearch Index to use to ingest the processed data.
-
--show\_schaemas	show the schemas which are defined in the sourcecode.
-
--schema		select the schema which should be defined in the sourcecode. also used for the doc\_type if ingested in a new elasitcsearch-index
-
--i		Input file path. Default is stdin if no arg is given.
-
--o		Output file path. Default is stdout if no arg is given.
+```
+$ esmarc.py <OPTARG>
+	-host 		hostname or IP-Address of the ElasticSearch-node to use for Input. If None we read from a file or stdin.
+	-port   	Port of the ElasticSearch-node which is set by -host. default is 9200.
+	-index		ElasticSearch index to use to harvest the data.
+	-type		ElasticSearch type to use to harvest the data.
+	-tohost 	hostname or IP-Address of the ElasticSearch-node to use for Output.
+	-toport		Port of the ElasticSearch-node which is set by -tohost. default is 9200.
+	-same		Select this switch if the source- and target ElasticSearch-node are the same.
+	-toindex	ElasticSearch Index to use to ingest the processed data.
+	-show\_schaemas	show the schemas which are defined in the sourcecode.
+	-schema		select the schema which should be defined in the sourcecode. also used for the doc\_type if ingested in a new elasitcsearch-index
+	-i		Input file path. Default is stdin if no arg is given.
+	-o		Output file path. Default is stdout if no arg is given.
+```
 
 examples:
 
@@ -242,6 +219,19 @@ python3-numpy
 # gnd2swb.py
 
 This small pythonscripts converts the D-NB IDs in your elasticSearch bibliographic works index to SWB IDs. You need an Index with both SWB and D-NB IDs.
+
+## Usage
+
+```
+./gnd2swb.py
+	-host		hostname or IP-Address of the ElasticSearch-index to use
+	-port		port of the ElasticSearch-node to use, default is 9200
+	-index		ElasticSearch-Index to use
+	-type		ElasticSearch-Type to use
+	-aut_index	ElasticSearch-Index where to lookup the SWB-IDs (Authority-Index)
+	-aut_type	ElasticSearch-Type where to lookup the SWB-IDs (Authority-Index)
+	-mp		Enable multiprocessing
+```
 
 ## Requirements
 
