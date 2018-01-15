@@ -68,8 +68,8 @@ $ esmarc.py <OPTARG>
 	-toport		Port of the ElasticSearch-node which is set by -tohost. default is 9200.
 	-same		Select this switch if the source- and target ElasticSearch-node are the same.
 	-toindex	ElasticSearch Index to use to ingest the processed data.
-	-show\_schaemas	show the schemas which are defined in the sourcecode.
-	-schema		select the schema which should be defined in the sourcecode. also used for the doc\_type if ingested in a new elasitcsearch-index
+	-show_schaemas	show the schemas which are defined in the sourcecode.
+	-schema		select the schema which should be defined in the sourcecode. also used for the doc_type if ingested in a new elasitcsearch-index
 	-i		Input file path. Default is stdin if no arg is given.
 	-o		Output file path. Default is stdout if no arg is given.
 ```
