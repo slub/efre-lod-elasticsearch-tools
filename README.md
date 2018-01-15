@@ -1,3 +1,31 @@
+# SLUB Linked Open Data ElasticSearch Toolchain
+Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic Metadata such as MARC21, FINC-SOLR or LIDO. Prerequisits is to have this data in a Elasticsearch-Index or as Line-delimited JSON. For MARC21, use this tool: [marc2jsonl](https://github.com/slub/marc2jsonl). LIDO can be transposed from XML to JSON-LD via a [helperscript](../blob/master/helperscripts/xml-json). To ingest your Line-delimited JSON data to Elasticsearch, the best tool is [esbulk](https://github.com/miku/esbulk), but use the -id switch for your Pica Product Numbers. In our case, we use [Schema.org](https://schema.org), but you can use your own schema, just adjust esmarc.py.
+
+##### Table of Contents
+
+[getindex](#getindex.py)
+[esfstats-python](#esfstats-python)
+[entityfacts-bot](#entityfacts-bot.py)
+[ldj2rdf](#ldj2rdf.py)
+[lido2schema](#lido2schema.py)
+[fieldstats-ldj](#fieldstats-ldj)
+[gnd2swb](#gnd2swb.py)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # getindex.py
 simple download-script for saving a ElasticSearch-index into a line-delimited JSON-File
 
@@ -73,7 +101,7 @@ harvests the data from localhost and prints the data to output.ldj in bibfra.me 
 
 harvests the data from localhost and puts the transformed data to 127.0.0.1:/newindex/bibframe
 
-# esfstats-python - elasticsearch fields statistics
+# esfstats-python 
 
 esfstats-python is a Python program that extracts some statistics re. field coverage in an ElasticSearch Index.
 
@@ -91,7 +119,7 @@ esfstats
         -marc   ignore Marc identifier field if you are analysing an index of marc records
 ```
 
-# entityfacts-bot.py - enrich your elasticSearch index with facts from entityfacts
+# entityfacts-bot.py 
 
 entityfacts-bot.py is a Python3 program/daemon that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys. It can be either run standalone or as a service. In case of running it as a service there are two options. Either it runs in the background and enriches all the data in the specified index or it opens a TCP Socket to wait for a list of id's to enrich in the elasticsearch Index. Configuration can also be done over a json-formatted file.
 
@@ -140,7 +168,7 @@ e.g. (ubuntu)
 sudo apt-get install python3-elasticsearch
 ```
 
-# ldj2rdf.py - serialize line delimited json to RDF
+# ldj2rdf.py 
 
 This python3 program/daemon transforms line-delimited json either read in from a file or from an elasticsearch-Index to RDF.
 
@@ -166,7 +194,7 @@ python3-elasticsearch
 
 
 
-# lido2schema.py - transform lido metadata to schema.org
+# lido2schema.py 
 
 This small pythonscript transforms the lido metadata to schema.org. The outcome is line-delimited json as well and can be indexed to an ElasticSearch-Index via esbulk.
 
