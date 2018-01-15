@@ -7,7 +7,7 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 
 [esmarc](#esmarcpy)
 
-[esfstats-python](#esfstats-python.py)
+[esfstats-python](#esfstats-python)
 
 [entityfacts-bot](#entityfacts-bot.py)
 
@@ -110,7 +110,9 @@ harvests the data from localhost and prints the data to output.ldj in bibfra.me 
 `$ esmarc.py -host 127.0.0.1 -index source -type mrc -same -toindex newindex -schema bibframe`
 
 harvests the data from localhost and puts the transformed data to 127.0.0.1:/newindex/bibframe
+
 <a name="esfstats-python"/>
+
 # esfstats-python 
 
 esfstats-python is a Python program that extracts some statistics re. field coverage in an ElasticSearch Index.
