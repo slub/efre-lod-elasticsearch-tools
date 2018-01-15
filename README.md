@@ -181,6 +181,7 @@ e.g. (ubuntu)
 sudo apt-get install python3-elasticsearch
 ```
 <a name="ldj2rdf.py"/>
+
 # ldj2rdf.py 
 
 This python3 program/daemon transforms line-delimited json either read in from a file or from an elasticsearch-Index to RDF.
@@ -207,6 +208,7 @@ python3-elasticsearch
 
 
 <a name="lido2schema.py"/>
+
 # lido2schema.py 
 
 This small pythonscript transforms the lido metadata to schema.org. The outcome is line-delimited json as well and can be indexed to an ElasticSearch-Index via esbulk.
@@ -235,6 +237,7 @@ This small pythonscript reads a line delimited json stream and returns the occur
 python3-numpy
 
 <a name="gnd2swb.py"/>
+
 # gnd2swb.py
 
 This small pythonscripts converts the D-NB IDs in your elasticSearch bibliographic works index to SWB IDs. You need an Index with both SWB and D-NB IDs.
