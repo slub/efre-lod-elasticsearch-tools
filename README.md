@@ -93,7 +93,7 @@ esfstats
 
 # entityfacts-bot.py - enrich your elasticSearch index with facts from entityfacts
 
-entityfacts-bot.py is a Python3 program that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys.
+entityfacts-bot.py is a Python3 program/daemon that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys. It can be either run standalone or as a service. In case of running it as a service there are two options. Either it runs in the background and enriches all the data in the specified index or it opens a TCP Socket to wait for a list of id's to enrich in the elasticsearch Index. Configuration can also be done over a json-formatted file.
 
 
 It connects to an elasticSearch node and updates the given index.
@@ -102,12 +102,34 @@ It connects to an elasticSearch node and updates the given index.
 
 ```
 ./entityfacts-bot.py
-        -help   print this help
-	-host	hostname or IP-Address of the ElasticSearch-node to use
-	-port	port of the ElasticSearch-node to use, default is 9200
-	-index  ElasticSearch index to use
-	-type	ElasticSearch doc_type to use
+        -help    	print this help
+	-host	 	hostname or IP-Address of the ElasticSearch-node to use
+	-port	 	port of the ElasticSearch-node to use, default is 9200
+	-index   	ElasticSearch index to use
+	-type	 	ElasticSearch doc_type to use
+	-debug	 	don't daemonize
+	-file	 	file with line-delimited id's to enrich
+	-start	 	start the daemon
+	-stop	 	stop the daemon
+	-restart 	restart the daemon
+	-full_index	enrich the full index
+	-pid_file	Path to store the pid_file of the daemon
+	-listen		listen for IDs on a open TCP-socket connection
+	-conf		Path to load the configuration
 ```
+## configuration example
+/etc/conf.d/entityfacts-bot.cfg
+{
+"host"		: "127.0.0.1",
+"port"		: "9200",			
+"ef\_host"	: "127.0.0.1",
+"ef\port"	: "6969",
+"index"		: "source-schemaorg",
+"type"		: "schemaorg,"
+"pid\_file"	" "/var/tmp/entityfacts.pid"
+}
+
+
 
 ## Requirements
 
@@ -117,6 +139,31 @@ e.g. (ubuntu)
 ```
 sudo apt-get install python3-elasticsearch
 ```
+
+# ldj2rdf.py - serialize line delimited json to RDF
+
+This python3 program/daemon transforms line-delimited json either read in from a file or from an elasticsearch-Index to RDF.
+
+## Usage
+```
+./ldj2rdf.py
+	-help		print this help
+	-debug		more debugging output
+	-host		hostname or IP-Address of the ElasticSearch-node to use
+	-port		port of the ElasticSearch-node to use, default is 9200
+	-index		index of the ElasticSearch to use
+	-type		doc_type of the ElasticSearch-Index to use
+	-scroll		serialize the whole Index to RDF
+	-doc		serialize a single document, required parameter is the _id of the document
+	-inp		don't use elasticsearch, serialize the RDF out of this line-delimited JSON file
+```
+
+## Requirements
+
+python3-rdflib
+python3-pyodbc
+python3-elasticsearch
+
 
 
 # lido2schema.py - transform lido metadata to schema.org
