@@ -164,11 +164,11 @@ It connects to an elasticSearch node and updates the given index.
 {
 "host"		: "127.0.0.1",
 "port"		: "9200",			
-"ef\_host"	: "127.0.0.1",
-"ef\_port"	: "6969",
+"ef_host"	: "127.0.0.1",
+"ef_port"	: "6969",
 "index"		: "source-schemaorg",
 "type"		: "schemaorg,"
-"pid\_file"	" "/var/tmp/entityfacts.pid"
+"pid_file"	" "/var/tmp/entityfacts.pid"
 }
 ```
 
