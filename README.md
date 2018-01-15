@@ -4,11 +4,17 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 ##### Table of Contents
 
 [getindex](#getindex.py)
+
 [esfstats-python](#esfstats-python)
+
 [entityfacts-bot](#entityfacts-bot.py)
+
 [ldj2rdf](#ldj2rdf.py)
+
 [lido2schema](#lido2schema.py)
+
 [fieldstats-ldj](#fieldstats-ldj)
+
 [gnd2swb](#gnd2swb.py)
 
 
