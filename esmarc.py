@@ -8,7 +8,7 @@ from pprint import pprint
 from multiprocessing import Pool
 from time import sleep
 import json
-import urllib.request
+#import urllib.request
 import codecs
 import argparse
 import itertools
@@ -16,7 +16,7 @@ import sys
 import io
 import subprocess
 from es2json import esgenerator
-from es2json import esgenerator
+from es2json import eprint
 from ldj2rdf import get_rdf
 
 
@@ -41,15 +41,11 @@ def isint(num):
 def ArrayOrSingleValue(array):
     if array:
         length=len(array)
-        if length>1 or isinstance(array,str):
+        if length>1 or isinstance(array,dict):
             return array
-        elif isinstance(array,dict):
-            if length==1:
-                for k,v in array.items():
-                    return v
         elif length==1:
-            if array[0]:
-                return array[0]
+            for elem in array:
+                return ArrayOrSingleValue(elem)
         elif length==0:
             return None
 
@@ -219,23 +215,22 @@ marc2relation = {
     "4:affi":"knows"
 }
 
-def gnd2uri(string):
+def gnd2uri(string,entity):
     ret=[]
     if isinstance(string,str):
         if "(DE-588)" in string:
             ret.append("http://d-nb.info/gnd/"+string.split(')')[1])
         elif "(DE-576)" in string:
-            ret.append(id2uri(string.split(')')[1]))
+            ret.append(id2uri(string.split(')')[1],entity))
     elif isinstance(string,list):
         for st in string:
-            ret.append(gnd2uri(st))
+            ret.append(gnd2uri(st,entity))
     return ArrayOrSingleValue(ret)
 
-def id2uri(string):
-    global args
-    if args.entity=="Person":
+def id2uri(string,entity):
+    if entity=="Person":
         return baseuri+"persons/"+string
-    elif args.entity=="CreativeWork":
+    elif entity=="CreativeWork":
         return baseuri+"resource/"+string
 
 
@@ -267,6 +262,7 @@ def getmarc(regex,json):
 
 def handlerelative(jline,schemakey,schemavalue):
     data=None
+    global args
     if schemakey=="relatedTo":
         data=[]
         try:
@@ -312,9 +308,9 @@ def handlerelative(jline,schemakey,schemavalue):
                             if isinstance(_id,list):
                                 for uri in _id:
                                     if "(DE-576)" in uri:
-                                        person["@id"]=gnd2uri(uri)
+                                        person["@id"]=gnd2uri(uri,"Persons")
                             elif isinstance(_id,str) and "(DE-576)" in _id:
-                                person["@id"]=gnd2uri(_id)
+                                person["@id"]=gnd2uri(_id,"Person")
                         elif key=='a':
                             person["name"]=value
                     if person not in data:
@@ -322,7 +318,7 @@ def handlerelative(jline,schemakey,schemavalue):
         except:
             pass
     elif schemakey=="@id":
-        data=id2uri(getmarc(ArrayOrSingleValue(schemavalue),jline))
+        data=id2uri(getmarc(ArrayOrSingleValue(schemavalue),jline),args.entity)
     elif "Place" in schemakey:
         data=[]
         place={}        
@@ -343,7 +339,7 @@ def handlerelative(jline,schemakey,schemavalue):
                     if "a" in sset:
                         place["name"]=sset["a"]
                     if "0" in sset:
-                        place["@id"]=gnd2uri(sset["0"])
+                        place["@id"]=gnd2uri(sset["0"],"Place")
                 if place:
                     data.append(place)
         except:
@@ -384,7 +380,7 @@ def handlerelative(jline,schemakey,schemavalue):
                             if isinstance(sset[key[-1]],list):
                                 for field in sset[key[-1]]:
                                     if "(DE-588)" in field:
-                                        job["@id"]=gnd2uri(field)
+                                        job["@id"]=gnd2uri(field,"hasOccupation")
                         elif key[-1]=='a':
                             if key[-1] in sset:
                                 job["name"]=str(sset[key[-1]])
@@ -410,31 +406,70 @@ def handlerelative(jline,schemakey,schemavalue):
         except:
             pass
     if data:
-        return data
-            
-#make finc more RDF
-def handlefinc(ldj):
-    if 'author_id' in ldj:
-        #if 'source_id' in ldj:
-            #eprint(ldj['author'],ldj['author_id'],ldj['@id'],ldj['source_id'])
-        if isinstance(ldj['author_id'],list):
-            for j in ldj['author_id']: #iterate through IDs if multiple:
-                author=dict()
-                if " " not in j:
-                    author['@id']="http://d-nb.info/gnd/"+j
-                if not 'author' in ldj:
-                    ldj['author']=[]
-                if author:
-                    ldj['author'].append(author)
-        elif isinstance(ldj['author_id'],str):
-                author=dict()
-                if " " not in ldj["author_id"]:
-                    author['@id']="http://d-nb.info/gnd/"+ldj['author_id']
-                if not 'author' in ldj:
-                    ldj['author']=[]
-                if author:
-                    ldj['author'].append(author)
-        ldj.pop('author_id')
+        return ArrayOrSingleValue(data)
+          
+def removeNone(obj):
+    if isinstance(obj, (list, tuple, set)):
+        return type(obj)(removeNone(x) for x in obj if x is not None)
+    elif isinstance(obj, dict):
+        return type(obj)((removeNone(k), removeNone(v))
+            for k, v in obj.items() if k is not None and v is not None)
+    else:
+        return obj
+
+def removeEmpty(obj):
+    if isinstance(obj,dict):
+        toDelete=[]
+        for k,v in obj.items():
+            if v:
+                v = ArrayOrSingleValue(removeEmpty(v))
+            else:
+                toDelete.append(k)
+        for key in toDelete:
+            obj.pop(key)
+        return obj
+    elif isinstance(obj,str):
+        return obj
+    elif isinstance(obj,list):
+        for elem in obj:
+            if elem:
+                elem = removeEmpty(elem)
+            else:
+                del elem
+        return obj
+
+#make data more RDF
+def check(ldj):
+    ldj=removeNone(ldj)
+    ldj=removeEmpty(ldj)
+    for k,v in ldj.items():
+        v=ArrayOrSingleValue(v)
+    for person in ["author","contributor"]:
+        if person in ldj:
+            if isinstance(ldj[person],str):
+                if "DE-576" in ldj[person]:
+                    person=gnd2uri(ldj.pop(person),"Person")
+                    ldj[person]=person
+                if "DE-588" in ldj[person]:
+                    ldj.pop(person)
+            elif isinstance(ldj[person],list):
+                persons=[]
+                for author in ldj[person]:
+                    if "DE-576" in author:
+                        persons.append(gnd2uri(author,"Person"))
+                ldj.pop(person)
+                ldj[person]=persons
+    if 'name' in ldj:
+        name=ArrayOrSingleValue(ldj.pop("name"))
+        if isinstance(name,str):
+            if name[-2:]==" /":
+                ldj['name']=name[:-2]
+        elif isinstance(name,list):
+            for elem in name:
+                if elem[-2:]==" /":
+                    elem=elem[:-2]
+        else:
+            ldj['name']=name
     if 'oclc_num' in ldj:
         if 'sameAs' not in ldj:
             ldj['sameAs']=[]
@@ -450,7 +485,7 @@ def handlefinc(ldj):
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
     if 'bookEdition' in ldj:
-        be=ldj.pop('genre')
+        be=ldj.pop('bookEdition')
         ldj['bookEdition']={}
         ldj['bookEdition']['@type']="Book"
         ldj['bookEdition']["Text"]=be
@@ -468,14 +503,24 @@ def handlefinc(ldj):
                 pass
         except AttributeError:
             pass
-    if '@id' in ldj:
-        num=ldj.pop('@id')
-        ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
-    for pers in ["publisher","contributor"]:
-        if pers in ldj:
-            person = ldj.pop(pers)
-            ldj[pers]={}
-            ldj[pers]["name"]=person
+    if args.entity=="Person":
+        checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
+        for key in checks:
+            if key in ldj:
+                if isinstance(ldj[key],list):
+                    for pers in ldj[key]:
+                        if "@id" not in pers:
+                            del pers
+                elif isinstance(ldj[key],dict):
+                    if "@id" not in ldj[key]:
+                        ldj.pop(key)
+                elif isinstance(ldj[key],str):
+                    ldj.pop(key)
+    elif args.entity=="CreativeWork":
+        if '@id' in ldj:
+            num=ldj.pop('@id')
+            ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
+            ldj['identifier']=str(num)
     for label in ["name","alternativeHeadline"]:
         if label in ldj:
             if ldj[label][-2:]==" /":
@@ -485,7 +530,7 @@ def handlefinc(ldj):
         ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
     if "isbn" in ldj:
         ldj["@type"].append(URIRef(u'http://schema.org/Book'))
-    return removeNone(ldj)
+    return ldj
 
 def finc(jline,schemakey,schemavalue):
     ret=[]
@@ -494,20 +539,6 @@ def finc(jline,schemakey,schemavalue):
             for k,v in traverse(jline[v],""):
                 ret.append(v)                
     return ArrayOrSingleValue(ret)
-
-def handleisbn(jline,schemakey,schemavalue):
-    ret=[]
-    if "isbn" in jline:
-        for v in jline["isbn"]:
-            if schemakey=="P957":
-                if v[0:3]=="978":
-                    ret.append(v[3:-1])
-                else:
-                    ret
-            elif schemakey=="P212":
-                if v[0:3]=="978":
-                    ret.append(v)
-
 
 schematas = {
     "resource.finc":{
@@ -533,25 +564,25 @@ schematas = {
         "identifier"            :[finc,"record_id"],
         },
    "resource.mrc":{
-        "@id":  ["001"],
-        "name"    :["245.*.a","245.*.b","245.*.n","245.*.p"],
-        "alternateName" :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
-        "author"     :["100.*.a","700.*.a"],
-        "author_id"  :["100.*.0"],
-        "contributor" :["700.*.a","700.*.b","700.*.0"],
-        "publisher"         :["260.*.a","260.*.b","260.*.c","264.*.a","264.*.b","264.*.c"],
-        "publisher"         :["260.*.a","264.*.a"],
-        "datePublished"      :["264.*.c","260.*.c"],
-        "Thesis"         :["502.*.a","502.*.b","502.*.c","502.*.d"],
-        "issn"           :["022.*.a","022.*.y","022.*.z","029.*.a","490.*.x","730.*.x","773.*.x","776.*.x","780.*.x","785.*.x","800.*.x","810.*.x","811.*.x","830.*.x"],
-        "isbn"           :["022.*.a","022.*.z","776.*.z","780.*.z","785.*.z"],
-        #"ismn"           :["024.*.a","028.*.a",],
-        "genre"          :["655.*.a","600.*.v","610.*.v","611.*.v","630.*.v","648.*.v","650.*.v","651.*.v","655.*.v"],
-        "hasPart"     :["773.*.g"],
-        "isPartOf"    :["773.*.s"],
-        "availableLanguage"    :["041.*.a","041.*.d","130.*.l","730.*.l"],
-        "numberOfPages"          :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
-        "date" :["362.*.a"]
+        "@id"               :["001"],
+        "name"              :["245.*.a","245.*.b","245.*.n","245.*.p"],
+        "alternateName"     :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
+        #"author"           :["100.*.a","700.*.a"],
+        "author"         :["100.*.0"],
+        "contributor"       :["700.*.0"],
+        "publisher"         :["260.*.b","264.*.b"],
+        "datePublished"     :["260.*.c","264.*.c"],
+        "Thesis"            :["502.*.a","502.*.b","502.*.c","502.*.d"],
+        "issn"              :["022.*.a","022.*.y","022.*.z","029.*.a","490.*.x","730.*.x","773.*.x","776.*.x","780.*.x","785.*.x","800.*.x","810.*.x","811.*.x","830.*.x"],
+        "isbn"              :["022.*.a","022.*.z","776.*.z","780.*.z","785.*.z"],
+        #"ismn"             :["024.*.a","028.*.a",],
+        "genre"             :["655.*.a","600.*.v","610.*.v","611.*.v","630.*.v","648.*.v","650.*.v","651.*.v","655.*.v"],
+        "hasPart"           :["773.*.g"],
+        "isPartOf"          :["773.*.s"],
+        "license"           :["540.*.a"],
+        "availableLanguage" :["041.*.a","041.*.d","130.*.l","730.*.l"],
+        "numberOfPages"     :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
+        "date"              :["362.*.a"]
         },
     "person.mrc": {
         "identifier":  ["001"],
@@ -631,80 +662,6 @@ def schemas():
             print(k,v)
     exit(0)
 
-def mergelists(one,two):
-    ret=[]
-    if len(one) != len(two):
-        return
-    if isinstance(one,str):
-        if isinstance(two,str):
-            ret.append(one)
-            ret.append(two)
-    else:
-        for i in range(len(one)):
-            ret.append([one[i],two[i]])
-    return ret
-
-def progress():
-    global count
-    global totalcount
-    count+=1
-    if count==1000:
-        totalcount+=count
-        if(es_totalsize > 0):
-            printProgressBar(float(totalcount/1000),float(es_totalsize/1000), prefix = 'Progress:', suffix = 'Complete', length = 100)
-        count=0
-    
-
-
-def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    eprint('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
-    # Print New Line on Complete
-    if iteration == total: 
-        eprint()
-
-
-def removeNone(obj):
-    if isinstance(obj, (list, tuple, set)):
-        return type(obj)(removeNone(x) for x in obj if x is not None)
-    elif isinstance(obj, dict):
-        return type(obj)((removeNone(k), removeNone(v))
-            for k, v in obj.items() if k is not None and v is not None)
-    else:
-        return obj
-
-def check(obj):
-    global args
-    obj=removeNone(obj)
-    removekeys=[]
-    for k,v in obj.items():
-        if v:
-            if isinstance(v,list):
-                for elem in v:
-                    if not elem:
-                        del elem
-        elif not v:
-            removekeys.append(k)
-        else:
-            v=ArrayOrSingleValue(ArrayOrSingleValue(v))
-    for k in removekeys:
-        obj.pop(k)
-    if args.entity=="Person":
-        checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
-        for key in checks:
-            if key in obj:
-                if isinstance(obj[key],list):
-                    for pers in obj[key]:
-                        if "@id" not in pers:
-                            del pers
-                elif isinstance(obj[key],dict):
-                    if "@id" not in obj[key]:
-                        obj.pop(key)
-                elif isinstance(obj[key],str):
-                    obj.pop(key)
-    return obj
 
 #processing a single line of json without whitespace 
 def process_stuff(jline):
@@ -721,7 +678,7 @@ def process_stuff(jline):
         if getmarc("079..b",jline)=="p":
             notEntity=False
             mapline["@type"]=URIRef(u'http://schema.org/Person')
-    else:
+    elif args.entity=="CreativeWork":
         mapline["@type"]=[]
         mapline["@type"].append(URIRef(u'http://schema.org/CreativeWork'))
         mapline["@type"].append(URIRef(u'http://purl.org/ontology/bibo/Document'))
@@ -765,13 +722,9 @@ def process_stuff(jline):
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
         mapline=check(mapline)
-        if "finc" in args.schema:
-            mapline=handlefinc(mapline)
-            if "identifier" not in mapline:
-                return
-        progress()
         if outstream:
-            outstream.write(json.dumps(mapline,indent=None)+"\n")   
+            outstream.write(json.dumps(mapline,indent=None)+"\n")
+            print(ArrayOrSingleValue(mapline["identifier"]))
         else:
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
