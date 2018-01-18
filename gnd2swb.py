@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 import elasticsearch
 from elasticsearch import Elasticsearch
 import json
@@ -23,28 +22,44 @@ author_gnd_key="sameAs"
 
 ### replace DNB IDs by SWB IDs in your ElasticSearch Index.
 ### example usage: ./gnd2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
-def handle_author(author,jline):
-    tes=Elasticsearch(host=args.host)
-    if author_gnd_key in author:
-        http = urllib3.PoolManager()
-        url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author[author_gnd_key])+"\""
-        try:
-            r=http.request('GET',url)
-            data = json.loads(r.data.decode('utf-8'))
-            if data["hits"]["total"]==1:
-                for hits in data["hits"]["hits"]:
-                    author["@id"]=str(hits["_source"]["@id"])
-                    tes.index(index=args.index,doc_type=args.type,body=jline,id=jline["identifier"])
-        except:
-            print(url)
+def handle_author(author):
+    http = urllib3.PoolManager()
+    url="http://"+str(args.host)+":"+str(args.port)+"/"+str(args.aut_index)+"/"+str(args.aut_type)+"/_search?q=sameAs:\""+str(author)+"\""
+    try:
+        r=http.request('GET',url)
+        data = json.loads(r.data.decode('utf-8'))
+        if data["hits"]["total"]==1:
+            for hits in data["hits"]["hits"]:
+                return str(hits["_source"]["@id"])
+    except:
+            eprint(url)
+    return None
     
 def process_stuff(jline):
+    tes=Elasticsearch(host=args.host)
+    changed=False
     if "author" in jline:
-        if isinstance(jline["author"],list):
-            for author in jline["author"]:
-                handle_author(author,jline)
+        if isinstance(jline["author"],str):
+            author_id=handle_author(jline["author"])
+            if author_id:
+                jline["author"]=author_id
+                changed=True
         elif isinstance(jline["author"],dict):
-            handle_author(jline["author"],jline)
+            if "@id" in jline["author"]:
+                author_id=handle_author(jline["author"]["@id"])
+                if author_id:
+                    jline["author"]["@id"]=author_id
+                    changed=True
+        elif isinstance(jline["author"],list):
+            for author in jline["author"]:
+                if isinstance(author,dict):
+                    if author_gnd_key in author:
+                        author_id=handle_author(author["@id"])
+                        if author_id:
+                            author["@id"]=author_id
+                            changed=True
+    if changed:
+        tes.index(index=args.index,doc_type=args.type,body=jline,id=jline["identifier"])
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
@@ -56,7 +71,6 @@ if __name__ == "__main__":
     parser.add_argument('-aut_type',type=str,help="Authority-Type")
     parser.add_argument('-mp',action='store_true',help="Enable Multiprocessing")
     args=parser.parse_args()
-    
     if args.mp:
         pool = Pool(32)
         pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
