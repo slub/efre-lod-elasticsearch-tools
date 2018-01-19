@@ -45,7 +45,7 @@ def ArrayOrSingleValue(array):
             return array
         elif length==1:
             for elem in array:
-                return ArrayOrSingleValue(elem)
+                 return elem
         elif length==0:
             return None
 
@@ -448,8 +448,8 @@ def check(ldj):
         if person in ldj:
             if isinstance(ldj[person],str):
                 if "DE-576" in ldj[person]:
-                    person=gnd2uri(ldj.pop(person),"Person")
-                    ldj[person]=person
+                    uri=gnd2uri(ldj.pop(person),"Person")
+                    ldj[person]=uri
                 if "DE-588" in ldj[person]:
                     ldj.pop(person)
             elif isinstance(ldj[person],list):
@@ -520,7 +520,7 @@ def check(ldj):
         if '@id' in ldj:
             num=ldj.pop('@id')
             ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
-            ldj['identifier']=str(num)
+            ldj['identifier']="swb-"+str(num)
     for label in ["name","alternativeHeadline"]:
         if label in ldj:
             if ldj[label][-2:]==" /":
@@ -555,7 +555,7 @@ schematas = {
         "genre"                 :[finc,"genre","genre_facet"],
         "hasPart"               :[finc,"container_reference"],
         "isPartOf"              :[finc,"container_title"],
-        "inLanguage"     :[finc,"language"],
+        "inLanguage"            :[finc,"language"],
         "numberOfPages"         :[finc,"physical"],
         "description"           :[finc,"description"],
         "bookEdition"           :[finc,"edition"],
@@ -571,18 +571,20 @@ schematas = {
         "author"         :["100.*.0"],
         "contributor"       :["700.*.0"],
         "publisher"         :["260.*.b","264.*.b"],
-        "datePublished"     :["260.*.c","264.*.c"],
+        "datePublished"     :["260.*.c","264.*.c","362.*.a"],
         "Thesis"            :["502.*.a","502.*.b","502.*.c","502.*.d"],
         "issn"              :["022.*.a","022.*.y","022.*.z","029.*.a","490.*.x","730.*.x","773.*.x","776.*.x","780.*.x","785.*.x","800.*.x","810.*.x","811.*.x","830.*.x"],
         "isbn"              :["022.*.a","022.*.z","776.*.z","780.*.z","785.*.z"],
         #"ismn"             :["024.*.a","028.*.a",],
-        "genre"             :["655.*.a","600.*.v","610.*.v","611.*.v","630.*.v","648.*.v","650.*.v","651.*.v","655.*.v"],
+        "genre"             :["655.*.a"],
         "hasPart"           :["773.*.g"],
-        "isPartOf"          :["773.*.s"],
+        "isPartOf"          :["773.*.t","773.*.s","773.*.a"],
         "license"           :["540.*.a"],
-        "availableLanguage" :["041.*.a","041.*.d","130.*.l","730.*.l"],
+        "inLanguage" :["041.*.a","041.*.d","130.*.l","730.*.l"],
         "numberOfPages"     :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
-        "date"              :["362.*.a"]
+        "pageStart"         :["773.*.q"],
+        "issueNumber"       :["773.*.l"],
+        "volumeNumer"       :["773.*.v"]
         },
     "person.mrc": {
         "identifier":  ["001"],
@@ -681,7 +683,7 @@ def process_stuff(jline):
     elif args.entity=="CreativeWork":
         mapline["@type"]=[]
         mapline["@type"].append(URIRef(u'http://schema.org/CreativeWork'))
-        mapline["@type"].append(URIRef(u'http://purl.org/ontology/bibo/Document'))
+        #mapline["@type"].append(URIRef(u'http://purl.org/ontology/bibo/Document'))
     if args.schema not in schematas:
         sys.stderr.write("Warning! selected schema not in schematas! Correct your mistakes and edit this file!\n")
         exit(1)
