@@ -17,7 +17,6 @@ import io
 import subprocess
 from es2json import esgenerator
 from es2json import eprint
-from ldj2rdf import get_rdf
 
 
 
