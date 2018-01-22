@@ -446,7 +446,7 @@ def check(ldj):
     if 'author_finc' in ldj:
         if isinstance(ldj['author_finc'],str):
             ldj["author"]="http://data.slub-dresden.de/persons/swb-"+ldj.pop('author_finc')
-        elif isinstance(ldj['author_finc',list):
+        elif isinstance(ldj['author_finc'],list):
             ldj["author"]=[]
             for author in ldj['author_finc']:
                     ldj["author"]="http://data.slub-dresden.de/persons/swb-"+ldj["author_finc"]
