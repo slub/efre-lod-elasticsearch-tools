@@ -2334,8 +2334,10 @@ context={
 def get_rdf(doc,mp):
     global context
     g=ConjunctiveGraph()
-    if "@context" in doc:
-        doc.pop("@context")
+    toRemove=["@context","identifier"]
+    for cul in toRemove:
+        if cul in doc:
+            doc.pop(cul)
     g.parse(data=json.dumps(doc), format='json-ld',context=context)
     triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
     triples=[]
@@ -2386,7 +2388,7 @@ if __name__ == "__main__":
         if not args.debug:
             m = Manager()
             l = m.Lock()
-            pool = Pool(128,initializer=init,initargs=(l,))
+            pool = Pool(8,initializer=init,initargs=(l,))
             func = partial(wrap_mp,l)
             pool.map(func, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
             pool.close()
