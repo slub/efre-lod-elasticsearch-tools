@@ -444,7 +444,7 @@ def check(ldj):
     for k,v in ldj.items():
         v=ArrayOrSingleValue(v)
     if 'author_finc' in ldj:
-        ldj[author]="http://data.slub-dresden.de/persons/swb-"+ldj.pop('author_finc')
+        ldj["author"]="http://data.slub-dresden.de/persons/swb-"+ldj.pop('author_finc')
     for person in ["author","contributor"]:
         if person in ldj:
             if isinstance(ldj[person],str):
