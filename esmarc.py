@@ -445,25 +445,25 @@ def check(ldj):
         v=ArrayOrSingleValue(v)
     if 'author_finc' in ldj:
         if isinstance(ldj['author_finc'],str):
-            ldj["author"]="http://data.slub-dresden.de/persons/swb-"+ldj.pop('author_finc')
+            ldj["author"]={"@id":str("http://data.slub-dresden.de/persons/swb-"+ldj.pop('author_finc'))}
         elif isinstance(ldj['author_finc'],list):
             ldj["author"]=[]
             for author in ldj['author_finc']:
-                    ldj["author"].append("http://data.slub-dresden.de/persons/swb-"+author)
+                    ldj["author"].append({"@id":str("http://data.slub-dresden.de/persons/swb-"+author)})
             ldj.pop("author_finc")
     for person in ["author","contributor"]:
         if person in ldj:
             if isinstance(ldj[person],str):
                 if "DE-576" in ldj[person]:
                     uri=gnd2uri(ldj.pop(person),"Person")
-                    ldj[person]=uri
+                    ldj[person]={"@id":uri}
                 if "DE-588" in ldj[person]:
                     ldj.pop(person)
             elif isinstance(ldj[person],list):
                 persons=[]
                 for author in ldj[person]:
                     if "DE-576" in author:
-                        persons.append(gnd2uri(author,"Person"))
+                        persons.append({"@id":gnd2uri(author,"Person")})
                 ldj.pop(person)
                 ldj[person]=persons
     if 'name' in ldj:
