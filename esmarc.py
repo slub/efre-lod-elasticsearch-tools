@@ -460,11 +460,11 @@ def check(ldj):
                 ldj[person]=persons
     if 'author_finc' in ldj:
         if isinstance(ldj['author_finc'],str):
-            ldj["author"]={"@id":"(DE-588)"+ldj.pop('author_finc'))}
+            ldj["author"]={"@id":"(DE-588)"+ldj.pop('author_finc')}
         elif isinstance(ldj['author_finc'],list):
             ldj["author"]=[]
             for author in ldj['author_finc']:
-                    ldj["author"].append({"@id":"(DE-588)"+author)})
+                    ldj["author"].append({"@id":"(DE-588)"+author})
             ldj.pop("author_finc")
     if 'name' in ldj:
         name=ArrayOrSingleValue(ldj.pop("name"))

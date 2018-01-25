@@ -2343,8 +2343,12 @@ def get_rdf(doc,mp):
     triples=[]
     for line in triple.split('\n'):
         triples.append(line)
+    if mp:
+        lock.lock()
     for triple in triples:
         sys.stdout.write(str(triple)+"\n")
+    if mp:
+        lock.release()
     #for s,p,o in g:
     #    print(s,p,o)
             #con.insert_triple
@@ -2365,8 +2369,6 @@ if __name__ == "__main__":
     parser.add_argument('-inp',type=str,help="generate RDF out of LDJ")
     args=   parser.parse_args()
     #con =    Isql('DSN=Local Virtuoso;UID=dba;PWD=dba')
-    for line in sys.stdin:
-        get_rdf(json.loads(line),False)
     if args.inp:
         #inp=open(args.inp,"r")
         #g = Graph().parse(data=inp,format='json-ld')
@@ -2401,7 +2403,8 @@ if __name__ == "__main__":
         es=Elasticsearch([{'host':args.host}],port=args.port)  
         process_stuff(es.get(index=args.index,doc_type=args.type,id=args.doc))
     else:
-        pass
+        for line in sys.stdin:
+            get_rdf(json.loads(line),False)
         #print("neither given the -scroll optarg or given a -doc id or even an -inp file. nothing to do her. exiting")
     #out.close()
   
