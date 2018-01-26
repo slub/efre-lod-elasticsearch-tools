@@ -2344,7 +2344,7 @@ def get_rdf(doc,mp):
     for line in triple.split('\n'):
         triples.append(line)
     if mp:
-        lock.lock()
+        lock.acquire()
     for triple in triples:
         sys.stdout.write(str(triple)+"\n")
     if mp:
