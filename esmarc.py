@@ -528,7 +528,7 @@ def check(ldj):
             num=ldj.pop('@id')
             ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
             ldj['identifier']="swb-"+str(num)
-    for label in ["name","alternativeHeadline"]:
+    for label in ["name","alternativeHeadline","alternateName"]:
         if label in ldj:
             if ldj[label][-2:]==" /":
                 name=ldj.pop(label)
