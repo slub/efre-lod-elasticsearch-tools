@@ -2348,8 +2348,12 @@ def get_rdf(doc,mp):
     for cul in toRemove:
         if cul in doc:
             doc.pop(cul)
-    g.parse(data=json.dumps(doc), format='json-ld',context=context)
-    triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
+    triple=""
+    try:
+        g.parse(data=json.dumps(doc), format='json-ld',context=context)
+        triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
+    except:
+        eprint(doc)
     triples=[]
     for line in triple.split('\n'):
         triples.append(line)
