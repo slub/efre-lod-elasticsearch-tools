@@ -2335,6 +2335,16 @@ def get_rdf(doc,mp):
     global context
     g=ConjunctiveGraph()
     toRemove=["@context","identifier"]
+    toRemoveVal=["http://www.biographien.ac.at"]
+    for item in toRemoveVal:
+        if "sameAs" in doc:
+            if isinstance(doc["sameAs"],dict):
+                toremove=[]
+                for k,v in doc["sameAs"].items():
+                    if item in v:
+                        toremove.append(k)
+                for item in toremove:
+                    doc["sameAs"].pop(item)
     for cul in toRemove:
         if cul in doc:
             doc.pop(cul)
