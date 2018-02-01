@@ -4,6 +4,7 @@ import json
 from elasticsearch import Elasticsearch
 from elasticsearch import exceptions
 from elasticsearch import helpers
+from pprint import pprint
 import argparse
 from es2json import eprint
 
@@ -37,15 +38,18 @@ if __name__ == "__main__":
             except exceptions.NotFoundError as e:
                 update="create"
             if doc_es:
-                if doc_ts>float(doc_es["_source"]["005"][0]):
+                try:
+                    if doc_ts>float(doc_es["_source"]["005"][0]):
+                        update="update"
+                except KeyError:
                     update="update"
             if update:
                 actions.append({
-                                '_op_type':update,
                                 '_index':args.index,
                                 '_type':args.type,
                                 '_id':str(args.prefix+jline["001"][0]),
-                                'doc': jline
+                                '_source': dict(jline)
                                 })
-    elasticsearch.helpers.streaming_bulk(es,actions,chunk_size=500)
+    if actions:
+        helpers.bulk(es,actions)
             
