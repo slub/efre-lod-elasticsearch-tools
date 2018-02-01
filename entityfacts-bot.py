@@ -22,6 +22,7 @@ from daemon import Daemon
 es=None
 args=None
 ppn=None
+gnd_field='id'
 
 schema2entity = {
     "forename":"givenName",
@@ -45,10 +46,10 @@ def push_ppns(host,port,ppns): #expecting a python-array here!
 
 def entityfacts(record):
     changed=False
-    if 'sameAs' in record:
-        if "http://d-nb.info/gnd/" in record['sameAs']:
+    if gnd_field in record:
+        if "http://d-nb.info/gnd/" in record[gnd_field]:
             http = urllib3.PoolManager()
-            url="http://hub.culturegraph.org/entityfacts/"+str(record['sameAs'].split('/')[-1])
+            url="http://hub.culturegraph.org/entityfacts/"+str(record[gnd_field].split('/')[-1])
             r=http.request('GET',url)
             try:
                 data = json.loads(r.data.decode('utf-8'))
@@ -56,9 +57,9 @@ def entityfacts(record):
                 return [0,0]
             for k,v in schema2entity.items():
                     if k=="sameAs":
-                        if isinstance(record['sameAs'],str):
-                            dnb=record['sameAs']
-                            record['sameAs']=[dnb]
+                        if isinstance(record[gnd_field],str):
+                            dnb=record[gnd_field]
+                            record[gnd_field]=[dnb]
                         if k in data:
                             if v not in record:
                                 record[v]=data[k]["@id"]
@@ -70,13 +71,13 @@ def entityfacts(record):
                     if k in data and v not in record:
                         record[v]=data[k]
                         changed=True
-                    elif k in data and v in record and k!="sameAs":
+                    elif k in data and v in record and k!="gnd_field":
                         if k=="dateOfDeath" or k=="dateOfBirth":
                             if data[k]!=record[v] and record[v] and data[k]:
                                 if record[v] in data[k]:
                                     record[v]=data[k]
                                 elif k in record:
-                                    syslog.syslog("Error! "+record["@id"]+" birthDate in SWB differs from entityFacts! SWB: "+record["birthDate"]+" EF: "+data["dateOfBirth"])
+                                    syslog.syslog("Error! "+record[gnd_field]+" birthDate in SWB differs from entityFacts! SWB: "+record["birthDate"]+" EF: "+data["dateOfBirth"])
     if changed:
         return record
     else:
@@ -86,7 +87,7 @@ def process_stuff(jline):
     length=len(jline.items())
     body=entityfacts(jline)
     if (len(body) > length):
-        es.index(index=args.index,doc_type=args.type,body=body,id=body["identifier"])
+        es.index(index=args.index,doc_type=args.type,body=body,id=body["id"])
         return
 
 def update_by_ppn(ppn):
