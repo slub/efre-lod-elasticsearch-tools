@@ -9,7 +9,7 @@ import validators
 import codecs
 import string
 
-class Isql:
+class Isql: #howto: http://docs.openlinksw.com/virtuoso/virtmanconfodbcdsnunix/
     def __init__(self, connection_string='DSN=Local Virtuoso;UID=dba;PWD=dba',detecturis=False):
         self.connection = pyodbc.connect(connection_string)
         self.cursor = self.connection.cursor()
@@ -47,14 +47,18 @@ class Isql:
     def read_triples(self,uri,subject):
         cmd="SPARQL SELECT "+self.uri_or_literal(uri)+" ?p ?o FROM <http://data.slub-dresden.de> WHERE { "+self.uri_or_literal(subject)+" ?p ?o . }"
         triples=[]
-        for row in self.cursor.execute(cmd).fetchall():
-            rowAsList = [ x for x in row]
-            triple=[]
-            for x in rowAsList:
-                triple.append(self.filter_nonprintable(x))
-            triples.append(triple)
-        return triples
-    
+        try:
+            for row in self.cursor.execute(cmd).fetchall():
+                rowAsList = [ x for x in row]
+                triple=[]
+                for x in rowAsList:
+                    triple.append(self.filter_nonprintable(x))
+                triples.append(triple)
+            return triples
+        except pyodbc.ProgrammingError as e:
+            print(e,cmd)
+            
+            
     def update_triples_by_spo(self,uri,triples):
         for s,p,o in self.read_triples(uri):
             self.delete_triple(uri,s,p,o)
@@ -78,24 +82,9 @@ class Isql:
     
 #example
 if __name__ == "__main__":
-    virtuoso  = Isql()
+    virtuoso  = Isql(detecturis=True)
     uri="http://data.slub-dresden.de"
     print(virtuoso.count_triples(uri))
     triples=[]
-    for s,p,o in virtuoso.get_triples_by_subject("http://data.slub-dresden.de/resources/405206240"):
-        triples.append([s,p,o])
-        virtuoso.delete_triple(uri,s,p,o)
+    for s,p,o in virtuoso.read_triples("http://data.slub-dresden.de","http://data.slub-dresden.de"):
         print(s,p,o)
-    print(virtuoso.count_triples(uri))
-    for s,p,o in triples:
-        print(s,p,o)
-    for s,p,o in triples:
-        virtuoso.insert_triple(uri,s,p,o)
-    for s,p,o in virtuoso.get_triples_by_subject("http://data.slub-dresden.de/resources/405206240"):
-        print(s,p,o)
-    print(virtuoso.count_triples(uri))
-    #for row in cursor.execute("SPARQL SELECT * WHERE {?s ?p ?o } LIMIT 500000").fetchall():
-    #    rowAsList = [x for x in row]
-    #    for x in rowAsList:
-    #        sys.stdout.write(str(x)+"\t")
-    #    print("")

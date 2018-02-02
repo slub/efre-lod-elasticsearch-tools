@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import json
 import sys
@@ -8,6 +8,9 @@ from dpath.util import get
 from pprint import pprint
 from multiprocessing import Pool, Lock, Manager
 from functools import partial
+from esmarc import ArrayOrSingleValue
+from es2json import eprint
+sys.path.append('~/slub-lod-elasticsearch-tools/')
 
 lock=None
 
@@ -23,21 +26,20 @@ schema = {
     "license"       :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsType/lido:conceptID/_",
     "citation"      :   "lido:descriptiveMetadata/lido:objectRelationWrap/lido:relatedWorksWrap/lido:relatedWorkSet/lido:relatedWork/lido:object/lido:objectNote/_",
     "comment"       :   "lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_",
-    "genre"         :   "lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_",
+    "genre"         :   {
+        "Text"      :   "lido:descriptiveMetadata/lido:objectClassificationWrap/lido:classificationWrap/lido:classification/lido:term/_"
+            },
     "comment"       :   "lido:descriptiveMetadata/lido:objectIdentificationWrap/lido:objectMeasurementsWrap/lido:objectMeasurementsSet/lido:displayObjectMeasurements/_",
     "identifier"    :   "lido:lidoRecID/_",
-    "author"        :   {
-        "sameAs"        :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:actorID/_",
-        "name"          :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:nameActorSet/lido:appellationValue/_"
-            },
+    "author"        :   {"@id": "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventActor/lido:actorInRole/lido:actor/lido:actorID/_"},
     "copyrightHolder" : {
         "name"          :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyName/lido:appellationValue/_",
         "sameAs"        :   "lido:administrativeMetadata/lido:resourceWrap/lido:resourceSet/lido:rightsResource/lido:rightsHolder/lido:legalBodyID/_"
-            },
-    "placePublished" :  {
-        "sameAs"        :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:placeID/_",
-        "name"          :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:namePlaceSet/lido:appellationValue/_"
-            }
+            }#,
+    #"placePublished" :  {
+    #    "sameAs"        :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:placeID/_",
+    #    "name"          :   "lido:descriptiveMetadata/lido:eventWrap/lido:eventSet/lido:event/lido:eventPlace/lido:place/lido:namePlaceSet/lido:appellationValue/_"
+    #        }
 }
 
 
@@ -56,6 +58,7 @@ def init(l):
     lock = l
 
 def checkids(record):
+    removekeys=[]
     for _id in ["sameAs","@id"]:
         if _id in record:
             if " " in record[_id]:
@@ -67,6 +70,20 @@ def checkids(record):
                     elem=checkids(elem)
             elif isinstance(key,dict):
                 record[key]=checkids(record[key])
+    for k,v in record.items():
+        if v:
+            if isinstance(v,str):
+                v=ArrayOrSingleValue(ArrayOrSingleValue(v))
+            elif isinstance(v,list):
+                for elem in v:
+                    if not elem:
+                        del elem
+                    else:
+                        elem=ArrayOrSingleValue(elem)
+        elif not v:
+            removekeys.append(k)
+    for k in removekeys:
+        record.pop(k)
     return record
 
 
@@ -82,10 +99,20 @@ def process_stuff(l, record):
                 target[k]={}
                 for c,w in v.items():
                     lido(data,target[k],c,w)
+            elif isinstance(v,list):
+                target[k]=[]
+                for elem  in v:
+                    temp={}
+                    for c,w in elem.items():
+                        lido(data,temp,c,w)
+                    target[k].append(temp)
             elif isinstance(v,str):
                 lido(data,target,k,v)
         #generate @id
-        target["@id"]=baseuri+str(target.pop("identifier").rsplit('-')[-1])
+        if "genre" in target:
+            target["genre"]["@type"]="Text"
+        _id=baseuri+str(target["identifier"].rsplit('-')[-1])
+        target["@id"]=_id
         #bnodes 1:n
         target['mentions']=[]
         try:
@@ -103,9 +130,8 @@ def process_stuff(l, record):
         lock.release()
 
 if __name__ == "__main__":
-    #parser=argparse.ArgumentParser(description='heidicon to schemaorg')
-    #parser.add_argument('-i',type=str,help='Input file to process.')
-    #args=parser.parse_args()
+    parser=argparse.ArgumentParser(description='heidicon to schemaorg')
+    args=parser.parse_args()
     
     m = Manager()
     l = m.Lock()
