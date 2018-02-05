@@ -14,15 +14,15 @@ import threading
 import urllib3.request
 from multiprocessing import Pool
 from multiprocessing import Lock
-sys.path.append('~/slub-lod-elasticsearch-tools/')
 from es2json import esgenerator
-from es2json import esgenerator
+from es2json import eprint
 from daemon import Daemon
 
 es=None
 args=None
 ppn=None
 gnd_field='id'
+
 
 schema2entity = {
     "forename":"givenName",
@@ -34,6 +34,11 @@ schema2entity = {
     "sameAs":"sameAs"
 }
 
+def printout(string):
+    if args.debug:
+        eprint(string)
+    else:
+        syslog.syslog(string)
 
 def push_ppns(host,port,ppns): #expecting a python-array here!
     message=json.dumps(ppn)
@@ -45,6 +50,7 @@ def push_ppns(host,port,ppns): #expecting a python-array here!
 
 
 def entityfacts(record):
+    eprint(record)
     changed=False
     if gnd_field in record:
         if "http://d-nb.info/gnd/" in record[gnd_field]:
@@ -77,7 +83,7 @@ def entityfacts(record):
                                 if record[v] in data[k]:
                                     record[v]=data[k]
                                 elif k in record:
-                                    syslog.syslog("Error! "+record[gnd_field]+" birthDate in SWB differs from entityFacts! SWB: "+record["birthDate"]+" EF: "+data["dateOfBirth"])
+                                    printout("Error! "+record[gnd_field]+" birthDate in SWB differs from entityFacts! SWB: "+record["birthDate"]+" EF: "+data["dateOfBirth"])
     if changed:
         return record
     else:
@@ -113,7 +119,7 @@ class ThreadedServer(object):
         while True:
             try:
                 client, address = self.sock.accept()
-                syslog.syslog("connection from "+str(address))
+                printout("connection from "+str(address))
                 client.settimeout(60)
                 t = threading.Thread(target = self.listenToClient, args = (client,address))
                 t.start()
@@ -135,9 +141,9 @@ class ThreadedServer(object):
                     try:
                         ppn=json.loads(message)
                     except:
-                        syslog.syslog("json error")
+                        printout("json error")
                     data=None
-                    syslog.syslog("going to update "+str(len(ppn))+" PPNs got from "+ str(address))
+                    printout("going to update "+str(len(ppn))+" PPNs got from "+ str(address))
                     s = threading.Thread(target = self.update,args=([ppn]))
                     s.start()
                     client.close()
@@ -152,12 +158,12 @@ class ThreadedServer(object):
 class entityfactsd(Daemon):
     def run(self): 
         if args.full_index:
-            syslog.syslog("going to update the full index: "+args.host+":"+args.port+"/"+args.index+"/"+args.type)
+            printout("going to update the full index: "+args.host+":"+args.port+"/"+args.index+"/"+args.type)
             pool = Pool(16)
             pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
-            syslog.syslog("finished updating the full index! "+args.index)
+            printout("finished updating the full index! "+args.index)
         else:
-            syslog.syslog("started. waiting for connections on "+str(args.address)+":"+str(args.socketport))
+            printout("started. waiting for connections on "+str(args.address)+":"+str(args.socketport))
             ThreadedServer(args.address,args.socketport).listen()
             
         
