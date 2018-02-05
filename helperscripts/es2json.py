@@ -3,7 +3,7 @@
 from datetime import datetime
 import json
 from pprint import pprint
-from elasticsearch import Elasticsearch, exceptions
+from elasticsearch import Elasticsearch
 import argparse
 import sys
 
@@ -20,7 +20,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,h
             size = 1000,
             body = body,
             _source=source)
-    except exceptions.NotFoundError:
+    except elasticsearch.exceptions.NotFoundError:
         sys.stderr.write("not found: "+host+":"+port+"/"+index+"/"+type+"/_search\n")
         exit(-1)
     sid = page['_scroll_id']
@@ -31,7 +31,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,h
         else:
             yield hits
     while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='2m')
+        pages = es.scroll(scroll_id = sid, scroll='2d')
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
         for hits in pages['hits']['hits']:
