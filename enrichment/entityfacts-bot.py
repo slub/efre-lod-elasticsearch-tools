@@ -50,7 +50,6 @@ def push_ppns(host,port,ppns): #expecting a python-array here!
 
 
 def entityfacts(record):
-    eprint(record)
     changed=False
     if gnd_field in record:
         if "http://d-nb.info/gnd/" in record[gnd_field]:
@@ -100,7 +99,7 @@ def update_by_ppn(ppn):
     process_stuff(es.get(index=args.index,doc_type=args.type,id=ppn)["_source"])
 
 def update_ppns(ppns):
-    pool = Pool(8)
+    pool = Pool(64)
     pool.map(update_by_ppn,ppns)
     #for ppn in ppns:
         
