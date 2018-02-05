@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 from pprint import pprint
 from elasticsearch import Elasticsearch
+from elasticsearch import exceptions
 import argparse
 import sys
 

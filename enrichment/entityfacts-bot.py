@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
+ -*- coding: utf-8 -*-
 from datetime import datetime
 from elasticsearch import Elasticsearch
 import json
@@ -68,9 +68,9 @@ def entityfacts(record):
                         if k in data:
                             if v not in record:
                                 if isinstance(data[k],list):
-                                    for elem in data[k]
-                                    record[v]=elem["@id"]
-                                    changed=True
+                                    for elem in data[k]:
+                                        record[v]=elem["@id"]
+                                        changed=True
                                 else:
                                     record[v]=data[k]["@id"]
                                     changed=True
@@ -104,7 +104,7 @@ def update_by_ppn(ppn):
     process_stuff(es.get(index=args.index,doc_type=args.type,id=ppn)["_source"])
 
 def update_ppns(ppns):
-    pool = Pool(64)
+    pool = Pool(12)
     pool.map(update_by_ppn,ppns)
     #for ppn in ppns:
         
