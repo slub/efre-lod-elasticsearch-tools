@@ -67,8 +67,13 @@ def entityfacts(record):
                             record[gnd_field]=[dnb]
                         if k in data:
                             if v not in record:
-                                record[v]=data[k]["@id"]
-                                changed=True
+                                if isinstance(data[k],list):
+                                    for elem in data[k]
+                                    record[v]=elem["@id"]
+                                    changed=True
+                                else:
+                                    record[v]=data[k]["@id"]
+                                    changed=True
                             else:
                                 for sameAs in data[k]:
                                     record[v].append(sameAs["@id"])
