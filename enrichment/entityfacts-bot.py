@@ -59,6 +59,8 @@ def entityfacts(record):
             r=http.request('GET',url)
             try:
                 data = json.loads(r.data.decode('utf-8'))
+                if 'Error' in data:
+                    return [0,0]
                 eprint(data)
             except:
                 return [0,0]
