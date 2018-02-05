@@ -52,12 +52,14 @@ def push_ppns(host,port,ppns): #expecting a python-array here!
 def entityfacts(record):
     changed=False
     if gnd_field in record:
+        eprint(record)
         if "http://d-nb.info/gnd/" in record[gnd_field]:
             http = urllib3.PoolManager()
             url="http://hub.culturegraph.org/entityfacts/"+str(record[gnd_field].split('/')[-1])
             r=http.request('GET',url)
             try:
                 data = json.loads(r.data.decode('utf-8'))
+                eprint(data)
             except:
                 return [0,0]
             for k,v in schema2entity.items():
@@ -97,6 +99,7 @@ def process_stuff(jline):
     length=len(jline.items())
     body=entityfacts(jline)
     if (len(body) > length):
+        eprint(body)
         es.index(index=args.index,doc_type=args.type,body=body,id=body["id"])
         return
 
@@ -104,11 +107,12 @@ def update_by_ppn(ppn):
     process_stuff(es.get(index=args.index,doc_type=args.type,id=ppn)["_source"])
 
 def update_ppns(ppns):
-    pool = Pool(12)
-    pool.map(update_by_ppn,ppns)
-    #for ppn in ppns:
-        
-        #update_by_ppn(ppn)
+    if not debug:
+        pool = Pool(12)
+        pool.map(update_by_ppn,ppns)
+    else:
+        for ppn in ppns:
+            update_by_ppn(ppn)
         
 class ThreadedServer(object):
     def __init__(self,host,port):
@@ -163,8 +167,12 @@ class entityfactsd(Daemon):
     def run(self): 
         if args.full_index:
             printout("going to update the full index: "+args.host+":"+args.port+"/"+args.index+"/"+args.type)
-            pool = Pool(16)
-            pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
+            if not debug:
+                pool = Pool(16)
+                pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
+            else:
+                for record in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True):
+                    process_stuff(record)
             printout("finished updating the full index! "+args.index)
         else:
             printout("started. waiting for connections on "+str(args.address)+":"+str(args.socketport))
