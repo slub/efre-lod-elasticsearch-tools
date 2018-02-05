@@ -107,7 +107,7 @@ def update_by_ppn(ppn):
     process_stuff(es.get(index=args.index,doc_type=args.type,id=ppn)["_source"])
 
 def update_ppns(ppns):
-    if not debug:
+    if not args.debug:
         pool = Pool(12)
         pool.map(update_by_ppn,ppns)
     else:
@@ -167,7 +167,7 @@ class entityfactsd(Daemon):
     def run(self): 
         if args.full_index:
             printout("going to update the full index: "+args.host+":"+args.port+"/"+args.index+"/"+args.type)
-            if not debug:
+            if not args.debug:
                 pool = Pool(16)
                 pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
             else:
