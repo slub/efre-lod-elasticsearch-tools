@@ -3,9 +3,9 @@
 from datetime import datetime
 import json
 from pprint import pprint
+from elasticsearch import Elasticsearch
 import argparse
 import sys
-from es2json import esgenerator
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)   
