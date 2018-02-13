@@ -46,8 +46,9 @@ if __name__ == "__main__":
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
     parser.add_argument('-type',type=str,help='ElasticSearch Search Index Type to use')
+    parser.add_argument('-source',type=str,help='just return this field(s)')
     parser.add_argument('-body',type=str,help='Searchbody')
     args=parser.parse_args()
     
-    for json_record in esgenerator(args.host,args.port,args.index,args.type,args.body,headless=True):
+    for json_record in esgenerator(args.host,args.port,args.index,args.type,args.body,args.source,headless=True):
         sys.stdout.write(json.dumps(json_record)+"\n")
