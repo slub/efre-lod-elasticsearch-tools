@@ -15,13 +15,14 @@ import itertools
 import sys
 import io
 import subprocess
+import os.path
 from es2json import esgenerator
 from es2json import eprint
 
 
 
 baseuri="http://data.slub-dresden.de/"
-
+entity=None
 args=None
 estarget=None
 outstream=None
@@ -231,6 +232,8 @@ def id2uri(string,entity):
         return baseuri+"persons/"+string
     elif entity=="CreativeWork":
         return baseuri+"resource/"+string
+    elif entity=="Organization":
+        return baseuri+"organizations/"+string
 
 
 def getmarc(regex,json):
@@ -250,8 +253,13 @@ def getmarc(regex,json):
                             for k,v in elem.items():
                                 if isinstance(elem[k],list):
                                     for final in elem[k]:
+                                        for k,v in final.items():
+                                            if k==regex[-1]:
+                                                if v not in ret:
+                                                    ret.append(v)
                                         if regex[-1] in final:
-                                            ret.append(final[regex[-1]])        
+                                            if final[regex[-1]] not in ret:
+                                                ret.append(final[regex[-1]])        
     except:
         pass
     if ret:
@@ -317,7 +325,10 @@ def handlerelative(jline,schemakey,schemavalue):
         except:
             pass
     elif schemakey=="@id":
-        data=id2uri(getmarc(ArrayOrSingleValue(schemavalue),jline),args.entity)
+        data=id2uri(getmarc(ArrayOrSingleValue(schemavalue),jline),entity)
+    elif schemakey=="areaServed":
+        data=getmarc(ArrayOrSingleValue(schemavalue),jline)
+        data=gnd2uri(data,entity)
     elif "Place" in schemakey:
         data=[]
         place={}        
@@ -437,6 +448,12 @@ def removeEmpty(obj):
                 del elem
         return obj
 
+def getgeo(arr):
+    for k,v in traverse(arr,""):
+        if isinstance(v,str):
+            if '.' in v:
+                return v
+
 #make data more RDF
 def check(ldj):
     ldj=removeNone(ldj)
@@ -471,6 +488,8 @@ def check(ldj):
         if isinstance(name,str):
             if name[-2:]==" /":
                 ldj['name']=name[:-2]
+            else:
+                ldj['name']=name
         elif isinstance(name,list):
             for elem in name:
                 if elem[-2:]==" /":
@@ -510,7 +529,7 @@ def check(ldj):
                 pass
         except AttributeError:
             pass
-    if args.entity=="Person":
+    if entity=="Person":
         checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
         for key in checks:
             if key in ldj:
@@ -523,7 +542,7 @@ def check(ldj):
                         ldj.pop(key)
                 elif isinstance(ldj[key],str):
                     ldj.pop(key)
-    elif args.entity=="CreativeWork":
+    elif entity=="CreativeWork":
         if '@id' in ldj:
             num=ldj.pop('@id')
             ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
@@ -537,6 +556,15 @@ def check(ldj):
         ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
     if "isbn" in ldj:
         ldj["@type"].append(URIRef(u'http://schema.org/Book'))
+    if "latitude" and "longitude" in ldj:
+        lat=ldj.pop("latitude")
+        lon=ldj.pop("longitude")
+        ldj["GeoCoordinates"]={}
+        ldj["GeoCoordinates"]["latitude"]=getgeo(lat)
+        ldj["GeoCoordinates"]["longitude"]=getgeo(lon)
+        
+        
+        
     return ldj
 
 def finc(jline,schemakey,schemavalue):
@@ -547,30 +575,30 @@ def finc(jline,schemakey,schemavalue):
                 ret.append(v)                
     return ArrayOrSingleValue(ret)
 
-schematas = {
-    "resource.finc":{
-        "@id"                   :[finc,"record_id"],
-        "name"                  :[finc,"title"],
-        "alternativeHeadline"   :[finc,"title_sub"],
-        "alternateName"         :[finc,"title_alt"],
-        "author_finc"             :[finc,"author_id"],
-        "contributor"           :[finc,"author2"],
-        "publisherImprint"      :[finc,"imprint"],
-        "publisher"             :[finc,"publisher"],
-        "datePublished"         :[finc,"publishDate"],
-        "isbn"                  :[finc,"isbn"],
-        "genre"                 :[finc,"genre","genre_facet"],
-        "hasPart"               :[finc,"container_reference"],
-        "isPartOf"              :[finc,"container_title"],
-        "inLanguage"            :[finc,"language"],
-        "numberOfPages"         :[finc,"physical"],
-        "description"           :[finc,"description"],
-        "bookEdition"           :[finc,"edition"],
-        "comment"               :[finc,"contents"],
-        "oclc_num"              :[finc,"oclc_num"],
-        "identifier"            :[finc,"record_id"],
-        },
-   "resource.mrc":{
+entities = {
+    #"resource.finc":{                                          ###deprecated - use d:swarm for finc records...
+        #"@id"                   :[finc,"record_id"],
+        #"name"                  :[finc,"title"],
+        #"alternativeHeadline"   :[finc,"title_sub"],
+        #"alternateName"         :[finc,"title_alt"],
+        #"author_finc"             :[finc,"author_id"],
+        #"contributor"           :[finc,"author2"],
+        #"publisherImprint"      :[finc,"imprint"],
+        #"publisher"             :[finc,"publisher"],
+        #"datePublished"         :[finc,"publishDate"],
+        #"isbn"                  :[finc,"isbn"],
+        #"genre"                 :[finc,"genre","genre_facet"],
+        #"hasPart"               :[finc,"container_reference"],
+        #"isPartOf"              :[finc,"container_title"],
+        #"inLanguage"            :[finc,"language"],
+        #"numberOfPages"         :[finc,"physical"],
+        #"description"           :[finc,"description"],
+        #"bookEdition"           :[finc,"edition"],
+        #"comment"               :[finc,"contents"],
+        #"oclc_num"              :[finc,"oclc_num"],
+        #"identifier"            :[finc,"record_id"],
+        #},
+   "CreativeWork":{
         "@id"               :["001"],
         "name"              :["245.*.a","245.*.b","245.*.n","245.*.p"],
         "alternateName"     :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
@@ -593,7 +621,7 @@ schematas = {
         "issueNumber"       :["773.*.l"],
         "volumeNumer"       :["773.*.v"]
         },
-    "person.mrc": {
+    "Person": {
         "identifier":  ["001"],
         "@id":  [handlerelative,"001"],
         "name": "100..a",
@@ -630,21 +658,26 @@ schematas = {
        # "jobTitle":["678..b"],
         "birthDate":    [handlerelative,"548..a","548..9"],
         "deathDate":    [handlerelative,"548..a","548..9"]
-    }
+    },
+    "Organization": {
+        "identifier"    : "001",
+        "@id"           : [handlerelative,"001"],
+        "name"          : "110..a",
+        "alternateName" : "410..a",
+        "sameAs"        : ["024..a","670..u"],
+        "areaServed"    : [handlerelative,"551..0"]
+        },
+    "Place": {
+        "identifier"        : "001",
+        "@id"               : [handlerelative,"001"],
+        "name"              : "151..a",
+        "description"       : ["551..0","551..i"],
+        "sameAs"            : "024..a",
+        "alternateName"     : "451..a",
+        "longitude"       : ["034..d","034..e"],
+        "latitude"        : ["034..f","034..g"]
+        }
 }
-
-def process_mapping():
-    global args
-    esmapping=""
-    esmapping+="{\"mappings\":{\""+args.schema+"\":{\"properties\":{"
-    items=0
-    for k, v in schematas[args.schema].items():
-        items+=1
-        esmapping+="\""+str(k)+"\":{\"type\":\"text\",\"fields\":{\"keyword\":{\"type\":\"keyword\",\"ignore_above\":256} } }"
-        if items<len(schematas[args.schema]):
-            esmapping+=","
-    esmapping+="} } } }"
-    return esmapping
 
 
 def traverse(dict_or_list, path):
@@ -666,7 +699,7 @@ def traverse(dict_or_list, path):
 
 
 def schemas():
-    for k,v in traverse(schematas,""):
+    for k,v in traverse(entities,""):
         if k and v:
             print(k,v)
     exit(0)
@@ -676,25 +709,24 @@ def schemas():
 def process_stuff(jline):
     global args
     global outstream
-    global estarget
-    global actions
-    global totalcount
-    global es_totalsize
-    mapline=dict()
+    snine=getmarc("079..b",jline)
+    if snine=="p": # invididualisierte Person
+        entity="Person"
+    elif snine=="u": # Werk
+        entity="CreativeWork"
+    elif snine=="b": # Körperschaft/Organisation
+        entity="Organization"
+    elif snine=="g": # Geographika
+        #eprint(json.dumps(jline))
+        entity="Place"
+        #eprint("Place\n"+json.dumps(jline,indent=2))
+    else: # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
+        return
+    mapline={}
+    mapline["@type"]=[]
+    mapline["@type"]=URIRef(u'http://schema.org/'+entity)
     mapline["@context"]=[URIRef(u'http://schema.org')]
-    global count
-    if args.entity=="Person":
-        if getmarc("079..b",jline)=="p":
-            notEntity=False
-            mapline["@type"]=URIRef(u'http://schema.org/Person')
-    elif args.entity=="CreativeWork":
-        mapline["@type"]=[]
-        mapline["@type"].append(URIRef(u'http://schema.org/CreativeWork'))
-        #mapline["@type"].append(URIRef(u'http://purl.org/ontology/bibo/Document'))
-    if args.schema not in schematas:
-        sys.stderr.write("Warning! selected schema not in schematas! Correct your mistakes and edit this file!\n")
-        exit(1)
-    for k,v in schematas[args.schema].items():
+    for k,v in entities[entity].items():
         value=None
         if not isinstance(v,list):
             value=getmarc(v,jline)
@@ -732,19 +764,15 @@ def process_stuff(jline):
     if mapline:
         mapline=check(mapline)
         if outstream:
-            outstream.write(json.dumps(mapline,indent=None)+"\n")
-            print(ArrayOrSingleValue(mapline["identifier"]))
+            outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
+            #print(ArrayOrSingleValue(mapline["identifier"]))
         else:
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
             
 if __name__ == "__main__":
     #argstuff
-    parser=argparse.ArgumentParser(description='return field statistics of an ElasticSearch Search Index')
-    parser.add_argument('-schema',type=str,default="person",help='Select which schema to use! use -show_schemas to see the defined schemas')
-    parser.add_argument('-entity',type=str,default="person",help='Select entity. Supported Entities: Person, CreativeWork')
-    parser.add_argument('-i',type=str,help='Input file to process! Default is stdin if no arg is given. Faster than stdin because of multiprocessing!')
-    parser.add_argument('-o',type=str,help='Output file to dump! Default is stdout if -in or -srchost is given is given')
+    parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we print ldj to stdout.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
@@ -753,22 +781,13 @@ if __name__ == "__main__":
     args=parser.parse_args()
     
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-
-    if args.schema not in schematas:
-            sys.stderr.write("schema doesn't exist!\n")
-            sys.stderr.write("existing schemas:\n")
-            schemas()
-            exit(-1)
-    elif args.show_schemas:
-        schemas()
-    if args.o:
-        outstream=codecs.open(args.o,'w',encoding='utf-8')
-    
-    if args.i: #first attempt to read vom -inf
-        with codecs.open(args.i,'r',encoding='utf-8') as f: #use with parameter to close stream after context
-            for line in f:
-                process_stuff(json.loads(line))
-    elif args.host: #if inf not set, than try elasticsearch
+    outstream={}
+    for entity,mapping in entities.items():
+        if os.path.isfile(entity+"-records.ldj"):
+            outstream[entity]=open(entity+"-records.ldj","a")
+        else:
+            outstream[entity]=open(entity+"-records.ldj","w")
+    if args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
             for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
                 process_stuff(hits)
@@ -777,6 +796,6 @@ if __name__ == "__main__":
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         for line in input_stream:
             process_stuff(json.loads(line))
+    for entity,mapping in entities.items():
+        outstream[entity].close()
             
-    if outstream:
-        outstream.close()
