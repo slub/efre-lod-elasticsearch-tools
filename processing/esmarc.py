@@ -712,7 +712,7 @@ def process_stuff(jline):
     snine=getmarc("079..b",jline)
     if snine=="p": # invididualisierte Person
         entity="Person"
-    elif snine=="u": # Werk
+    elif snine==None: # Werk
         entity="CreativeWork"
     elif snine=="b": # Körperschaft/Organisation
         entity="Organization"
@@ -724,7 +724,7 @@ def process_stuff(jline):
         return
     mapline={}
     mapline["@type"]=[]
-    mapline["@type"]=URIRef(u'http://schema.org/'+entity)
+    mapline["@type"].append(URIRef(u'http://schema.org/'+entity))
     mapline["@context"]=[URIRef(u'http://schema.org')]
     for k,v in entities[entity].items():
         value=None
@@ -777,16 +777,17 @@ if __name__ == "__main__":
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-prefix',type=str,default="",help='Prefix to use for output data')
     parser.add_argument('-show_schemas', action='store_true',help='show the schemas defined in the sourcecode')
     args=parser.parse_args()
     
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     outstream={}
     for entity,mapping in entities.items():
-        if os.path.isfile(entity+"-records.ldj"):
-            outstream[entity]=open(entity+"-records.ldj","a")
+        if os.path.isfile(args.prefix+entity+"-records.ldj"):
+            outstream[entity]=open(args.prefix+entity+"-records.ldj","a")
         else:
-            outstream[entity]=open(entity+"-records.ldj","w")
+            outstream[entity]=open(args.prefix+entity+"-records.ldj","w")
     if args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
             for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
