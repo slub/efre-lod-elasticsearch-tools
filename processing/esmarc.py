@@ -546,6 +546,8 @@ def check(ldj):
         if '@id' in ldj:
             num=ldj.pop('@id')
             ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
+            if "identifier" in ldj:
+                ldj.pop("identifier")
             ldj['identifier']="swb-"+str(num)
     for label in ["name","alternativeHeadline","alternateName"]:
         if label in ldj:
@@ -599,6 +601,7 @@ entities = {
         #"identifier"            :[finc,"record_id"],
         #},
    "CreativeWork":{
+        "identifier":  ["001"],
         "@id"               :["001"],
         "name"              :["245.*.a","245.*.b","245.*.n","245.*.p"],
         "alternateName"     :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
