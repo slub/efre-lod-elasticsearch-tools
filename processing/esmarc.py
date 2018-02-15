@@ -762,6 +762,8 @@ def process_stuff(jline):
                 dictkey=k
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
+        if args.host:
+            mapline["source_record"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["identifier"]
         mapline=check(mapline)
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
