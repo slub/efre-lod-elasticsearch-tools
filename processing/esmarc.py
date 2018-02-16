@@ -456,6 +456,7 @@ def getgeo(arr):
 
 #make data more RDF
 def check(ldj):
+    global entity
     ldj=removeNone(ldj)
     ldj=removeEmpty(ldj)
     for k,v in ldj.items():
@@ -545,10 +546,10 @@ def check(ldj):
     elif entity=="CreativeWork":
         if '@id' in ldj:
             num=ldj.pop('@id')
-            ldj['@id']="http://data.slub-dresden.de/resources/swb-"+str(num)
+            ldj['@id']="http://data.slub-dresden.de/resources/"+str(ArrayOrSingleValue(num))
             if "identifier" in ldj:
                 ldj.pop("identifier")
-            ldj['identifier']="swb-"+str(num)
+            ldj['identifier']=str(num)
     for label in ["name","alternativeHeadline","alternateName"]:
         if label in ldj:
             if ldj[label][-2:]==" /":
@@ -564,9 +565,6 @@ def check(ldj):
         ldj["GeoCoordinates"]={}
         ldj["GeoCoordinates"]["latitude"]=getgeo(lat)
         ldj["GeoCoordinates"]["longitude"]=getgeo(lon)
-        
-        
-        
     return ldj
 
 def finc(jline,schemakey,schemavalue):
@@ -601,7 +599,6 @@ entities = {
         #"identifier"            :[finc,"record_id"],
         #},
    "CreativeWork":{
-        "identifier":  ["001"],
         "@id"               :["001"],
         "name"              :["245.*.a","245.*.b","245.*.n","245.*.p"],
         "alternateName"     :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
@@ -682,7 +679,6 @@ entities = {
         }
 }
 
-
 def traverse(dict_or_list, path):
     if isinstance(dict_or_list, dict):
         iterator = dict_or_list.items()
@@ -700,23 +696,24 @@ def traverse(dict_or_list, path):
             for k, v in traverse(v, path + str([k])):
                 yield k, v
 
-
 def schemas():
     for k,v in traverse(entities,""):
         if k and v:
             print(k,v)
     exit(0)
 
-
 #processing a single line of json without whitespace 
 def process_stuff(jline):
     global args
     global outstream
+    global entity
     snine=getmarc("079..b",jline)
     if snine=="p": # invididualisierte Person
         entity="Person"
-    elif snine==None: # Werk
-        entity="CreativeWork"
+    elif snine=="n":
+        return
+    elif snine=="s":
+        return
     elif snine=="b": # Körperschaft/Organisation
         entity="Organization"
     elif snine=="g": # Geographika
@@ -724,7 +721,7 @@ def process_stuff(jline):
         entity="Place"
         #eprint("Place\n"+json.dumps(jline,indent=2))
     else: # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
-        return
+        entity="CreativeWork"
     mapline={}
     mapline["@type"]=[]
     mapline["@type"].append(URIRef(u'http://schema.org/'+entity))
@@ -766,7 +763,7 @@ def process_stuff(jline):
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
         if args.host:
-            mapline["source_record"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["identifier"]
+            mapline["source_record"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["@id"]
         mapline=check(mapline)
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
@@ -788,11 +785,11 @@ if __name__ == "__main__":
     
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     outstream={}
-    for entity,mapping in entities.items():
-        if os.path.isfile(args.prefix+entity+"-records.ldj"):
-            outstream[entity]=open(args.prefix+entity+"-records.ldj","a")
+    for ent,mapping in entities.items():
+        if os.path.isfile(args.prefix+ent+"-records.ldj"):
+            outstream[ent]=open(args.prefix+ent+"-records.ldj","a")
         else:
-            outstream[entity]=open(args.prefix+entity+"-records.ldj","w")
+            outstream[ent]=open(args.prefix+ent+"-records.ldj","w")
     if args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
             for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
@@ -802,6 +799,6 @@ if __name__ == "__main__":
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         for line in input_stream:
             process_stuff(json.loads(line))
-    for entity,mapping in entities.items():
-        outstream[entity].close()
+    for ent,mapping in entities.items():
+        outstream[ent].close()
             
