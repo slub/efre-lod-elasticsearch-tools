@@ -239,12 +239,12 @@ def id2uri(string,entity):
 def getmarc(regex,json):
     ret=[]
     try:
-        if len(regex)==3:
-            return ArrayOrSingleValue(json[regex])
         if isinstance(regex,list):
             for string in regex:
                 ret.append(getmarc(string,json))
         elif isinstance(regex,str):
+            if len(regex)==3:
+                return ArrayOrSingleValue(regex[json])
             if str(regex[0:3]) in json:             ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!!
                 json=json[regex[0:3]]
                 if isinstance(json,list):
@@ -484,19 +484,6 @@ def check(ldj):
             for author in ldj['author_finc']:
                     ldj["author"].append({"@id":"(DE-588)"+author})
             ldj.pop("author_finc")
-    if 'name' in ldj:
-        name=ArrayOrSingleValue(ldj.pop("name"))
-        if isinstance(name,str):
-            if name[-2:]==" /":
-                ldj['name']=name[:-2]
-            else:
-                ldj['name']=name
-        elif isinstance(name,list):
-            for elem in name:
-                if elem[-2:]==" /":
-                    elem=elem[:-2]
-        else:
-            ldj['name']=name
     if 'oclc_num' in ldj:
         if 'sameAs' not in ldj:
             ldj['sameAs']=[]
@@ -600,26 +587,24 @@ entities = {
         #},
    "CreativeWork":{
         "@id"               :["001"],
-        "name"              :["245.*.a","245.*.b","245.*.n","245.*.p"],
-        "alternateName"     :["130.*.a","130.*.p","240.*.a","240.*.p","246.*.a","246.*.b","245.*.p","249.*.a","249.*.b","730.*.a","730.*.p","740.*.a","740.*.p","920.*.t"],
-        #"author"           :["100.*.a","700.*.a"],
-        "author"         :["100.*.0"],
-        "contributor"       :["700.*.0"],
-        "publisher"         :["260.*.b","264.*.b"],
-        "datePublished"     :["260.*.c","264.*.c","362.*.a"],
-        "Thesis"            :["502.*.a","502.*.b","502.*.c","502.*.d"],
-        "issn"              :["022.*.a","022.*.y","022.*.z","029.*.a","490.*.x","730.*.x","773.*.x","776.*.x","780.*.x","785.*.x","800.*.x","810.*.x","811.*.x","830.*.x"],
-        "isbn"              :["022.*.a","022.*.z","776.*.z","780.*.z","785.*.z"],
-        #"ismn"             :["024.*.a","028.*.a",],
-        "genre"             :["655.*.a"],
-        "hasPart"           :["773.*.g"],
-        "isPartOf"          :["773.*.t","773.*.s","773.*.a"],
-        "license"           :["540.*.a"],
-        "inLanguage" :["041.*.a","041.*.d","130.*.l","730.*.l"],
-        "numberOfPages"     :["300.*.a","300.*.b","300.*.c","300.*.d","300.*.e","300.*.f","300.*.g"],
-        "pageStart"         :["773.*.q"],
-        "issueNumber"       :["773.*.l"],
-        "volumeNumer"       :["773.*.v"]
+        "name"              :["245..a","245..b","245..n","245..p"],
+        "alternateName"     :["130..a","130..p","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"],
+        "author"            :["100..0"],
+        "contributor"       :["700..0"],
+        "publisher"         :["260..b","264..b"],
+        "datePublished"     :["260..c","264..c","362..a"],
+        "Thesis"            :["502..a","502..b","502..c","502..d"],
+        "issn"              :["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"],
+        "isbn"              :["022..a","022..z","776..z","780..z","785..z"],
+        "genre"             :["655..a"],
+        "hasPart"           :["773..g"],
+        "isPartOf"          :["773..t","773..s","773..a"],
+        "license"           :["540..a"],
+        "inLanguage"        :["041..a","041..d","130..l","730..l"],
+        "numberOfPages"     :["300..a","300..b","300..c","300..d","300..e","300..f","300..g"],
+        "pageStart"         :["773..q"],
+        "issueNumber"       :["773..l"],
+        "volumeNumer"       :["773..v"]
         },
     "Person": {
         "identifier":  ["001"],
@@ -763,7 +748,7 @@ def process_stuff(jline):
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
         if args.host:
-            mapline["source_record"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["@id"]
+            mapline["url"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["@id"]
         mapline=check(mapline)
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
