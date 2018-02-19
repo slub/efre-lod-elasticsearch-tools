@@ -11,6 +11,8 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)   
     
 def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,headless=False):
+    if not source:
+        source=True
     es=Elasticsearch([{'host':host}],port=port)
     try:
         page = es.search(
