@@ -2397,7 +2397,8 @@ if __name__ == "__main__":
         #pool.join()
         #inp.close()
         inp=open(args.inp,"r")
-        get_rdf(inp,False)
+        for line in inp:
+            get_rdf(json.loads(line),False)
         inp.close()
         
     elif args.scroll:
