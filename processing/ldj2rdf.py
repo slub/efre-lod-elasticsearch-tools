@@ -2334,6 +2334,15 @@ context={
 def get_rdf(doc,mp):
     global context
     g=ConjunctiveGraph()
+    if "@id" not in doc and "identifier" in doc:        ##what if a @type got Orga AND Place? #boogus
+        doc["@id"]="http://data.slub-dresden.de/"
+        if any("Orga" in s for s in doc["@type"]):
+            doc["@id"]+="orga/"
+        elif any("Place" in s for s in doc["@type"]):
+            doc["@id"]+="geo/"
+        elif any("Person" in s for s in doc["@type"]):
+            doc["@id"]+="persons/"
+        doc["@id"]+=doc["identifier"]
     toRemove=["@context","identifier"]
     toRemoveVal=["http://www.biographien.ac.at"]
     for item in toRemoveVal:
@@ -2405,7 +2414,7 @@ if __name__ == "__main__":
         if not args.debug:
             m = Manager()
             l = m.Lock()
-            pool = Pool(8,initializer=init,initargs=(l,))
+            pool = Pool(initializer=init,initargs=(l,))
             func = partial(wrap_mp,l)
             pool.map(func, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
             pool.close()
