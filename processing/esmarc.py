@@ -18,6 +18,7 @@ import subprocess
 import os.path
 from es2json import esgenerator
 from es2json import eprint
+from es2json import ArrayOrSingleValue
 
 
 
@@ -38,16 +39,6 @@ def isint(num):
     except:
         return False
     
-def ArrayOrSingleValue(array):
-    if array:
-        length=len(array)
-        if length>1 or isinstance(array,dict):
-            return array
-        elif length==1:
-            for elem in array:
-                 return elem
-        elif length==0:
-            return None
 
 def getiso8601(date):
     p=re.compile(r'[\d|X].\.[\d|X].\.[\d|X]*') #test if D(D).M(M).Y(YYY)
@@ -243,8 +234,8 @@ def getmarc(regex,json):
             for string in regex:
                 ret.append(getmarc(string,json))
         elif isinstance(regex,str):
-            if len(regex)==3:
-                return ArrayOrSingleValue(regex[json])
+            if regex in json:
+                ret.append(json[regex])
             if str(regex[0:3]) in json:             ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!!
                 json=json[regex[0:3]]
                 if isinstance(json,list):
@@ -539,9 +530,13 @@ def check(ldj):
             ldj['identifier']=str(num)
     for label in ["name","alternativeHeadline","alternateName"]:
         if label in ldj:
-            if ldj[label][-2:]==" /":
-                name=ldj.pop(label)
-                ldj[label]=name[:-2]
+            if isinstance(ldj[label],str):
+                if ldj[label][-2:]==" /":
+                    ldj[label]=ldj[label][:-2]
+            elif isinstance(ldj[label],list):
+                for n,i in enumerate(ldj[label]):
+                    if i[-2:]==" /":
+                        ldj[label][n]=i[:-2]
     if "publisherImprint" in ldj:
         ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
     if "isbn" in ldj:
@@ -586,28 +581,28 @@ entities = {
         #"identifier"            :[finc,"record_id"],
         #},
    "CreativeWork":{
-        "@id"               :["001"],
+        "@id"               :"001",
         "name"              :["245..a","245..b","245..n","245..p"],
         "alternateName"     :["130..a","130..p","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"],
-        "author"            :["100..0"],
-        "contributor"       :["700..0"],
+        "author"            :"100..0",
+        "contributor"       :"700..0",
         "publisher"         :["260..b","264..b"],
         "datePublished"     :["260..c","264..c","362..a"],
         "Thesis"            :["502..a","502..b","502..c","502..d"],
         "issn"              :["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"],
         "isbn"              :["022..a","022..z","776..z","780..z","785..z"],
-        "genre"             :["655..a"],
-        "hasPart"           :["773..g"],
+        "genre"             :"655..a",
+        "hasPart"           :"773..g",
         "isPartOf"          :["773..t","773..s","773..a"],
-        "license"           :["540..a"],
+        "license"           :"540..a",
         "inLanguage"        :["041..a","041..d","130..l","730..l"],
         "numberOfPages"     :["300..a","300..b","300..c","300..d","300..e","300..f","300..g"],
-        "pageStart"         :["773..q"],
-        "issueNumber"       :["773..l"],
-        "volumeNumer"       :["773..v"]
+        "pageStart"         :"773..q",
+        "issueNumber"       :"773..l",
+        "volumeNumer"       :"773..v"
         },
     "Person": {
-        "identifier":  ["001"],
+        "identifier":  "001",
         "@id":  [handlerelative,"001"],
         "name": "100..a",
         "sameAs":   "024..a",
@@ -648,7 +643,7 @@ entities = {
         "identifier"    : "001",
         "@id"           : [handlerelative,"001"],
         "name"          : "110..a",
-        "alternateName" : "410..a",
+        "alternateName" : ["410..a","410..b"],
         "sameAs"        : ["024..a","670..u"],
         "areaServed"    : [handlerelative,"551..0"]
         },
@@ -747,9 +742,9 @@ def process_stuff(jline):
                 dictkey=k
                 mapline[dictkey]=ArrayOrSingleValue(value)
     if mapline:
-        if args.host:
-            mapline["url"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["@id"]
         mapline=check(mapline)
+        if args.host:
+            mapline["url"]="http://"+args.host+":"+str(args.port)+"/"+args.index+"/"+args.type+"/"+mapline["identifier"]+"?pretty"
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
             #print(ArrayOrSingleValue(mapline["identifier"]))
