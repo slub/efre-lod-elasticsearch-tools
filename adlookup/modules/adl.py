@@ -7,7 +7,6 @@ import urllib3.request
 
 def getDataByID(typ,num):
     config=json.load(open('/etc/adlookup.json'))
-    print(config)
     if "http" in num:
         uri=num #shortcut
     elif typ in config["types"]:

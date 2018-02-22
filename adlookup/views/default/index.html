@@ -1,0 +1,17 @@
+{{extend 'layout.html'}}
+<h2>Enter Authority URI:</h2>
+<form action="{{=URL('data')}}">
+	<label>Nummer:
+	    <input name="uri" />
+	    <input type="submit" />
+	</label>
+	<select name="typ" size="1">
+	<label>Typ:
+		<option>dnb</option>
+		<option>viaf</option>
+		<option>loc.gov</option>
+		<option>isni</option>
+		<option>bnf.fr</option>
+	</label>
+	</select>
+</form>
