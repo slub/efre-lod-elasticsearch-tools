@@ -64,7 +64,10 @@ def checkurl(gnd):
     else:
         return None
 
-def getidbygnd(gnd):
+def getidbygnd(gnd,cache=None):
+    if cache:
+        if gnd in cache:
+            return cache[gnd]
     indices=[{"index":"orga",
               "type" :"schemaorg"},
              {"index":"persons",
@@ -72,7 +75,11 @@ def getidbygnd(gnd):
              {"index":"geo",
               "type" :"schemaorg"},
              {"index":"resources",
-              "type" :"schemaorg"}]
+              "type" :"schemaorg"},
+             {"index":"dnb",
+              "type" :"gnd",
+              "index":"ef",
+              "type" :"gnd"}]
     if gnd.startswith("(DE-588)"):
         uri=gnd2uri(gnd)
     elif gnd.startswith("http://d"):
@@ -82,40 +89,48 @@ def getidbygnd(gnd):
         if not uri:
             return
     for elastic in indices:
-        print(elastic)
         http = urllib3.PoolManager()
         url="http://194.95.145.44:9200/"+elastic["index"]+"/"+elastic["type"]+"/_search?q=sameAs:\""+uri+"\""
         try:
                 r=http.request('GET',url)
                 data = json.loads(r.data.decode('utf-8'))
                 if 'Error' in data or not 'hits' in data:
-                    return None
+                    continue
         except:
-            return None
+            continue
         if data['hits']['total']!=1:
-            return None
+            continue
         for hit in data["hits"]["hits"]:
             if "_id" in hit:
-                return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
-    
-        
-        
+                if cache:
+                    cache[gnd]=str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
+                    return cache[gnd]
+                else:
+                    return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
 
-if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
-    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
-    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
-    parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
-    parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
-    parser.add_argument('-aut_index',type=str,help="Authority-Index")
-    parser.add_argument('-aut_type',type=str,help="Authority-Type")
-    parser.add_argument('-mp',action='store_true',help="Enable Multiprocessing")
-    args=parser.parse_args()
-    es=Elasticsearch(host=args.host)
-    if args.mp:
-        pool = Pool(32)
-        pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,source="author",index=args.index,headless=False))
-    else:
-        for record in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=False):
-            process_stuff(record)
+
     
+    
+if __name__ == "__main__":
+    for elem in getDataByID(typ=None,num="http://viaf.org/viaf/5744769'"):
+        print(elem)
+
+
+#if __name__ == "__main__":
+    #parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
+    #parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
+    #parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    #parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
+    #parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
+    #parser.add_argument('-aut_index',type=str,help="Authority-Index")
+    #parser.add_argument('-aut_type',type=str,help="Authority-Type")
+    #parser.add_argument('-mp',action='store_true',help="Enable Multiprocessing")
+    #args=parser.parse_args()
+    #es=Elasticsearch(host=args.host)
+    #if args.mp:
+        #pool = Pool(32)
+        #pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,source="author",index=args.index,headless=False))
+    #else:
+        #for record in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=False):
+            #process_stuff(record)
+     
