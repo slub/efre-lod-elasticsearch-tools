@@ -5,7 +5,7 @@ import sys
 import json
 import urllib3.request
 
-def getDataByID(typ,num):
+def getDataByID(typ,num,field):
     config=json.load(open('/etc/adlookup.json'))
     if "http" in num:
         uri=num #shortcut
@@ -14,10 +14,12 @@ def getDataByID(typ,num):
     else:
         uri=None
     
+    if not field:
+        field=sameAs
     if uri:
         for elastic in config["indices"]:
             http = urllib3.PoolManager()
-            url="http://"+elastic["host"]+":"+str(elastic["port"])+"/"+elastic["index"]+"/"+elastic["type"]+"/_search?q=sameAs:\""+uri+"\""
+            url="http://"+elastic["host"]+":"+str(elastic["port"])+"/"+elastic["index"]+"/"+elastic["type"]+"/_search?q="+field+":\""+uri+"\""
             try:
                 r=http.request('GET',url)
                 data = json.loads(r.data.decode('utf-8'))

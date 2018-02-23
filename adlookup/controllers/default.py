@@ -13,7 +13,7 @@ def index():
 def data():
     from adl import getDataByID
     resp=[]
-    for x in getDataByID(typ=request.vars.typ,num=request.vars.uri):
+    for x in getDataByID(typ=request.vars.typ,num=request.vars.uri,field=request.vars.feld):
         resp.append(x)
     if len(resp)==1:
         return response.json(resp[0])
