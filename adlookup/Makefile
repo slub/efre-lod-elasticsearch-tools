@@ -3,7 +3,7 @@ UNZIP=/usr/bin/unzip
 RM=/bin/rm
 CP=/bin/cp
 
-GIT=/home/bhering/slub-lod-elasticsearch-tools
+GIT=~/slub-lod-elasticsearch-tools
 W2P=https://mdipierro.pythonanywhere.com/examples/static/web2py_src.zip
 PATH=/tmp
 

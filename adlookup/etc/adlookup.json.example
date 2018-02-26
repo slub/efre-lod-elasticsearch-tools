@@ -1,0 +1,21 @@
+{
+    "types":{
+            "dnb"    :"http://d-nb.info/gnd/",
+            "viaf"   :"http://viaf.org/viaf/",
+            "loc.gov":"http://id.loc.gov/authorities/",
+            "isni"   :"http://www.isni.org/",
+            "bnf.fr" :"http://catalogue.bnf.fr/ark:/12148/",
+            "swb-persons"    :"http://data.slub-dresden.de/persons/",
+            "swb-resources"  :"http://data.slub-dresden.de/resources/",
+            "swb-geographics"   :"http://data.slub-dresden.de/geo/",
+            "swb-organisations" :"http://data.slub-dresden.de/orga/"
+            },
+    "indices":[
+                {"host":"localhost", "port":9200, "index":"orga"        ,"type" :"schemaorg"},
+                {"host":"localhost", "port":9200, "index":"persons"     ,"type" :"schemaorg"},
+                {"host":"localhost", "port":9200, "index":"geo"         ,"type" :"schemaorg"},
+                {"host":"localhost", "port":9200, "index":"resources"   ,"type" :"schemaorg"},
+                {"host":"localhost", "port":9200, "index":"dnb"         ,"type" :"gnd"},
+                {"host":"localhost", "port":9200, "index":"ef"          ,"type" :"gnd"}
+            ]
+}
