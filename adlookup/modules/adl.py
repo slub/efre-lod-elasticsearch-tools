@@ -6,7 +6,10 @@ import json
 import urllib3.request
 
 def getDataByID(typ,num,field):
-    config=json.load(open('/etc/adlookup.json'))
+    try:
+        config=json.load(open('/etc/adlookup.json'))
+    except:
+        yield "Error 503: no /etc/adlookup.json config in your server instance"
     if "http" in num:
         uri=num #shortcut
     elif typ in config["types"]:
