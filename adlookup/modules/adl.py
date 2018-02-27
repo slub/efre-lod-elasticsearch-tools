@@ -5,24 +5,31 @@ import sys
 import json
 import urllib3.request
 
-def getDataByID(typ,num,field):
+def loadjson(path):
     try:
-        config=json.load(open('/etc/adlookup.json'))
+        config=json.load(open(path))
+        return config
     except:
-        yield "Error 503: no /etc/adlookup.json config in your server instance"
+        return None
+
+
+
+def getDataByID(typ,num,feld):
+    uri=None
+    path="/etc/adlookup.json"
+    config=loadjson(path)
+    if not config:
+        yield "No config defined in "+str(path)
+    elif typ in config["types"]:
+        uri=str(config["types"][typ])+str(num)        
     if "http" in num:
         uri=num #shortcut
-    elif typ in config["types"]:
-        uri=config["types"][typ]+num
-    else:
-        uri=None
-    
-    if not field:
-        field=sameAs
-    if uri:
+    if not feld:
+        feld="sameAs"
+    if uri and config:
         for elastic in config["indices"]:
             http = urllib3.PoolManager()
-            url="http://"+elastic["host"]+":"+str(elastic["port"])+"/"+elastic["index"]+"/"+elastic["type"]+"/_search?q="+field+":\""+uri+"\""
+            url="http://"+elastic["host"]+":"+str(elastic["port"])+"/"+elastic["index"]+"/"+elastic["type"]+"/_search?q="+feld+":\""+uri+"\""
             try:
                 r=http.request('GET',url)
                 data = json.loads(r.data.decode('utf-8'))

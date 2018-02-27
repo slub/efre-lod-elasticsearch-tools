@@ -24,6 +24,9 @@ install_view: web2py
 install_mod: web2py
 	${CP} -rv ${GIT}/adlookup/modules ${PATH}/web2py/applications/welcome
 
+install_cfg:
+	${CP} ${GIT}/adlookup/etc/adlookup.json /etc/adlookup.json
+
 install: install_cntrl install_view install_mod
 
 clean:
