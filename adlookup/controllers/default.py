@@ -6,6 +6,7 @@
 
 def index():
     opt=None
+    fld=None
     if request.vars.uri:
         session.uri = request.vars.uri
         redirect(URL('data'))
@@ -16,7 +17,8 @@ def index():
         for k,v in config["types"].items():
             optgr.append(k)
         opt=SELECT(optgr,_name="typ",_size="1")
-    return dict(options=opt)
+        fld=SELECT(config["fields"],_name="feld",_size="1")
+    return dict(options=opt,fields=fld)
 
 def data():
     from adl import getDataByID, loadjson
