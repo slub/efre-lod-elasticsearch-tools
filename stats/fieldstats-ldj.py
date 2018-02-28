@@ -3,6 +3,7 @@
 import json
 import argparse
 import sys
+from es2json import eprint
 
 def travpath(dol, path):
     if path and path[0]=="*":
@@ -32,6 +33,19 @@ def travpath(dol, path):
                 for i in travpath(elem[path[0]],path[1:]):
                     yield i
 
+def addtostats(obj,stats):
+    if isinstance(obj,str):
+        if obj not in stats:
+            stats[obj]=1
+        elif obj in stats:
+            stats[obj]+=1
+    elif isinstance(obj,list):
+        for elem in obj:
+            addtostats(elem,stats)
+    elif isinstance(obj,dict):
+        for k,v in obj.items():
+            addtostats(v,stats)
+
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream.\nOutput is a 2 coloumn CSV-Sheet.\nNavigate into nested fields via dots (.) wildcard operator is: *..')
     parser.add_argument('-help',action="store_true",help='print more help')
@@ -48,16 +62,6 @@ if __name__ == "__main__":
     for line in sys.stdin:
         jline=json.loads(line)
         for v in travpath(jline,parr):
-            if isinstance(v,str):
-                if v not in stats:
-                    stats[v]=1
-                elif v in stats:
-                    stats[v]+=1
-            elif isinstance(v,list):
-                for elem in v:
-                    if elem not in stats:
-                        stats[elem]=1
-                    elif elem in stats:
-                        stats[elem]+=1
+            addtostats(v,stats)
     for w in sorted(stats, key=stats.get, reverse=True):
       sys.stdout.write("\""+str(w)+"\";"+str(stats[w])+"\n")
