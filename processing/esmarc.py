@@ -253,82 +253,67 @@ def getmarc(json,regex,entity):
     elif isinstance(regex,str):
         if len(regex)==3 and regex in json:
             return json.get(regex)
-        #eprint(regex+":\n"+str(json)+"\n\n")
-        if str(regex[0:3]) in json:             ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!!
-            json=json[regex[:3]]
-            if isinstance(json,list):
-                for elem in json:
-                    if isinstance(elem,dict):
-                        for k,v in elem.items():
-                            if isinstance(elem[k],list):
-                                for final in elem[k]:
-                                    for k,v in final.items():
-                                        if k==regex[-1]:
-                                            if v not in ret:
-                                                ret.append(v)
-                                    if regex[-1] in final:
-                                        if final[regex[-1]] not in ret:
-                                            ret.append(final[regex[-1]])
+        #eprint(regex+":\n"+str(json)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
+        json=json.get(regex[:3])                
+        if isinstance(json,list):
+            for elem in json:
+                if isinstance(elem,dict):
+                    for k,v in elem.items():
+                        if isinstance(elem[k],list):
+                            for final in elem[k]:
+                                for c,w in final.items():
+                                    if c==regex[-1]:
+                                        if w not in ret:
+                                            ret.append(w)
+                                if regex[-1] in final:
+                                    if final[regex[-1]] not in ret:
+                                        ret.append(final[regex[-1]])
     if ret:
         return ArrayOrSingleValue(ret)
 
 def relatedTo(jline,key,entity):
     data=[]
-    try:
-        for i in jline[key[0][:3]][0]:
-            for j in jline[key[0][:3]][0][i]:
+    sset=None
+    if jline.get(key[:3]):
+        for mrc_indicator in jline.get(key[:3]):
+            for ind,subfields in mrc_indicator.items():
                 sset={}
                 person={}
-                for k in jline[key[0][:3]][0][i]:
-                    for c,w in k.items():
-                        sset[c]=w
+                for element in subfields:
+                    for key,value in element.items():
+                        sset[key]=value
                 for key, value in sset.items():
                     if key=='9':
-                        notfound=True
                         if isinstance(value,list):
                             for val in value:
                                 for k,v in marc2relation.items():
                                     if k.lower()==val:
-                                        notfound=False
                                         person["_key"]=v
                                         break
-                            if notfound:
+                            if not person.get("_key"):
                                 for k, v in marc2relation.items():
                                     if k.lower() in val.lower():
-                                        notfound=False
                                         person["_key"]=v
                                         break  
                         elif isinstance(value,str):
                             for k,v in marc2relation.items():
                                 if k.lower()==value:
-                                    notfound=False
                                     person["_key"]=v
                                     break
-                            if notfound:
+                            if not person.get("_key"):
                                 for k, v in marc2relation.items():
                                     if k.lower() in value.lower():
-                                        notfound=False
                                         person["_key"]=v
                                         break  
-                        if notfound:
+                        if not person.get("_key"):
                                 person["_key"]="knows"
                     elif key=='0':
-                        _id=value
-                        if isinstance(_id,list):
-                            for uri in _id:
-                                if "(DE-576)" in uri:
-                                    person["@id"]=gnd2uri(uri,"Persons")
-                        elif isinstance(_id,str) and "(DE-576)" in _id:
-                            person["@id"]=gnd2uri(_id,"Person")
-                    elif key=='a':
-                        person["name"]=value
-                if person not in data:
-                    data.append(person) ###filling the array with the person(s)
-    except:
-        pass
+                        person["sameAs"]=gnd2uri(value,"Person")
+                if person.get("sameAs"):
+                    data=litter(data,person) ###filling the array with the person(s)
     if data:
-        return ArrayOrSingleValue(data)
-    
+        return data
+
 def areaServed(jline,key,entity):
     data=gnd2uri(getmarc(ArrayOrSingleValue(key),jline,entity),entity)
     if data:
@@ -419,9 +404,9 @@ def marc_dates(record,event):
                         if elem.startswith("4:dat"):
                             recset[elem]=sset.get("a")
     #eprint(recset)
-    if "4:datx" in recset:
+    if recset.get("4:datx"):
         return dateToEvent(recset["4:datx"],event)
-    elif "4:datl" in recset:
+    elif recset.get("4:datl"):
         return dateToEvent(recset["4:datl"],event)
     else:
         return None
@@ -752,30 +737,25 @@ def process_line(jline,elastic,outstream):
     for key,val in entities[entity].items():
         value=process_field(jline,val,entity)
         if value:
-            noRel=True
-            if isinstance(value,dict) and "_key" in value:
-                relation=value.pop("_key")
-                dictkey=relation
-                mapline[dictkey]=removeNone(value)
-                noRel=False
-            elif isinstance(value,list):
-                for elem in value:
-                    if isinstance(elem,dict) and "_key" in elem:
-                        relation=elem.pop("_key")
-                        dictkey=relation
-                        if dictkey not in mapline:
-                            mapline[dictkey]=[elem]
-                        else:
-                            mapline[dictkey].append(removeNone(elem))
-                        noRel=False
-                    elif isinstance(elem,dict):
-                        if key not in mapline:
-                            mapline[key]=[elem]
-                        else:
-                            mapline[key].append(elem)
-                        noRel=False
-                        
-            if noRel:
+            if "related" in key:
+                if isinstance(value,dict) and "_key" in value:
+                    dictkey=value.pop("_key")
+                    mapline[dictkey]=value
+                elif isinstance(value,list):
+                    for elem in value:
+                        if isinstance(elem,dict) and "_key" in elem:
+                            relation=elem.pop("_key")
+                            dictkey=relation
+                            if dictkey not in mapline:
+                                mapline[dictkey]=[elem]
+                            else:
+                                mapline[dictkey].appen
+                        elif isinstance(elem,dict):
+                            if key not in mapline:
+                                mapline[key]=[elem]
+                            else:
+                                mapline[key].append(elem)
+            else:
                 mapline[key]=ArrayOrSingleValue(value)
     if mapline:
         mapline=check(mapline,entity)
