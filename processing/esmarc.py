@@ -9,6 +9,9 @@ import argparse
 import sys
 import io
 import os.path
+import mmap
+import requests
+
 import siphash
 import re
 from es2json import esgenerator
@@ -188,19 +191,19 @@ marc2relation = {
     "4:affi":"knows"
 }
 
-def gnd2uri(string,entity):
-    ret=[]
+def gnd2uri(string):
     if isinstance(string,str):
         if "(DE-588)" in string:
-            ret.append("http://d-nb.info/gnd/"+string.split(')')[1])
+            return "http://d-nb.info/gnd/"+string.split(')')[1]
         elif "(DE-576)" in string:
-            ret.append("http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string.split(')')[1])
+            return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string.split(')')[1]
         else:
-            return None
+            return
     elif isinstance(string,list):
+        ret=[]
         for st in string:
-            ret.append(gnd2uri(st,entity))
-    return ArrayOrSingleValue(ret)
+            ret.append(gnd2uri(st))
+        return ret
 
 def id2uri(string,entity):
     baseuri="http://data.slub-dresden.de/"
@@ -216,9 +219,14 @@ def id2uri(string,entity):
 
 
 def get_or_generate_id(record,entity):
-    generate=True
+    generate=False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
-    if generate:
+    # replace args.host with your adlookup service :P
+    r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri("(DE-576)"+getmarc(record,"001",entity)))
+    identifier=r.json().get("identifier")
+    if identifier:
+        return id2uri(identifier,entity)
+    else:
         return id2uri(siphash.SipHash_2_4(b'slub-dresden.de/').update(uuid4().bytes).hexdigest().decode('utf-8').upper(),entity)
 
 def get_type(record,entity):
@@ -245,29 +253,28 @@ def process_field(record,value,entity):
         return ArrayOrSingleValue(ret)
             
 def getmarc(json,regex,entity):
-    ret=[]
+    ret=None
     if isinstance(regex,list):
         for string in regex:
             if string[:3] in json:
-                ret.append(getmarc(json,string,entity))
+                ret=litter(ret,getmarc(json,string,entity))
     elif isinstance(regex,str):
         if len(regex)==3 and regex in json:
             return json.get(regex)
         #eprint(regex+":\n"+str(json)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
-        json=json.get(regex[:3])                
-        if isinstance(json,list):
-            for elem in json:
-                if isinstance(elem,dict):
-                    for k,v in elem.items():
-                        if isinstance(elem[k],list):
-                            for final in elem[k]:
-                                for c,w in final.items():
-                                    if c==regex[-1]:
-                                        if w not in ret:
-                                            ret.append(w)
-                                if regex[-1] in final:
-                                    if final[regex[-1]] not in ret:
-                                        ret.append(final[regex[-1]])
+        else:
+            json=json.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
+            if isinstance(json,list):  
+                for elem in json:    
+                    if isinstance(elem,dict):
+                        for k,v in elem.items():
+                            if isinstance(elem[k],list):
+                                for final in elem[k]:
+                                    for c,w in final.items():
+                                        if c==regex[-1]:
+                                            ret=litter(ret,w)
+                                    if regex[-1] in final:
+                                        ret=litter(ret,final[regex[-1]])
     if ret:
         return ArrayOrSingleValue(ret)
 
@@ -308,14 +315,14 @@ def relatedTo(jline,key,entity):
                         if not person.get("_key"):
                                 person["_key"]="knows"
                     elif key=='0':
-                        person["sameAs"]=gnd2uri(value,"Person")
+                        person["sameAs"]=gnd2uri(value)
                 if person.get("sameAs"):
                     data=litter(data,person) ###filling the array with the person(s)
     if data:
         return data
 
 def areaServed(jline,key,entity):
-    data=gnd2uri(getmarc(ArrayOrSingleValue(key),jline,entity),entity)
+    data=gnd2uri(getmarc(ArrayOrSingleValue(key),jline,entity))
     if data:
         return data
 
@@ -336,11 +343,11 @@ def Place(record,event):
                         if isinstance(subfield,dict):
                             for k,v in subfield.items():
                                 if k=="0":
-                                    sset[k]=gnd2uri(v,"Place")
+                                    sset[k]=gnd2uri(v)
                                 else:
                                     sset[k]=v
                         if isinstance(subfield,str):
-                            uri=gnd2uri(subfield,"Place")
+                            uri=gnd2uri(subfield)
                             if uri:
                                 if not sset["0"]:
                                     sset["0"]=uri
@@ -370,6 +377,8 @@ def deathDate(jline,key,entity):
 def birthDate(jline,key,entity):
     return marc_dates(jline.get(key),"birthDate")
 
+
+### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
     if not lst:
         lst=elm
@@ -449,7 +458,7 @@ def hasOccupation(jline,key,entity):
                         if isinstance(sset[key[-1]],list):
                             for field in sset[key[-1]]:
                                 if "(DE-588)" in field:
-                                    data.append(gnd2uri(field,"hasOccupation"))
+                                    data.append(gnd2uri(field))
     except:
         pass
     if data:
@@ -516,37 +525,30 @@ def check(ldj,entity):
         if person in ldj:
             if isinstance(ldj[person],str):
                 if "DE-576" in ldj[person]:
-                    uri=gnd2uri(ldj.pop(person),"Person")
+                    uri=gnd2uri(ldj.pop(person))
                     ldj[person]={"sameAs":uri}
                 if "DE-588" in ldj[person]:
-                    uri=gnd2uri(ldj.pop(person),"Person")
+                    uri=gnd2uri(ldj.pop(person))
                     ldj[person]={"sameAs":uri}
             elif isinstance(ldj[person],list):
                 persons=[]
                 for author in ldj[person]:
                     if "DE-576" or "DE-588" in author:
-                        persons.append({"sameAs":gnd2uri(author,"Person")})
+                        persons.append({"sameAs":gnd2uri(author)})
                 ldj.pop(person)
                 ldj[person]=persons
-    if 'oclc_num' in ldj:
-        if 'sameAs' not in ldj:
-            ldj['sameAs']=[]
-        if isinstance(ldj['oclc_num'],str):
-             ldj['sameAs'].append("http://www.worldcat.org/oclc/"+str(ArrayOrSingleValue(ldj.pop('oclc_num')))+".rdf")
-        elif isinstance(ldj['oclc_num'],list):
-            for elem in ldj['oclc_num']:
-                ldj['sameAs'].append("http://www.worldcat.org/oclc/"+str(ArrayOrSingleValue(elem))+".rdf")
-            ldj.pop('oclc_num')
     if 'genre' in ldj:
         genre=ldj.pop('genre')
         ldj['genre']={}
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
-    if 'bookEdition' in ldj:
-        be=ldj.pop('bookEdition')
-        ldj['bookEdition']={}
-        ldj['bookEdition']['@type']="Book"
-        ldj['bookEdition']["Text"]=be
+    if "identifier" in ldj:
+        if "sameAs" in ldj and not isinstance(ldj["sameAs"],list):
+            ldj["sameAs"]=[ldj.pop("sameAs")]
+            ldj["sameAs"].append(gnd2uri("(DE-576)"+ldj.pop("identifier")))
+        else:
+            ldj["sameAs"]=gnd2uri("(DE-576)"+ldj.pop("identifier"))
+        ldj["identifier"]=ldj["@id"].split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
@@ -588,42 +590,10 @@ def check(ldj,entity):
             ldj["@context"]=list([ldj.pop("@context")])
         ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
     if "isbn" in ldj:
-        if not isinstance(ldj["@type"],list) and isinstance(ldj["@type"],str):
-            ldj["@type"]=list([ldj.pop("@type")])
-        ldj["@type"].append(URIRef(u'http://schema.org/Book'))
+        ldj["@type"]=URIRef(u'http://schema.org/Book')
     return ldj
 
-#def finc(jline,schemakey,schemavalue):
-    #ret=[]
-    #for v in schemavalue:
-        #if v in jline:
-            #for k,v in traverse(jline[v],""):
-                #ret.append(v)                
-    #return ArrayOrSingleValue(ret)
-
 entities = {
-    #"resource.finc":{                                          ###deprecated - use d:swarm for finc records...
-        #"@id"                   :[finc,"record_id"],
-        #"name"                  :[finc,"title"],
-        #"alternativeHeadline"   :[finc,"title_sub"],
-        #"alternateName"         :[finc,"title_alt"],
-        #"author_finc"             :[finc,"author_id"],
-        #"contributor"           :[finc,"author2"],
-        #"publisherImprint"      :[finc,"imprint"],
-        #"publisher"             :[finc,"publisher"],
-        #"datePublished"         :[finc,"publishDate"],
-        #"isbn"                  :[finc,"isbn"],
-        #"genre"                 :[finc,"genre","genre_facet"],
-        #"hasPart"               :[finc,"container_reference"],
-        #"isPartOf"              :[finc,"container_title"],
-        #"inLanguage"            :[finc,"language"],
-        #"numberOfPages"         :[finc,"physical"],
-        #"description"           :[finc,"description"],
-        #"bookEdition"           :[finc,"edition"],
-        #"comment"               :[finc,"contents"],
-        #"oclc_num"              :[finc,"oclc_num"],
-        #"identifier"            :[finc,"record_id"],
-        #},
    "CreativeWork":{
         "@id"               :get_or_generate_id,
         "@type"             :get_type,
@@ -698,8 +668,6 @@ def traverse(dict_or_list, path):
         strarr=[]
         strarr.append(dict_or_list)
         iterator=enumerate(strarr)
-    #elif callable(dict_or_list):
-        #return
     else:
         return
     if iterator:
@@ -712,11 +680,6 @@ def traverse(dict_or_list, path):
 #processing a single line of json without whitespace 
 def process_line(jline,elastic,outstream):
     snine=getmarc(jline,"079..b",None)
-    #if snine=="u":
-        #print(json.dumps(jline,indent=None))
-        #return
-    #else:
-        #return
     entity=None
     if snine=="p": # invididualisierte Person
         entity="Person"
@@ -763,30 +726,35 @@ def process_line(jline,elastic,outstream):
             mapline["url"]="http://"+elastic.host+":"+str(elastic.port)+"/"+elastic.index+"/"+elastic.type+"/"+mapline["identifier"]+"?pretty"
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
-            #print(ArrayOrSingleValue(mapline["identifier"]))
         else:
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
-            
+
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
-    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we print ldj to stdout.')
+    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-prefix',type=str,default="",help='Prefix to use for output data')
-    parser.add_argument('-debug',action="store_true",help='Prefix to use for output data')
+    parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     args=parser.parse_args()
+    if args.help:
+        parser.print_help(sys.stderr)
     outstream=None
+    filepaths=[]
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     if not args.debug:
         outstream={}
         for ent,mapping in entities.items():
-            if os.path.isfile(args.prefix+ent+"-records.ldj"):
-                outstream[ent]=open(args.prefix+ent+"-records.ldj","a")
+            filepath=str(args.prefix+ent+"-records.ldj")
+            filepaths.append(filepath)
+            if os.path.isfile(filepath):
+                outstream[ent]=open(filepath,"a")
             else:
-                outstream[ent]=open(args.prefix+ent+"-records.ldj","w")
+                outstream[ent]=open(filepath,"w")
     if args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
             for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
@@ -797,6 +765,9 @@ if __name__ == "__main__":
         for line in input_stream:
             process_line(json.loads(line),args,outstream)
     if not args.debug:
-        for ent,mapping in entities.items():
-            outstream[ent].close()
+        for ent,mapping in outstream.items():
+            mapping.close()
+        for path in filepaths:
+            if os.stat(path).st_size==0:
+                os.remove(path)
             
