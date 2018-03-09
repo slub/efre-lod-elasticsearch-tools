@@ -14,7 +14,7 @@ def loadjson(path):
 
 
 
-def getDataByID(typ,num,feld):
+def getDataByID(typ,num,feld,index):
     uri=None
     path="/etc/adlookup.json"
     config=loadjson(path)
@@ -28,6 +28,8 @@ def getDataByID(typ,num,feld):
         feld="sameAs"
     if uri and config:
         for elastic in config["indices"]:
+            if not index.startswith("Search") and index not in elastic["index"]:
+                continue
             http = urllib3.PoolManager()
             url="http://"+elastic["host"]+":"+str(elastic["port"])+"/"+elastic["index"]+"/"+elastic["type"]+"/_search?q="+feld+":\""+uri+"\""
             try:

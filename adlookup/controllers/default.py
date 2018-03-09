@@ -14,16 +14,20 @@ def index():
         from adl import loadjson
         config=loadjson("/etc/adlookup.json")
         optgr=[]
+        optindex=["Search All Indices"]
         for k,v in config["types"].items():
             optgr.append(k)
+        for elem in config["indices"]:
+            optindex.append(elem["index"])
         opt=SELECT(optgr,_name="typ",_size="1")
         fld=SELECT(config["fields"],_name="feld",_size="1")
-    return dict(options=opt,fields=fld)
+        inx=SELECT(optindex,_name="ind",_size="1")
+    return dict(options=opt,fields=fld,index=inx)
 
 def data():
     from adl import getDataByID, loadjson
     resp=[]
-    for x in getDataByID(typ=request.vars.typ,num=request.vars.uri,feld=request.vars.feld):
+    for x in getDataByID(typ=request.vars.typ,num=request.vars.uri,feld=request.vars.feld,index=request.vars.ind):
         resp.append(x)
     if len(resp)==1:
         if isinstance(resp[0],str):
