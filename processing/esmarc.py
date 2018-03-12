@@ -11,7 +11,6 @@ import io
 import os.path
 import mmap
 import requests
-
 import siphash
 import re
 from es2json import esgenerator
@@ -42,7 +41,6 @@ def getiso8601(date):
     else:
         return date #was worth a try
     
-
 def dateToEvent(date,schemakey):
     if '-' in date:
         dates=date.split('-')
@@ -50,27 +48,13 @@ def dateToEvent(date,schemakey):
             return str("["+dateToEvent(date[1:-1],schemakey)+"]")        
         if "irth" in schemakey: # (date of d|D)eath(Dates)
                 return getiso8601(dates[0])
-            #if(len(date)==5 and date[4]=='-' and isint(date[0:3])):
-                #return date[0:4]
-            #elif len(date)==9 and date[4]=='-' and isint(date[0:3]) and isint(date[5:8]):
-                #return date[0:4]
         elif "eath" in schemakey: #(date of d|D)eath(Date)
             if len(dates)==2:
                 return getiso8601(dates[1])
-            elif len(dates)==1: #if   len(date)==5 and date[4]=='-' and isint(date[0:3]):                
+            elif len(dates)==1: 
                 return None # still alive! congrats
-            #elif len(date)==9 and date[4]=='-' and isint(date[0:3]) and isint(date[5:8]):
-            #    return date[5:9]
-    #elif event=="lifespan":    ### after finished coding this block, it appears useless to me. skip this
-    #    if   len(date)==9 and date[4]=='-' and isint(date[0:3]) and isint(date[5:8]):
-    #        return date
-    #    elif len(date)==5 and date[4]=='-' and isint(date[0:3]):
-    #        return date
-    #    else:
-    #        return date
         else:
             return date
-
 
 def handlesex(record,key,entity):
     for v in key:
@@ -217,13 +201,15 @@ def id2uri(string,entity):
     elif entity=="Place":
         return baseuri+"geo/"+string
 
-
 def get_or_generate_id(record,entity):
-    generate=False
+    generate=True
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
-    r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri("(DE-576)"+getmarc(record,"001",entity)))
-    identifier=r.json().get("identifier")
+    if generate==True:
+        identifier = None
+    else:
+        r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri("(DE-576)"+getmarc(record,"001",entity)))
+        identifier=r.json().get("identifier")
     if identifier:
         return id2uri(identifier,entity)
     else:
@@ -364,10 +350,10 @@ def Place(record,event):
             data=[]    
         zero=ArrayOrSingleValue(sset.get("0"))
         if isinstance(zero,str):
-            data.append(zero)
+            data.append({"sameAs":zero})
         elif isinstance(zero,list):
             for elem in zero:
-                data.append(elem)
+                data.append({"sameAs":elem})
     if data:
         return ArrayOrSingleValue(data)
 
@@ -376,7 +362,6 @@ def deathDate(jline,key,entity):
     
 def birthDate(jline,key,entity):
     return marc_dates(jline.get(key),"birthDate")
-
 
 ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
@@ -591,6 +576,8 @@ def check(ldj,entity):
         ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
     if "isbn" in ldj:
         ldj["@type"]=URIRef(u'http://schema.org/Book')
+    if "issn" in ldj:
+        ldj["@type"]=URIRef(u'http://schema.org/CreativeWorkSeries')
     return ldj
 
 entities = {
@@ -691,7 +678,9 @@ def process_line(jline,elastic,outstream):
         entity="Organization"
     elif snine=="g": # Geographika
         entity="Place"
-    else: # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
+    elif snine is None: # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
+        entity="CreativeWork"
+    else:
         return
     mapline={}
     mapline["@type"]=[]
@@ -723,7 +712,7 @@ def process_line(jline,elastic,outstream):
     if mapline:
         mapline=check(mapline,entity)
         if elastic.host:
-            mapline["url"]="http://"+elastic.host+":"+str(elastic.port)+"/"+elastic.index+"/"+elastic.type+"/"+mapline["identifier"]+"?pretty"
+            mapline["url"]="http://"+elastic.host+":"+str(elastic.port)+"/"+elastic.index+"/"+elastic.type+"/"+getmarc(jline,"001",None)+"?pretty"
         if outstream:
             outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
         else:
@@ -743,6 +732,7 @@ if __name__ == "__main__":
     args=parser.parse_args()
     if args.help:
         parser.print_help(sys.stderr)
+        exit()
     outstream=None
     filepaths=[]
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
