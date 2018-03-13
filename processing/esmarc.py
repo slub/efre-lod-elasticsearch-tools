@@ -677,7 +677,7 @@ def process_line(jline,elastic,outstream):
     if snine=="p": # invididualisierte Person
         entity="Person"
     elif snine=="n":
-        return
+        entity="Person"
     elif snine=="s":
         return
     elif snine=="b": # Körperschaft/Organisation
