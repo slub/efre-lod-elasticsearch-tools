@@ -664,6 +664,8 @@ def traverse(dict_or_list, path):
                 for k, v in traverse(v, path + str([k])):
                     yield k, v
 
+
+
 #processing a single line of json without whitespace 
 def process_line(jline,elastic,outstream):
     snine=getmarc(jline,"079..b",None)
@@ -760,4 +762,12 @@ if __name__ == "__main__":
         for path in filepaths:
             if os.stat(path).st_size==0:
                 os.remove(path)
-            
+            else:
+                if path.startswith("CreativeWork"):
+                    os.rename(path,"resources-records.ldj")
+                elif path.startswith("Place"):
+                    os.rename(path,"geo-records.ldj")
+                elif path.startswith("Organization"):
+                    os.rename(path,"orga-records.ldj")
+                elif path.startswith("Person"):
+                    os.rename(path,"persons-records.ldj")
