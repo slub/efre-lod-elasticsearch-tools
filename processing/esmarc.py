@@ -1,4 +1,4 @@
-#!/usr/bin/python3 -Wd
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from rdflib import URIRef
 from uuid import uuid4
@@ -313,11 +313,15 @@ def areaServed(jline,key,entity):
         return data
 
 def birthPlace(jline,key,entity):
-    return Place(jline.get(key[:3]),'4:ortg')
+    bp=Place(jline.get(key[:3]),'4:ortg')
+    if bp:
+        return {"sameAs":bp}
 
 def deathPlace(jline,key,entity):
-    return Place(jline.get(key[:3]),'4:orts')
-
+    bp=Place(jline.get(key[:3]),'4:orts')
+    if bp:
+        return {"sameAs":bp}
+    
 def Place(record,event):
     data=None
     sset={}
@@ -350,10 +354,10 @@ def Place(record,event):
             data=[]    
         zero=ArrayOrSingleValue(sset.get("0"))
         if isinstance(zero,str):
-            data.append({"sameAs":zero})
+            data.append(zero)
         elif isinstance(zero,list):
             for elem in zero:
-                data.append({"sameAs":elem})
+                data.append(elem)
     if data:
         return ArrayOrSingleValue(data)
 
@@ -516,10 +520,10 @@ def check(ldj,entity):
                     uri=gnd2uri(ldj.pop(person))
                     ldj[person]={"sameAs":uri}
             elif isinstance(ldj[person],list):
-                persons=[]
+                persons={"sameAs":list()}
                 for author in ldj[person]:
                     if "DE-576" or "DE-588" in author:
-                        persons.append({"sameAs":gnd2uri(author)})
+                        persons["sameAs"].append(gnd2uri(author))
                 ldj.pop(person)
                 ldj[person]=persons
     if 'genre' in ldj:
@@ -548,19 +552,19 @@ def check(ldj,entity):
                 pass
         except AttributeError:
             pass
-    if entity=="Person":
-        checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
-        for key in checks:
-            if key in ldj:
-                if isinstance(ldj[key],list):
-                    for pers in ldj[key]:
-                        if "@id" not in pers:
-                            del pers
-                elif isinstance(ldj[key],dict):
-                    if "@id" not in ldj[key]:
-                        ldj.pop(key)
-                elif isinstance(ldj[key],str):
-                    ldj.pop(key)
+    #if entity=="Person":
+        #checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
+        #for key in checks:
+            #if key in ldj:
+                #if isinstance(ldj[key],list):
+                    #for pers in ldj[key]:
+                        #if "@id" not in pers:
+                            #del pers
+                #elif isinstance(ldj[key],dict):
+                    #if "@id" not in ldj[key]:
+                        #ldj.pop(key)
+                #elif isinstance(ldj[key],str):
+                    #ldj.pop(key)
     for label in ["name","alternativeHeadline","alternateName"]:
         if label in ldj:
             if isinstance(ldj[label],str):
