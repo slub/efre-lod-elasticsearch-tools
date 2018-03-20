@@ -8,9 +8,8 @@ from dpath.util import get
 from pprint import pprint
 from multiprocessing import Pool, Lock, Manager
 from functools import partial
-from esmarc import ArrayOrSingleValue
+from es2json import ArrayOrSingleValue
 from es2json import eprint
-sys.path.append('~/slub-lod-elasticsearch-tools/')
 
 lock=None
 
@@ -82,6 +81,10 @@ def checkids(record):
                         elem=ArrayOrSingleValue(elem)
         elif not v:
             removekeys.append(k)
+    if "copyrightHolder" in record:
+        if "sameAs" in record["copyrightHolder"]:
+            if record["copyrightHolder"]["sameAs"]=="http://d-nb.info/gnd/2002498-8":
+                record["copyrightHolder"]["@id"]="http://data.slub-dresden.de/orga/191584568"
     for k in removekeys:
         record.pop(k)
     return record
