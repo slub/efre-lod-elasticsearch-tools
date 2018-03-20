@@ -92,69 +92,8 @@ def useadlookup(feld,index,uri):
         if r.ok:
             return r.json()
         else:
-            return {}
+            return None
 
-def resolve_geos(record):
-    new=None
-    for geo in ["deathPlace","birthPlace"]:
-            if geo in record:
-                if isinstance(record[geo],list):
-                    for elem in record[geo]:
-                        _id=resolve_bnode(elem,"geo")
-                        if _id and "http://data.slub-dresden.de/" in _id:
-                            record[geo]=_id
-                            return record
-                if isinstance(record[geo],dict):
-                    if _id and "http://data.slub-dresden.de/" in _id:
-                        record[geo]=_id
-                        return record
-    return None
-
-def resolve_persons(record):
-    changed=False
-    for person in ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"]:
-        if person in record:
-            eprint("resolve_persons()"+str(record[person]))
-            if isinstance(record[person],list):
-                for n,elem in enumerate(record[person]):
-                    resolved=resolve_bnode(elem,"persons")
-                    if resolved.startswith("http://data.slub-dresden.de/"):
-                        record[person][n]["@id"]=None
-                        record[person][n]["@id"]=litter(record[person][n]["@id"],resolved)
-                        changed=True
-            elif isinstance(record[person],dict):
-                resolved=resolve_bnode(record[person],"persons")
-                if resolved.startswith("http://data.slub-dresden.de/"):
-                    record[person]["@id"]=None
-                    record[person]["@id"]=litter(record[person]["@id"],resolved)
-                    changed=True
-            if isinstance(record[person],list): ## remove doubles by making a set out of the list and vice-versa
-                record[person]=list(set(record[person]))
-    if changed:
-        return(record)
-    else:
-        return None
-        
-def resolve_bnode(record,index):
-    if isinstance(record,dict):
-        if "@id" not in record and "sameAs" in record:
-            geo_record={}
-            if isinstance(record["sameAs"],str):
-                geo_record=useadlookup("sameAs",index,record["sameAs"])
-            elif isinstance(record["sameAs"],list):
-                for n,elem in enumerate(record["sameAs"]):
-                    if elem.startswith("http://swb.bsz"):
-                        geo_record=litter(geo_record,useadlookup("sameAs",index,elem))
-                        if "@id" in geo_record:
-                            break
-                    elif elem.startswith("http://d-nb"):
-                        geo_record=litter(geo_record,useadlookup("sameAs",index,elem))
-                        if "@id" in geo_record:
-                            break
-            if "@id" in geo_record:
-                return geo_record.get("@id")
-    return ""
-    
         
 ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
@@ -163,7 +102,7 @@ def litter(lst, elm):
     else:
         if isinstance(lst,str):
             lst=[lst]
-        if isinstance(elm,str):
+        if isinstance(elm,(str,dict)):
             if elm not in lst:
                 lst.append(elm)
         elif isinstance(elm,list):
@@ -172,7 +111,91 @@ def litter(lst, elm):
                     lst.append(element)
     return lst
 
+map_id={ 
+    "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
+    "geo":     ["deathPlace","birthPlace"],
+    "orga":["copyrightHolder"],
+         }
+
+def traverse(obj,path):
+    if isinstance(obj,dict):
+        for k,v in obj.items():
+            for c,w in traverse(v,path+"."+str(k)):
+                yield c,w
+    elif isinstance(obj,list):
+        for elem in obj:
+            for c,w in traverse(elem,path+"."):
+                yield c,w
+    else:
+        yield path,obj
         
+def sameAs2ID(index,entity,record):
+    changed=False
+    if isinstance(record["sameAs"],str):
+        r=useadlookup("sameAs",index,record["sameAs"])
+        if isinstance(r,dict) and r.get("@id"):
+            changed=True
+            record.pop("sameAs")
+            record["@id"]=r.get("@id")
+    elif isinstance(record["sameAs"],list):
+        record["@id"]=None
+        for n,sameAs in enumerate(record['sameAs']):
+            r=useadlookup("sameAs",index,sameAs)
+            if isinstance(r,dict) and r.get("@id"):
+                changed=True
+                del record["sameAs"][n]
+                record["@id"]=litter(record["@id"],r.get("@id"))
+                for m,sameBs in enumerate(record["sameAs"]):
+                    if sameBs in r.get("sameAs"):
+                        del record["sameAs"][m]
+        for checkfield in ["@id","sameAs"]:
+            if not record[checkfield]:
+                record.pop(checkfield)
+    if changed:
+        return record
+    else:
+        return None
+                
+def resolve(record,index):
+    changed=False
+    if index in map_id:
+        for entity in map_id[index]:
+            if entity in record:
+                if isinstance(record[entity],list):
+                    for n,sameAs in enumerate(record[entity]):
+                        rec=sameAs2ID(index,entity,sameAs)
+                        if rec:
+                            changed=True
+                            record[entity][n]=rec
+                elif isinstance(record[entity],dict):
+                    rec=sameAs2ID(index,entity,record[entity])
+                    if rec:
+                        changed=True
+                        record[entity]=rec
+    if changed:
+        return record
+    else:
+        return None
+        
+class simplebar():
+    count=0
+    def __init__(self):
+        self.count=0
+        
+    def update(self,num=None):
+        if num:
+            self.count+=num
+        else:
+            self.count+=1
+        sys.stderr.write(str(self.count)+"\n"+"\033[F")
+        sys.stderr.flush()
+###1337 h4x:
+#
+#        #!/bin/bash
+#for i in geo orga persons resources; do
+#~/git/slub-lod-elasticsearch-tools/enrichment/gnd2swb.py -host ### args.host -index ${i} -type schemaorg | esbulk -host 194.95.145.44 -index ${i} -type schemaorg -id identifier -w 8
+#done
+
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
@@ -185,16 +208,34 @@ if __name__ == "__main__":
     if args.help:
         parser.print_help(sys.stderr)
         exit()
+        
+    sb=simplebar()
     for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-            record=resolve_persons(hits)
-            if record:
-                final=resolve_geos(record)
-            else:
-                final=resolve_geos(hits)
-            if final:
-                sys.stdout.write(json.dumps(final,indent=None)+"\n")
-                sys.stdout.flush()
-
+        record=hits
+        changed=False
+        for key in map_id:
+            newrecord = resolve(record,key)
+            if newrecord:
+                record=newrecord
+                changed=True
+        if changed:
+            sb.update()
+            sys.stdout.write(json.dumps(record,indent=None)+"\n")
+            sys.stdout.flush()
+            #record=resolve(hits,"persons")
+            #if record:
+            #    ret=resolve(record,"geo")
+            #    if ret:
+            #        record=ret
+            #else:
+            #    ret=resolve(hits,"geo")
+            #    if ret:
+            #        record=ret
+            #if record:
+            #    sb.update()
+            #    sys.stdout.write(json.dumps(record,indent=None)+"\n")
+            #    sys.stdout.flush()
+                
 #if __name__ == "__main__":
     #parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
     #parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
