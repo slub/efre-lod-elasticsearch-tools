@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import elasticsearch
+from multiprocessing import Pool
 from elasticsearch import Elasticsearch, exceptions, helpers
 from es2json import eprint
 import io
 import os
 import json
+import signal
 from pprint import pprint
 import argparse
 import sys
@@ -13,7 +15,8 @@ import itertools
 from gnd2swb import simplebar
 
 sb=None
-
+args=None
+es=None
 def merge_lists(a,b):
     c=[]
     if isinstance(a,list):
@@ -65,8 +68,10 @@ def update_index(jline,args):
             tes.update(index=args.index,doc_type=args.type,id=args.id,body=body)
         else:
             return
+        
 actions=[]
-def update_marc_index(jline,args,es):
+
+def update_marc_index(jline):
     PPN=None
     ts=None
     if "001" in jline:
@@ -85,8 +90,7 @@ def update_marc_index(jline,args,es):
                                     'doc':jline})
                     sb.update()
                 else:
-                    pass
-                    #no new update, keep going
+                    sb.update()
         except exceptions.NotFoundError:
             actions.append({'_op_type':"index",
                                     '_index':args.index,
@@ -96,9 +100,8 @@ def update_marc_index(jline,args,es):
             sb.update()
     if len(actions)==1000:
         helpers.bulk(es,actions,stats_only=True)
+        actions.clear()
 
-        
-    
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='update an index (instead of re-indexing)')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
@@ -106,11 +109,18 @@ if __name__ == "__main__":
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-id',type=str,help='_id field to use to identify the unique documents')
-    args=parser.parse_args()
-    sb=simplebar()
-    input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    parser.add_argument('-i',type=str,required=True,help='path to input file')
+    args=parser.parse_args()    
     es=Elasticsearch([{'host':args.host}],port=args.port)
-    for line in input_stream:
-        update_marc_index(json.loads(line),args,es)
+    with open(args.i,"r") as fd:
+        sb=simplebar()
+        #for line in fd:
+        #    try:
+        #        update_marc_index(json.loads(line),args,es)
+        #    except json.decoder.JSONDecodeError:
+        #        eprint(line)
+        pool = Pool()
+        pool.map(update_marc_index,fd)
+        
         
     
