@@ -1,16 +1,18 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import elasticsearch
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, exceptions, helpers
+from es2json import eprint
+import io
+import os
 import json
 from pprint import pprint
 import argparse
 import sys
 import itertools
+from gnd2swb import simplebar
 
-es=None
-args=None
-
+sb=None
 
 def merge_lists(a,b):
     c=[]
@@ -54,7 +56,7 @@ def merge_dicts(a,b):
     
                     
     
-def process_stuff(jline):
+def update_index(jline,args):
     tes=Elasticsearch(host=args.host)
     es_doc=tes.get(index=args.index,doc_type=args.type,id=args.id)
     if "_source" in es_doc:
@@ -63,7 +65,39 @@ def process_stuff(jline):
             tes.update(index=args.index,doc_type=args.type,id=args.id,body=body)
         else:
             return
-    
+actions=[]
+def update_marc_index(jline,args,es):
+    PPN=None
+    ts=None
+    if "001" in jline:
+        PPN=jline["001"][0]
+    if "005" in jline:
+        ts=jline["005"][0]
+    if PPN and ts:
+        try:
+            esdata=es.get(index=args.index,id=PPN,doc_type=args.type,_source="005")
+            if "_source" in esdata and "005" in esdata["_source"]:
+                if float(esdata["_source"]["005"][0])<float(ts):
+                    actions.append({'_op_type':"update",
+                                    '_index':args.index,
+                                    '_type':args.type,
+                                    '_id':PPN,
+                                    'doc':jline})
+                    sb.update()
+                else:
+                    pass
+                    #no new update, keep going
+        except exceptions.NotFoundError:
+            actions.append({'_op_type':"index",
+                                    '_index':args.index,
+                                    '_type':args.type,
+                                    '_id':PPN,
+                                    'doc':jline})
+            sb.update()
+    if len(actions)==1000:
+        helpers.bulk(es,actions,stats_only=True)
+
+        
     
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='update an index (instead of re-indexing)')
@@ -73,8 +107,10 @@ if __name__ == "__main__":
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-id',type=str,help='_id field to use to identify the unique documents')
     args=parser.parse_args()
+    sb=simplebar()
     input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    es=Elasticsearch([{'host':args.host}],port=args.port)
     for line in input_stream:
-        process_stuff(json.loads(line))
+        update_marc_index(json.loads(line),args,es)
         
     
