@@ -131,13 +131,13 @@ def traverse(obj,path):
         
 def sameAs2ID(index,entity,record):
     changed=False
-    if isinstance(record["sameAs"],str):
+    if "sameAs" in record and isinstance(record["sameAs"],str):
         r=useadlookup("sameAs",index,record["sameAs"])
         if isinstance(r,dict) and r.get("@id"):
             changed=True
             record.pop("sameAs")
             record["@id"]=r.get("@id")
-    elif isinstance(record["sameAs"],list):
+    elif "sameAs" in record and isinstance(record["sameAs"],list):
         record["@id"]=None
         for n,sameAs in enumerate(record['sameAs']):
             r=useadlookup("sameAs",index,sameAs)
