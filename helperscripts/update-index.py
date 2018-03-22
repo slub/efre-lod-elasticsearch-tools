@@ -13,6 +13,7 @@ import argparse
 import sys
 import itertools
 from gnd2swb import simplebar
+from fix_mrc_id import fix_mrc_id
 
 sb=None
 args=None
@@ -70,12 +71,15 @@ def update_index(jline,args):
             return
         
 actions=[]
-
 def update_marc_index(jline):
+    global actions
+    if isinstance(jline,str):
+       jline=json.loads(jline) 
     PPN=None
     ts=None
+    jline=fix_mrc_id(jline)
     if "001" in jline:
-        PPN=jline["001"][0]
+        PPN=jline["001"]
     if "005" in jline:
         ts=jline["005"][0]
     if PPN and ts:
@@ -83,24 +87,51 @@ def update_marc_index(jline):
             esdata=es.get(index=args.index,id=PPN,doc_type=args.type,_source="005")
             if "_source" in esdata and "005" in esdata["_source"]:
                 if float(esdata["_source"]["005"][0])<float(ts):
-                    actions.append({'_op_type':"update",
+                    action={'_op_type':"index",
                                     '_index':args.index,
                                     '_type':args.type,
-                                    '_id':PPN,
-                                    'doc':jline})
+                                    '_id':str(PPN),
+                                    '_source':{}}
+                    for k in jline:
+                        action['_source'][k]=jline[k]
+                    actions.append(action)
                     sb.update()
-                else:
-                    sb.update()
+                    if not es.indices.exists("queue"):
+                        es.indices.create("queue")
+                    actions.append({'_op_type':"create",
+                                    '_index': "queue",
+                                    '_type':"ppns",
+                                    '_id':str(PPN),
+                                    '_source': {
+                                    'normalized':"false",
+                                    'clean_uri':"false",
+                                    'enriched':"false"}
+                                    })
         except exceptions.NotFoundError:
-            actions.append({'_op_type':"index",
-                                    '_index':args.index,
-                                    '_type':args.type,
-                                    '_id':PPN,
-                                    'doc':jline})
+            #es.index(index=args.index,doc_type=args.type,body=jline,id=str(PPN))
+            action={'_op_type':"index",
+                   '_index':args.index,
+                    '_type':args.type,
+                    '_id':str(PPN),
+                    '_source':{}}
+            for k in jline:
+                action['_source'][k]=jline[k]
+            actions.append(action)
+            actions.append({'_op_type':"create",
+                            '_index': "queue",
+                            '_type':"ppns",
+                            '_id':PPN,
+                           '_source': {
+                            'normalized':"false",
+                            'clean_uri':"false",
+                            'enriched':"false"}})
             sb.update()
-    if len(actions)==1000:
+    if len(actions)>=1000:
+        if not es.indices.exists("queue"):
+            es.indices.create("queue")
         helpers.bulk(es,actions,stats_only=True)
         actions.clear()
+        
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='update an index (instead of re-indexing)')
@@ -115,12 +146,15 @@ if __name__ == "__main__":
     with open(args.i,"r") as fd:
         sb=simplebar()
         #for line in fd:
-        #    try:
-        #        update_marc_index(json.loads(line),args,es)
-        #    except json.decoder.JSONDecodeError:
-        #        eprint(line)
+        #    update_marc_index(line)
         pool = Pool()
         pool.map(update_marc_index,fd)
+    if len(actions)>0:
+        eprint("Lets go")
+        if not es.indices.exists("queue"):
+            es.indices.create("queue")
+        helpers.bulk(es,actions,stats_only=True)
+        actions.clear()
         
         
     
