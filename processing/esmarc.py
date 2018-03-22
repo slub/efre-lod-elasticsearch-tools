@@ -190,17 +190,9 @@ def gnd2uri(string):
         return ret
 
 def id2uri(string,entity):
-    baseuri="http://data.slub-dresden.de/"
-
-    if entity=="Person":
-        return baseuri+"persons/"+string
-    elif entity=="CreativeWork":
-        return baseuri+"resource/"+string
-    elif entity=="Organization":
-        return baseuri+"organizations/"+string
-    elif entity=="Place":
-        return baseuri+"geo/"+string
-
+    return "http://data.slub-dresden.de/"+entity+"/"+string
+    
+    
 def get_or_generate_id(record,entity):
     generate=True
     #set generate to True if you're 1st time filling a infrastructure from scratch!
@@ -214,9 +206,6 @@ def get_or_generate_id(record,entity):
         return id2uri(identifier,entity)
     else:
         return id2uri(siphash.SipHash_2_4(b'slub-dresden.de/').update(uuid4().bytes).hexdigest().decode('utf-8').upper(),entity)
-
-def get_type(record,entity):
-    return "http://schema.org/"+str(entity)
 
         #                    :value
         #"@id"               :0,
@@ -585,9 +574,9 @@ def check(ldj,entity):
     return ldj
 
 entities = {
-   "CreativeWork":{
+   "resources":{
         "@id"               :get_or_generate_id,
-        "@type"             :get_type,
+        "@type"             :"http://schema.org/CreativeWork",
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
         "name"              :{getmarc:["245..a","245..b","245..n","245..p"]},
@@ -610,10 +599,10 @@ entities = {
         "volumeNumer"       :{getmarc:"773..v"},
         "_recorddate"             :{getmarc:"005"}
         },
-    "Person": {
+    "persons": {
         "@id"           :get_or_generate_id,
-        "@context"      :"http://schema.org",
-        "@type"         :get_type,
+        "@context"      :"http://schema.org/",
+        "@type"         :"http://schema.org/Person",
         "identifier"    :{getmarc:"001"},
         "name"          :{getmarc:"100..a"},
         "sameAs"        :{getmarc:"024..a"},
@@ -628,9 +617,9 @@ entities = {
         "deathDate"     :{deathDate:"548"},
         "_recorddate"         :{getmarc:"005"}
     },
-    "Organization": {
+    "orga": {
         "@id"               :get_or_generate_id,
-        "@type"             :get_type,
+        "@type"             :"http://schema.org/Organization",
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
         "name"              :{getmarc:"110..a"},
@@ -639,9 +628,9 @@ entities = {
         "areaServed"        :{areaServed:["551..0"]},
         "_recorddate"             :{getmarc:"005"}
         },
-    "Place": {
+    "geo": {
         "@id"               :get_or_generate_id,
-        "@type"             :get_type,
+        "@type"             :"http://schema.org/Place",
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
         "name"              :{getmarc:"151..a"},
@@ -679,17 +668,17 @@ def process_line(jline,elastic):
     snine=getmarc(jline,"079..b",None)
     entity=None
     if snine=="p" or snine=="p": # invididualisierte Person
-        entity="Person"
+        entity="persons"
     elif snine=="n":
-        entity="Person"
+        entity="persons"
     elif snine=="s":
         return
     elif snine=="b": # Körperschaft/Organisation
-        entity="Organization"
+        entity="org"
     elif snine=="g": # Geographika
-        entity="Place"
+        entity="geo"
     elif snine is None or snine=="u": # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
-        entity="CreativeWork"
+        entity="resources"
     else:
         return
     mapline={}
@@ -776,12 +765,3 @@ if __name__ == "__main__":
         for path in filepaths:
             if os.stat(path).st_size==0:
                 os.remove(path)
-            else:
-                if path.startswith("CreativeWork"):
-                    os.rename(path,"resources-records.ldj")
-                elif path.startswith("Place"):
-                    os.rename(path,"geo-records.ldj")
-                elif path.startswith("Organization"):
-                    os.rename(path,"orga-records.ldj")
-                elif path.startswith("Person"):
-                    os.rename(path,"persons-records.ldj")
