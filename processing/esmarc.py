@@ -14,8 +14,8 @@ import requests
 import siphash
 import re
 from es2json import esgenerator
-from es2json import eprint
 from es2json import ArrayOrSingleValue
+from es2json import eprint
 
 def isint(num):
     try: 
@@ -607,7 +607,8 @@ entities = {
         "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
         "pageStart"         :{getmarc:"773..q"},
         "issueNumber"       :{getmarc:"773..l"},
-        "volumeNumer"       :{getmarc:"773..v"}
+        "volumeNumer"       :{getmarc:"773..v"},
+        "_recorddate"             :{getmarc:"005"}
         },
     "Person": {
         "@id"           :get_or_generate_id,
@@ -624,7 +625,8 @@ entities = {
         "deathPlace"    :{deathPlace:"551"},
         "honoricSuffix" :{honoricSuffix:["550..0","550..00","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
-        "deathDate"     :{deathDate:"548"}
+        "deathDate"     :{deathDate:"548"},
+        "_recorddate"         :{getmarc:"005"}
     },
     "Organization": {
         "@id"               :get_or_generate_id,
@@ -634,7 +636,8 @@ entities = {
         "name"              :{getmarc:"110..a"},
         "alternateName"     :{getmarc:["410..a","410..b"]},
         "sameAs"            :{getmarc:["024..a","670..u"]},
-        "areaServed"        :{areaServed:["551..0"]}
+        "areaServed"        :{areaServed:["551..0"]},
+        "_recorddate"             :{getmarc:"005"}
         },
     "Place": {
         "@id"               :get_or_generate_id,
@@ -645,7 +648,8 @@ entities = {
         "description"       :{getmarc:["551..0","551..i"]},
         "sameAs"            :{getmarc:"024..a"},
         "alternateName"     :{getmarc:"451..a"},
-        "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}}
+        "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
+        "_date"             :{getmarc:"005"}
         }
 }
 
@@ -671,10 +675,10 @@ def traverse(dict_or_list, path):
 
 
 #processing a single line of json without whitespace 
-def process_line(jline,elastic,outstream):
+def process_line(jline,elastic):
     snine=getmarc(jline,"079..b",None)
     entity=None
-    if snine=="p": # invididualisierte Person
+    if snine=="p" or snine=="p": # invididualisierte Person
         entity="Person"
     elif snine=="n":
         entity="Person"
@@ -684,7 +688,7 @@ def process_line(jline,elastic,outstream):
         entity="Organization"
     elif snine=="g": # Geographika
         entity="Place"
-    elif snine is None: # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
+    elif snine is None or snine=="u": # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
         entity="CreativeWork"
     else:
         return
@@ -719,11 +723,14 @@ def process_line(jline,elastic,outstream):
         mapline=check(mapline,entity)
         if elastic.host:
             mapline["url"]="http://"+elastic.host+":"+str(elastic.port)+"/"+elastic.index+"/"+elastic.type+"/"+getmarc(jline,"001",None)+"?pretty"
-        if outstream:
-            outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
-        else:
-            sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
-            sys.stdout.flush()
+        return {entity:mapline}
+
+def output(entity,mapline,outstream):
+    if outstream:
+        outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
+    else:
+        sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     #argstuff
@@ -754,7 +761,10 @@ if __name__ == "__main__":
     if args.host: #if inf not set, than try elasticsearch
         if args.index and args.type:
             for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-                process_line(hits,args,outstream)
+                returnobj=process_line(hits,args)
+                if isinstance(returnobj,dict):
+                    for k,v in returnobj.items():
+                        output(k,v,outstream)
         else:
             sys.stderr.write("Error! no Index/Type set but -host! add -index and -type or disable -host if you read from stdin/file Aborting...\n")
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
