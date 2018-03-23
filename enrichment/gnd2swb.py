@@ -17,10 +17,13 @@ from esmarc import gnd2uri
 from esmarc import ArrayOrSingleValue
 
 es=None
-args=None
 
 author_gnd_key="sameAs"
-
+map_id={ 
+    "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
+    "geo":     ["deathPlace","birthPlace"],
+    "orga":["copyrightHolder"],
+         }
 ### replace SWB/GND IDs by SWB IDs in your ElasticSearch Index.
 ### example usage: ./gnd2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
 def handle_author(author):
@@ -87,7 +90,7 @@ def getidbygnd(gnd,cache=None):
                 else:
                     return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
 
-def useadlookup(feld,index,uri):
+def useadlookup(feld,index,uri,args):
         r=requests.get("http://"+args.host+":8000/welcome/default/data?ind="+str(index)+"&feld="+str(feld)+"&uri="+str(uri))
         if r.ok:
             return r.json()
@@ -111,11 +114,6 @@ def litter(lst, elm):
                     lst.append(element)
     return lst
 
-map_id={ 
-    "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
-    "geo":     ["deathPlace","birthPlace"],
-    "orga":["copyrightHolder"],
-         }
 
 def traverse(obj,path):
     if isinstance(obj,dict):
@@ -129,10 +127,10 @@ def traverse(obj,path):
     else:
         yield path,obj
         
-def sameAs2ID(index,entity,record):
+def sameAs2ID(index,entity,record,args):
     changed=False
     if "sameAs" in record and isinstance(record["sameAs"],str):
-        r=useadlookup("sameAs",index,record["sameAs"])
+        r=useadlookup("sameAs",index,record["sameAs"],args)
         if isinstance(r,dict) and r.get("@id"):
             changed=True
             record.pop("sameAs")
@@ -140,7 +138,7 @@ def sameAs2ID(index,entity,record):
     elif "sameAs" in record and isinstance(record["sameAs"],list):
         record["@id"]=None
         for n,sameAs in enumerate(record['sameAs']):
-            r=useadlookup("sameAs",index,sameAs)
+            r=useadlookup("sameAs",index,sameAs,args)
             if isinstance(r,dict) and r.get("@id"):
                 changed=True
                 del record["sameAs"][n]
@@ -156,19 +154,19 @@ def sameAs2ID(index,entity,record):
     else:
         return None
                 
-def resolve(record,index):
+def resolve(record,index,args):
     changed=False
     if index in map_id:
         for entity in map_id[index]:
             if entity in record:
                 if isinstance(record[entity],list):
                     for n,sameAs in enumerate(record[entity]):
-                        rec=sameAs2ID(index,entity,sameAs)
+                        rec=sameAs2ID(index,entity,sameAs,args)
                         if rec:
                             changed=True
                             record[entity][n]=rec
                 elif isinstance(record[entity],dict):
-                    rec=sameAs2ID(index,entity,record[entity])
+                    rec=sameAs2ID(index,entity,record[entity],args)
                     if rec:
                         changed=True
                         record[entity]=rec
@@ -196,6 +194,17 @@ class simplebar():
 #~/git/slub-lod-elasticsearch-tools/enrichment/gnd2swb.py -host ### args.host -index ${i} -type schemaorg | esbulk -host 194.95.145.44 -index ${i} -type schemaorg -id identifier -w 8
 #done
 
+
+def resolve_uris(record,args):
+    changed=False
+    for key in map_id:
+        newrecord = resolve(record,key,args)
+        if newrecord:
+            record=newrecord
+            changed=True
+    if changed:
+        return record
+
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
@@ -211,14 +220,8 @@ if __name__ == "__main__":
         
     sb=simplebar()
     for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-        record=hits
-        changed=False
-        for key in map_id:
-            newrecord = resolve(record,key)
-            if newrecord:
-                record=newrecord
-                changed=True
-        if changed:
+        record=resolve_uris(hits,args)
+        if record:
             sb.update()
             sys.stdout.write(json.dumps(record,indent=None)+"\n")
             sys.stdout.flush()

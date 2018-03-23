@@ -96,8 +96,6 @@ def update_marc_index(jline):
                         action['_source'][k]=jline[k]
                     actions.append(action)
                     sb.update()
-                    if not es.indices.exists("queue"):
-                        es.indices.create("queue")
                     actions.append({'_op_type':"create",
                                     '_index': "queue",
                                     '_type':"ppns",
@@ -127,8 +125,6 @@ def update_marc_index(jline):
                             'enriched':"false"}})
             sb.update()
     if len(actions)>=1000:
-        if not es.indices.exists("queue"):
-            es.indices.create("queue")
         helpers.bulk(es,actions,stats_only=True)
         actions.clear()
         
@@ -145,14 +141,12 @@ if __name__ == "__main__":
     es=Elasticsearch([{'host':args.host}],port=args.port)
     with open(args.i,"r") as fd:
         sb=simplebar()
-        #for line in fd:
-        #    update_marc_index(line)
-        pool = Pool()
-        pool.map(update_marc_index,fd)
+        for line in fd:
+            update_marc_index(line)
+        #pool = Pool()
+        #pool.map(update_marc_index,fd)
     if len(actions)>0:
         eprint("Lets go")
-        if not es.indices.exists("queue"):
-            es.indices.create("queue")
         helpers.bulk(es,actions,stats_only=True)
         actions.clear()
         
