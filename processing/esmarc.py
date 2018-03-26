@@ -72,6 +72,16 @@ def handlesex(record,key,entity):
     elif marcvalue==9:
         return None
 
+
+isil2sameAs = {
+    "DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "DE-588":"http://d-nb.info/gnd/",
+    "DE-601":"http://gso.gbv.de/PPN?PPN=",
+    "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "(DE-588)":"http://d-nb.info/gnd/",
+    "(DE-601)":"http://gso.gbv.de/PPN?PPN="
+}
+
 marc2relation = {
     "VD-16 Mitverf": "contributor",
     "v:Mitverf": "contributor",
@@ -175,23 +185,27 @@ marc2relation = {
     "4:affi":"knows"
 }
 
+
+
+
 def gnd2uri(string):
-    if isinstance(string,str):
-        if "(DE-588)" in string:
-            return "http://d-nb.info/gnd/"+string.split(')')[1]
-        elif "(DE-576)" in string:
-            return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string.split(')')[1]
-        else:
-            return
-    elif isinstance(string,list):
+    if isinstance(string,list):
         ret=[]
         for st in string:
             ret.append(gnd2uri(st))
         return ret
+    elif isinstance(string,str):
+        return uri2url(string.split(')')[0][1:],string.split(')')[1])
+
+
+
+def uri2url(isil,num):
+    if isil and num:
+        return isil2sameAs.get(isil)+num
+        
 
 def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
-    
     
 def get_or_generate_id(record,entity):
     generate=True
@@ -200,7 +214,7 @@ def get_or_generate_id(record,entity):
     if generate==True:
         identifier = None
     else:
-        r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri("(DE-576)"+getmarc(record,"001",entity)))
+        r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
         identifier=r.json().get("identifier")
     if identifier:
         return id2uri(identifier,entity)
@@ -435,7 +449,7 @@ def hasOccupation(jline,key,entity):
                     if key[-1] in sset:
                         if isinstance(sset[key[-1]],list):
                             for field in sset[key[-1]]:
-                                if "(DE-588)" in field:
+                                if field[1:7] in isil2sameAs:
                                     data.append(gnd2uri(field))
     except:
         pass
@@ -502,16 +516,13 @@ def check(ldj,entity):
     for person in ["author","contributor"]:
         if person in ldj:
             if isinstance(ldj[person],str):
-                if "DE-576" in ldj[person]:
-                    uri=gnd2uri(ldj.pop(person))
-                    ldj[person]={"sameAs":uri}
-                if "DE-588" in ldj[person]:
+                if ldj[person][:8] in isil2sameAs:
                     uri=gnd2uri(ldj.pop(person))
                     ldj[person]={"sameAs":uri}
             elif isinstance(ldj[person],list):
                 persons={"sameAs":list()}
                 for author in ldj[person]:
-                    if "DE-576" or "DE-588" in author:
+                    if author[:8] in isil2sameAs:
                         persons["sameAs"].append(gnd2uri(author))
                 ldj.pop(person)
                 ldj[person]=persons
@@ -523,9 +534,9 @@ def check(ldj,entity):
     if "identifier" in ldj:
         if "sameAs" in ldj and not isinstance(ldj["sameAs"],list):
             ldj["sameAs"]=[ldj.pop("sameAs")]
-            ldj["sameAs"].append(gnd2uri("(DE-576)"+ldj.pop("identifier")))
+            ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
-            ldj["sameAs"]=gnd2uri("(DE-576)"+ldj.pop("identifier"))
+            ldj["sameAs"]=uri2url(ldj["_isil"],ldj.pop("identifier"))
         ldj["identifier"]=ldj["@id"].split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
@@ -597,7 +608,8 @@ entities = {
         "pageStart"         :{getmarc:"773..q"},
         "issueNumber"       :{getmarc:"773..l"},
         "volumeNumer"       :{getmarc:"773..v"},
-        "_recorddate"             :{getmarc:"005"}
+        "_recorddate"       :{getmarc:"005"},
+        "_isil"             :{getmarc:"003"}
         },
     "persons": {
         "@id"           :get_or_generate_id,
@@ -674,7 +686,7 @@ def process_line(jline,elastic):
     elif snine=="s":
         return
     elif snine=="b": # Körperschaft/Organisation
-        entity="org"
+        entity="orga"
     elif snine=="g": # Geographika
         entity="geo"
     elif snine is None or snine=="u": # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
@@ -726,8 +738,8 @@ if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
-    parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
-    parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-prefix',type=str,default="",help='Prefix to use for output data')
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
