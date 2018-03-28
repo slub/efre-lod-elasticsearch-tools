@@ -7,6 +7,33 @@ from elasticsearch import Elasticsearch
 import argparse
 import sys
 
+class simplebar():
+    count=0
+    def __init__(self):
+        self.count=0
+        
+    def reset(self):
+        self.count=0
+        
+    def update(self,num=None):
+        if num:
+            self.count+=num
+        else:
+            self.count+=1
+        sys.stderr.write(str(self.count)+"\n"+"\033[F")
+        sys.stderr.flush()
+        
+def ArrayOrSingleValue(array):
+    if array:
+        length=len(array)
+        if length>1 or isinstance(array,dict):
+            return array
+        elif length==1:
+            for elem in array:
+                 return elem
+        elif length==0:
+            return None
+        
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)   
     

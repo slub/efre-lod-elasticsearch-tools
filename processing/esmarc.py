@@ -189,13 +189,14 @@ marc2relation = {
 
 
 def gnd2uri(string):
-    if isinstance(string,list):
-        ret=[]
-        for st in string:
-            ret.append(gnd2uri(st))
-        return ret
-    elif isinstance(string,str):
-        return uri2url(string.split(')')[0][1:],string.split(')')[1])
+    if string and "(DE-" in string:
+        if isinstance(string,list):
+            ret=[]
+            for st in string:
+                ret.append(gnd2uri(st))
+            return ret
+        elif isinstance(string,str):
+            return uri2url(string.split(')')[0][1:],string.split(')')[1])
 
 
 
@@ -256,7 +257,7 @@ def getmarc(json,regex,entity):
             if isinstance(json,list):  
                 for elem in json:    
                     if isinstance(elem,dict):
-                        for k,v in elem.items():
+                        for k in elem:
                             if isinstance(elem[k],list):
                                 for final in elem[k]:
                                     for c,w in final.items():
@@ -574,6 +575,9 @@ def check(ldj,entity):
                 for n,i in enumerate(ldj[label]):
                     if i[-2:]==" /":
                         ldj[label][n]=i[:-2]
+                if label=="name":
+                    name=" ".join(ldj[label])
+                    ldj[label]=name
     if "publisherImprint" in ldj:
         if not isinstance(ldj["@context"],list) and isinstance(ldj["@context"],str):
             ldj["@context"]=list([ldj.pop("@context")])
@@ -582,6 +586,12 @@ def check(ldj,entity):
         ldj["@type"]=URIRef(u'http://schema.org/Book')
     if "issn" in ldj:
         ldj["@type"]=URIRef(u'http://schema.org/CreativeWorkSeries')
+    if "pub_name" in ldj or "pub_place" in ldj:
+        ldj["publisher"]={}
+        if "pub_name" in ldj:
+            ldj["publisher"]["name"]=ldj.pop("pub_name")
+        if "pub_place" in ldj:
+            ldj["publisher"]["location"]=ldj.pop("pub_place")
     return ldj
 
 entities = {
@@ -590,11 +600,13 @@ entities = {
         "@type"             :"http://schema.org/CreativeWork",
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
-        "name"              :{getmarc:["245..a","245..b","245..n","245..p"]},
+        "name"              :{getmarc:["245..a","245..b"]},
+        "description"       :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["130..a","130..p","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{getmarc:"100..0"},
         "contributor"       :{getmarc:"700..0"},
-        "publisher"         :{getmarc:["260..b","264..b"]},
+        "pub_name"          :{getmarc:["260..b","264..b"]},
+        "pub_place"         :{getmarc:["260..a","264..a"]},
         "datePublished"     :{getmarc:["260..c","264..c","362..a"]},
         "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
         "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
@@ -627,7 +639,8 @@ entities = {
         "honoricSuffix" :{honoricSuffix:["550..0","550..00","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
-        "_recorddate"         :{getmarc:"005"}
+        "_recorddate"         :{getmarc:"005"},
+        "_isil"             :{getmarc:"003"}
     },
     "orga": {
         "@id"               :get_or_generate_id,
@@ -638,7 +651,8 @@ entities = {
         "alternateName"     :{getmarc:["410..a","410..b"]},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         "areaServed"        :{areaServed:["551..0"]},
-        "_recorddate"             :{getmarc:"005"}
+        "_recorddate"             :{getmarc:"005"},
+        "_isil"             :{getmarc:"003"}
         },
     "geo": {
         "@id"               :get_or_generate_id,
@@ -650,7 +664,8 @@ entities = {
         "sameAs"            :{getmarc:"024..a"},
         "alternateName"     :{getmarc:"451..a"},
         "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
-        "_date"             :{getmarc:"005"}
+        "_date"             :{getmarc:"005"},
+        "_isil"             :{getmarc:"003"}
         }
 }
 

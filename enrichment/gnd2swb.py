@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import elasticsearch
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, helpers
 import json
 from pprint import pprint
 import argparse
@@ -10,13 +10,14 @@ import os.path
 import requests
 import signal
 import urllib3.request
-from multiprocessing import Pool
+from multiprocessing import Lock, Pool, Manager
 from es2json import esgenerator
 from es2json import eprint
 from esmarc import gnd2uri
 from esmarc import ArrayOrSingleValue
-
-es=None
+from es2json import simplebar
+args=None
+host=None
 
 author_gnd_key="sameAs"
 map_id={ 
@@ -90,10 +91,15 @@ def getidbygnd(gnd,cache=None):
                 else:
                     return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
 
-def useadlookup(feld,index,uri,args):
-        r=requests.get("http://"+args.host+":8000/welcome/default/data?ind="+str(index)+"&feld="+str(feld)+"&uri="+str(uri))
+def useadlookup(feld,index,uri):
+        url="http://"+host+":9200/"+str(index)+"/schemaorg/_search?_source=@id,sameAs&q="+str(feld)+":\""+str(uri)+"\""
+        r=requests.get(url,headers={'Connection':'close'})
         if r.ok:
-            return r.json()
+            response=r.json().get("hits")
+            if response.get("total")==1:
+                return response.get("hits")[0].get("_source")
+            else:
+                return None
         else:
             return None
 
@@ -127,10 +133,10 @@ def traverse(obj,path):
     else:
         yield path,obj
         
-def sameAs2ID(index,entity,record,args):
+def sameAs2ID(index,entity,record):
     changed=False
     if "sameAs" in record and isinstance(record["sameAs"],str):
-        r=useadlookup("sameAs",index,record["sameAs"],args)
+        r=useadlookup("sameAs",index,record["sameAs"])
         if isinstance(r,dict) and r.get("@id"):
             changed=True
             record.pop("sameAs")
@@ -138,7 +144,7 @@ def sameAs2ID(index,entity,record,args):
     elif "sameAs" in record and isinstance(record["sameAs"],list):
         record["@id"]=None
         for n,sameAs in enumerate(record['sameAs']):
-            r=useadlookup("sameAs",index,sameAs,args)
+            r=useadlookup("sameAs",index,sameAs)
             if isinstance(r,dict) and r.get("@id"):
                 changed=True
                 del record["sameAs"][n]
@@ -154,19 +160,19 @@ def sameAs2ID(index,entity,record,args):
     else:
         return None
                 
-def resolve(record,index,args):
+def resolve(record,index):
     changed=False
     if index in map_id:
         for entity in map_id[index]:
             if entity in record:
                 if isinstance(record[entity],list):
                     for n,sameAs in enumerate(record[entity]):
-                        rec=sameAs2ID(index,entity,sameAs,args)
+                        rec=sameAs2ID(index,entity,sameAs)
                         if rec:
                             changed=True
                             record[entity][n]=rec
                 elif isinstance(record[entity],dict):
-                    rec=sameAs2ID(index,entity,record[entity],args)
+                    rec=sameAs2ID(index,entity,record[entity])
                     if rec:
                         changed=True
                         record[entity]=rec
@@ -175,18 +181,6 @@ def resolve(record,index,args):
     else:
         return None
         
-class simplebar():
-    count=0
-    def __init__(self):
-        self.count=0
-        
-    def update(self,num=None):
-        if num:
-            self.count+=num
-        else:
-            self.count+=1
-        sys.stderr.write(str(self.count)+"\n"+"\033[F")
-        sys.stderr.flush()
 ###1337 h4x:
 #
 #        #!/bin/bash
@@ -195,10 +189,34 @@ class simplebar():
 #done
 
 
-def resolve_uris(record,args):
+def work(record):
+    data=resolve_uris(record.pop("_source"))
+    if data:
+        record.pop("_score")
+        record["_op_type"]="index"
+        record["_source"]=data
+        if not args.debug:
+            lock.acquire()
+        actions.append(record)
+        if len(actions)>=1000:
+            eprint("bulk!")
+            helpers.bulk(elastic,actions,stats_only=True)
+            actions[:]=[]
+        if not args.debug:
+            lock.release()
+            
+def init(l,a,es):
+    global lock
+    global actions
+    global elastic
+    elastic=es
+    actions=a
+    lock = l
+        
+def resolve_uris(record):
     changed=False
     for key in map_id:
-        newrecord = resolve(record,key,args)
+        newrecord = resolve(record,key)
         if newrecord:
             record=newrecord
             changed=True
@@ -213,18 +231,34 @@ if __name__ == "__main__":
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-help',action="store_true",help="print this help")
+    parser.add_argument('-debug',action="store_true",help="disable mp for debugging purposes")
     args=parser.parse_args()
+   
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-        
-    sb=simplebar()
-    for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-        record=resolve_uris(hits,args)
-        if record:
-            sb.update()
-            sys.stdout.write(json.dumps(record,indent=None)+"\n")
-            sys.stdout.flush()
+    
+    es=Elasticsearch([{'host':args.host}],port=args.port)
+    
+    host=args.host
+    if args.debug:
+        for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
+            work(hit)
+    else:
+        with Manager() as manager:
+            a=manager.list()
+            l=manager.Lock()
+            with Pool(16,initializer=init,initargs=(l,a,es)) as pool:
+                pool.map(work,esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False))
+            
+            if len(a)>0:
+                helpers.bulk(es,a,stats_only=True)
+                a[:]=[]
+        #record=resolve_uris(hits,args)
+        #if record:
+            #sb.update()
+            #sys.stdout.write(json.dumps(record,indent=None)+"\n")   #pipe that to esbulk
+            #sys.stdout.flush()
             #record=resolve(hits,"persons")
             #if record:
             #    ret=resolve(record,"geo")
