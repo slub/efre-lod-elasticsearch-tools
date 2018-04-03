@@ -16,6 +16,7 @@ import re
 from es2json import esgenerator
 from es2json import ArrayOrSingleValue
 from es2json import eprint
+from es2json import litter
 
 def isint(num):
     try: 
@@ -371,21 +372,7 @@ def deathDate(jline,key,entity):
 def birthDate(jline,key,entity):
     return marc_dates(jline.get(key),"birthDate")
 
-### avoid dublettes and nested lists when adding elements into lists
-def litter(lst, elm):
-    if not lst:
-        lst=elm
-    else:
-        if isinstance(lst,str):
-            lst=[lst]
-        if isinstance(elm,str):
-            if elm not in lst:
-                lst.append(elm)
-        elif isinstance(elm,list):
-            for element in elm:
-                if element not in lst:
-                    lst.append(element)
-    return lst
+
 
 def marc_dates(record,event):
     data=None

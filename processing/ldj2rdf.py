@@ -6,104 +6,96 @@ import urllib
 import sys
 import os
 import requests
-import pyodbc
+from time import time
 from rdflib import ConjunctiveGraph,Graph, URIRef, Namespace, Literal
 from rdflib.store import Store
 from rdflib.plugin import get as plugin
 from pprint import pprint
 from elasticsearch import Elasticsearch
 from datetime import datetime
-from multiprocessing import Pool, Manager
-from functools import partial
-from es2json import Daemon
-from isql import Isql
+from multiprocessing import Pool, Manager,current_process,Process
 
 from es2json import eprint
 from es2json import esgenerator
+from es2json import esfatgenerator
+from es2json import litter
 
 global args
 global es
-global out
 
 listcontexts={"http://schema.org":"http://schema.org/docs/jsonldcontext.json"}
 
 
-def init(l,c,m):
+def run_mp(l,c,m,i,doc):
+    init(l,c,m,i)
+    get_rdf(doc)
+
+def init(l,c,m,i):
     global lock
     global con
     global mp
+    global name
+    name=str("-".join(["triples",i["host"],i["index"],i["type"],str(current_process().name)]))+".n3"
     mp=m
     con = c
     lock = l
-
+    
 def get_rdf(doc):
+    text=None
+    for n,elem in enumerate(doc):
+        if isinstance(elem,dict):
+            toRemove=[]
+            for key in elem:
+                if key.startswith("_") and key!="_source":
+                    toRemove.append(key)
+            for key in toRemove:
+                doc[n].pop(key)
+            toRemove.clear()
+            doc[n]=elem.pop("_source")
+    for n,elem in enumerate(doc):
+        if isinstance(elem,dict):
+            toRemoveVal=["http://www.biographien.ac.at"]
+            for item in toRemoveVal:
+                if "sameAs" in elem:
+                    if isinstance(elem["sameAs"],dict):
+                        toremove=[]
+                        for k,v in elem["sameAs"].items():
+                            if item in v:
+                                toremove.append(k)
+                        for item in toremove:
+                            doc[n]["sameAs"].pop(item)
+            if not text or elem.get("@context")==text:
+                text=doc[n].pop("@context")
     g=ConjunctiveGraph()
-    text = doc.pop("@context")
     if text not in con:
         if mp:
             lock.acquire()
         if text not in con:
-            eprint("nope!")
             if text in listcontexts:
                 r=requests.get(listcontexts[text])
                 if r.ok:
                     con[text]=r.json()
+                    eprint("got context from "+listcontexts[text])
                 else:
                     eprint("Error, could not get context from "+text)
                     quit(-1)
             else:
-                eprint("Error, context unknown :(")
+                eprint("Error, context unknown :( "+str(text))
                 quit(-1)
         if mp:
             lock.release()
-    if "@id" not in doc and "identifier" in doc:        ##what if a @type got Orga AND Place? #boogus
-        doc["@id"]="http://data.slub-dresden.de/"
-        if any("Orga" in s for s in doc["@type"]):
-            doc["@id"]+="orga/"
-        elif any("Place" in s for s in doc["@type"]):
-            doc["@id"]+="geo/"
-        elif any("Person" in s for s in doc["@type"]):
-            doc["@id"]+="persons/"
-        doc["@id"]+=doc["identifier"]
-    toRemove=["@context","identifier"]
-    toRemoveVal=["http://www.biographien.ac.at"]
-    for item in toRemoveVal:
-        if "sameAs" in doc:
-            if isinstance(doc["sameAs"],dict):
-                toremove=[]
-                for k,v in doc["sameAs"].items():
-                    if item in v:
-                        toremove.append(k)
-                for item in toremove:
-                    doc["sameAs"].pop(item)
-    for key in doc:
-        if key.startswith("_"):
-            toRemove.append(key)
-    for cul in toRemove:
-        if cul in doc:
-            doc.pop(cul)
-    triple=""
-    try:
+    if not args.debug:
+        with open(name,"a") as fd:
+            g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+            fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+            fd.write("\n")
+            fd.flush()
+    else:
         g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-        triple=str(g.serialize(format='nt').decode('utf-8').rstrip())
-    except:
-        eprint(doc)
-    triples=[]
-    for line in triple.split('\n'):
-        triples.append(line)
-    if mp:
-        lock.acquire()
-    for triple in triples:
-        sys.stdout.write(str(triple)+"\n")
-    if mp:
-        lock.release()
-    #for s,p,o in g:
-    #    print(s,p,o)
-            #con.insert_triple
+        sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
         
-    #except:
-        #eprint("couldn't serialize json! "+str(ldj))
-        #return
             
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='ElasticSearch/ld-json to RDF/Virtuoso')
@@ -128,16 +120,19 @@ if __name__ == "__main__":
             m = Manager()
             l = m.Lock()
             c = m.dict()
-            pool = Pool(initializer=init,initargs=(l,c,True,))
-            pool.map(get_rdf, esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True))
-            pool.close()
-            pool.join()
-            
+            i = m.dict({"host":args.host+":"+str(args.port),
+                        "type":args.type,
+                        "index":args.index})
+            for fatload in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
+                Process(target=run_mp,args=(l,c,True,i,fatload)).start()
         else:
             global con
+            global mp
+            mp=False
+            global name
             con={}
-            for doc in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=True):
-                get_rdf(doc,False)
+            for doc in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
+                get_rdf(doc)
     elif args.doc:
         es=Elasticsearch([{'host':args.host}],port=args.port)  
         process_stuff(es.get(index=args.index,doc_type=args.type,id=args.doc))
