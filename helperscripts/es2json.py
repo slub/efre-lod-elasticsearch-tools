@@ -3,7 +3,7 @@
 from datetime import datetime
 import json
 from pprint import pprint
-from elasticsearch import Elasticsearch
+import elasticsearch
 import argparse
 import sys, os, time, atexit
 from signal import SIGTERM 
@@ -164,7 +164,7 @@ def eprint(*args, **kwargs):
 def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None):
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port)
+    es=elasticsearch.Elasticsearch([{'host':host}],port=port)
     try:
         page = es.search(
             index = index,
@@ -175,7 +175,7 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
             _source=source,
             _source_exclude=source_exclude)
     except elasticsearch.exceptions.NotFoundError:
-        sys.stderr.write("not found: "+host+":"+port+"/"+index+"/"+type+"/_search\n")
+        sys.stderr.write("aborting.\n")
         exit(-1)
     sid = page['_scroll_id']
     scroll_size = page['hits']['total']
@@ -209,7 +209,7 @@ def litter(lst, elm):
 def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,headless=False):
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port)
+    es=elasticsearch.Elasticsearch([{'host':host}],port=port)
     try:
         page = es.search(
             index = index,

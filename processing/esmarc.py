@@ -612,7 +612,7 @@ entities = {
         },
     "persons": {
         "@id"           :get_or_generate_id,
-        "@context"      :"http://schema.org/",
+        "@context"      :"http://schema.org",
         "@type"         :"http://schema.org/Person",
         "identifier"    :{getmarc:"001"},
         "name"          :{getmarc:"100..a"},

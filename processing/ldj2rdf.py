@@ -13,7 +13,7 @@ from rdflib.plugin import get as plugin
 from pprint import pprint
 from elasticsearch import Elasticsearch
 from datetime import datetime
-from multiprocessing import Pool, Manager,current_process,Process
+from multiprocessing import Pool, Manager,current_process,Process,cpu_count
 
 from es2json import eprint
 from es2json import esgenerator
@@ -23,12 +23,10 @@ from es2json import litter
 global args
 global es
 
-listcontexts={"http://schema.org":"http://schema.org/docs/jsonldcontext.json"}
+listcontexts={"http://schema.org":"http://schema.org/docs/jsonldcontext.json",
+              "http://schema.org/":"http://schema.org/docs/jsonldcontext.json"}
 
 
-def run_mp(l,c,m,i,doc):
-    init(l,c,m,i)
-    get_rdf(doc)
 
 def init(l,c,m,i):
     global lock
@@ -66,35 +64,37 @@ def get_rdf(doc):
                             doc[n]["sameAs"].pop(item)
             if not text or elem.get("@context")==text:
                 text=doc[n].pop("@context")
-    g=ConjunctiveGraph()
-    if text not in con:
-        if mp:
-            lock.acquire()
+    if doc:
+        g=ConjunctiveGraph()
         if text not in con:
-            if text in listcontexts:
-                r=requests.get(listcontexts[text])
-                if r.ok:
-                    con[text]=r.json()
-                    eprint("got context from "+listcontexts[text])
+            if mp:
+                lock.acquire()
+            if text not in con:
+                if text in listcontexts:
+                    r=requests.get(listcontexts[text])
+                    if r.ok:
+                        con[text]=r.json()
+                        eprint("got context from "+listcontexts[text])
+                    else:
+                        eprint("Error, could not get context from "+text)
+                        return
                 else:
-                    eprint("Error, could not get context from "+text)
-                    quit(-1)
-            else:
-                eprint("Error, context unknown :( "+str(text))
-                quit(-1)
-        if mp:
-            lock.release()
-    if not args.debug:
-        with open(name,"a") as fd:
+                    eprint("Error, context unknown :( "+str(text),doc)
+                    return
+            if mp:
+                lock.release()
+        if not args.debug:
+            with open(name,"a") as fd:
+                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+                fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+                fd.write("\n")
+                fd.flush()
+        else:
             g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-            fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-            fd.write("\n")
-            fd.flush()
-    else:
-        g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-        sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+            sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        return
         
             
 if __name__ == "__main__":
@@ -123,8 +123,12 @@ if __name__ == "__main__":
             i = m.dict({"host":args.host+":"+str(args.port),
                         "type":args.type,
                         "index":args.index})
+            pool = Pool(processes=cpu_count()*2,initializer=init,initargs=(l,c,True,i,))
             for fatload in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
-                Process(target=run_mp,args=(l,c,True,i,fatload)).start()
+                pool.apply_async(get_rdf,args=(fatload,))
+            pool.close()
+            pool.join()
+                    
         else:
             global con
             global mp
