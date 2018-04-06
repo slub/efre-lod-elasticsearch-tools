@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from rdflib import URIRef
 from uuid import uuid4
+from multiprocessing import Pool, Manager,current_process,Process,cpu_count
 import json
 #import urllib.request
 import codecs
@@ -14,6 +15,7 @@ import requests
 import siphash
 import re
 from es2json import esgenerator
+from es2json import esfatgenerator
 from es2json import ArrayOrSingleValue
 from es2json import eprint
 from es2json import litter
@@ -216,7 +218,7 @@ def get_or_generate_id(record,entity):
     if generate==True:
         identifier = None
     else:
-        r=requests.get("http://"+args.host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
+        r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
         identifier=r.json().get("identifier")
     if identifier:
         return id2uri(identifier,entity)
@@ -256,14 +258,11 @@ def getmarc(json,regex,entity):
         else:
             json=json.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
             if isinstance(json,list):  
-                for elem in json:    
+                for elem in json:
                     if isinstance(elem,dict):
                         for k in elem:
                             if isinstance(elem[k],list):
                                 for final in elem[k]:
-                                    for c,w in final.items():
-                                        if c==regex[-1]:
-                                            ret=litter(ret,w)
                                     if regex[-1] in final:
                                         ret=litter(ret,final[regex[-1]])
     if ret:
@@ -581,6 +580,7 @@ def check(ldj,entity):
             ldj["publisher"]["location"]=ldj.pop("pub_place")
     return ldj
 
+
 entities = {
    "resources":{
         "@id"               :get_or_generate_id,
@@ -623,7 +623,7 @@ entities = {
         "hasOccupation" :{hasOccupation:"550..0"},
         "birthPlace"    :{birthPlace:"551"},
         "deathPlace"    :{deathPlace:"551"},
-        "honoricSuffix" :{honoricSuffix:["550..0","550..00","550..i","550..a","550..9"]},
+        "honoricSuffix" :{honoricSuffix:["550..0","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
         "_recorddate"         :{getmarc:"005"},
@@ -676,9 +676,22 @@ def traverse(dict_or_list, path):
                     yield k, v
 
 
+def get_source_include_str():
+    items=["079.*.b"]
+    for k,v in traverse(entities,""):
+        if isinstance(v,str) and not v.startswith("http"):
+            if ".." in v:
+                v=v.replace("..",".*.")     ##replace esmarc syntax by elasticsearch syntax
+            if v not in items:
+                items.append(v)
+    _source=",".join(items)
+    return _source
+    
+ 
+
 
 #processing a single line of json without whitespace 
-def process_line(jline,elastic):
+def process_line(jline,host,port,index,type):
     snine=getmarc(jline,"079..b",None)
     entity=None
     if snine=="p" or snine=="p": # invididualisierte Person
@@ -724,10 +737,10 @@ def process_line(jline,elastic):
                 mapline[key]=ArrayOrSingleValue(value)
     if mapline:
         mapline=check(mapline,entity)
-        if elastic.host:
-            mapline["url"]="http://"+elastic.host+":"+str(elastic.port)+"/"+elastic.index+"/"+elastic.type+"/"+getmarc(jline,"001",None)+"?pretty"
+        if host and port and index and type:
+            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
         return {entity:mapline}
-
+    
 def output(entity,mapline,outstream):
     if outstream:
         outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
@@ -735,6 +748,52 @@ def output(entity,mapline,outstream):
         sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
         sys.stdout.flush()
 
+def init_mp(q,h):
+    global queue
+    global host
+    host = h
+    queue=q
+
+def consumer(entities,queue,prefix):
+    outstream={}
+    filepaths=[]
+    for ent,mapping in entities.items():    #open fds
+        filepath=str(prefix+ent+"-records.ldj")
+        filepaths.append(filepath)
+        if os.path.isfile(filepath):
+            outstream[ent]=open(filepath,"a")
+        else:
+            outstream[ent]=open(filepath,"w")
+    while True:     # eventloop
+        returnobj = queue.get(block=True,timeout=None)
+        if not returnobj:
+            break
+        else:
+            if isinstance(returnobj,list):
+                for elem in returnobj:
+                    for k,v in elem.items():
+                        output(k,v,outstream)
+                    
+    for ent,mapping in outstream.items():   #close fds
+        mapping.close()
+    for path in filepaths:
+        if os.stat(path).st_size==0:
+            os.remove(path)
+
+def producer(ldj,host,port):
+    target_list=[]
+    for source_record in ldj:
+        record=source_record.pop("_source")
+        type=source_record.pop("_type")
+        index=source_record.pop("_index")
+        target_record=process_line(record,host,port,index,type)
+        if target_record:
+            target_list.append(target_record)
+    if target_list:
+        queue.put(target_list,block=True,timeout=None)
+            
+        
+        
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
@@ -749,30 +808,40 @@ if __name__ == "__main__":
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-    outstream=None
-    filepaths=[]
-    input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    if not args.debug:
-        outstream={}
-        for ent,mapping in entities.items():
-            filepath=str(args.prefix+ent+"-records.ldj")
-            filepaths.append(filepath)
-            if os.path.isfile(filepath):
-                outstream[ent]=open(filepath,"a")
-            else:
-                outstream[ent]=open(filepath,"w")
-    if args.host: #if inf not set, than try elasticsearch
-        if args.index and args.type:
-            for hits in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-                returnobj=process_line(hits,args)
-                if isinstance(returnobj,dict):
-                    for k,v in returnobj.items():
-                        output(k,v,outstream)
-        else:
-            sys.stderr.write("Error! no Index/Type set but -host! add -index and -type or disable -host if you read from stdin/file Aborting...\n")
+    #outstream=None
+    #filepaths=[]
+    #if not args.debug:
+        #outstream={}
+        #for ent,mapping in entities.items():
+            #filepath=str(args.prefix+ent+"-records.ldj")
+            #filepaths.append(filepath)
+            #if os.path.isfile(filepath):
+                #outstream[ent]=open(filepath,"a")
+            #else:
+                #outstream[ent]=open(filepath,"w")
+    if args.host and args.index and args.type: #if inf not set, than try elasticsearch
+        m=Manager()
+        q=m.Queue(maxsize=-1)
+        pool = Pool(8,initializer=init_mp,initargs=(q,args.host,))
+        p = Process(target=consumer,args=(entities,q,"",))
+        p.start()
+        for ldj in esfatgenerator(host=args.host,
+                                  port=args.port,
+                                  index=args.index,
+                                  type=args.type,
+                                  #source_include=get_source_include_str()
+                                  ):
+            pool.apply_async(producer,args=(ldj,args.host,args.port,))
+        pool.join()
+        pool.close()
+        q.put(None)
+        p.join()
+        quit(0)
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
-        for line in input_stream:
-            process_line(json.loads(line),args,outstream)
+        eprint("No host/port/index specified, trying stdin\n")
+        with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
+            for line in input_stream:
+                process_line(json.loads(line),args.host,args.port,args.index,args.type)
     if not args.debug:
         for ent,mapping in outstream.items():
             mapping.close()
