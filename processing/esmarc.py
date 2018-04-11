@@ -212,14 +212,24 @@ def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def get_or_generate_id(record,entity):
-    generate=True
+    generate=False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
-    if generate==True:
+    if generate:
         identifier = None
     else:
-        r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
-        identifier=r.json().get("identifier")
+        ppn=gnd2uri("("+str(getmarc(record,"003",entity)[0]+")"+str(getmarc(record,"001",entity))))
+        url="http://"+host+":9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
+        try:
+            r=requests.get(url)
+            if r.json().get("hits").get("total")>=1:
+                identifier=r.json().get("hits").get("hits")[0].get("_id")
+            else:
+                identifier=None
+        except:
+            identifier=None
+        #r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
+        #identifier=r.json().get("identifier")
     if identifier:
         return id2uri(identifier,entity)
     else:
@@ -523,7 +533,7 @@ def check(ldj,entity):
             ldj["sameAs"]=[ldj.pop("sameAs")]
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
-            ldj["sameAs"]=uri2url(ldj["_isil"],ldj.pop("identifier"))
+            ldj["sameAs"]=litter(ldj["sameAs"],uri2url(ldj["_isil"],ldj.pop("identifier")))
         ldj["identifier"]=ldj["@id"].split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
@@ -637,6 +647,8 @@ entities = {
         "name"              :{getmarc:"110..a"},
         "alternateName"     :{getmarc:["410..a","410..b"]},
         "sameAs"            :{getmarc:["024..a","670..u"]},
+        #"parentOrganization":{getparentsub:["510..0","510..9"]},
+        #"subOrganization"   :{getparentsub:["510..0","510..9"]},
         "areaServed"        :{areaServed:["551..0"]},
         "_recorddate"             :{getmarc:"005"},
         "_isil"             :{getmarc:"003"}
@@ -748,50 +760,52 @@ def output(entity,mapline,outstream):
         sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
         sys.stdout.flush()
 
-def init_mp(q,h):
-    global queue
-    global host
-    host = h
-    queue=q
 
-def consumer(entities,queue,prefix):
+def setupoutput(prefix):
+    if prefix:
+        if not os.path.isdir(prefix):
+            os.mkdir(prefix)
+        if not prefix[-1]=="/":
+            prefix+="/"
+    else:
+        prefix=""
+    for entity in entities:
+        if not os.path.isdir(prefix+entity):
+            os.mkdir(prefix+entity)
+
+def init_mp(h,p,pr):
+    global host
+    global port
+    global outstream
+    global filepaths
+    global prefix
+    if not pr:
+        prefix = ""
+    elif pr[-1]!="/":
+        prefix=pr+"/"
+    else:
+        prefix=pr
+    port = p
+    host = h
     outstream={}
     filepaths=[]
-    for ent,mapping in entities.items():    #open fds
-        filepath=str(prefix+ent+"-records.ldj")
-        filepaths.append(filepath)
-        if os.path.isfile(filepath):
-            outstream[ent]=open(filepath,"a")
-        else:
-            outstream[ent]=open(filepath,"w")
-    while True:     # eventloop
-        returnobj = queue.get(block=True,timeout=None)
-        if not returnobj:
-            break
-        else:
-            if isinstance(returnobj,list):
-                for elem in returnobj:
-                    for k,v in elem.items():
-                        output(k,v,outstream)
-                    
-    for ent,mapping in outstream.items():   #close fds
-        mapping.close()
-    for path in filepaths:
-        if os.stat(path).st_size==0:
-            os.remove(path)
 
-def producer(ldj,host,port):
-    target_list=[]
+def worker(ldj):
+    out={}
+    for entity in entities:
+            out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
     for source_record in ldj:
         record=source_record.pop("_source")
         type=source_record.pop("_type")
         index=source_record.pop("_index")
         target_record=process_line(record,host,port,index,type)
         if target_record:
-            target_list.append(target_record)
-    if target_list:
-        queue.put(target_list,block=True,timeout=None)
-            
+            for entity in target_record:
+                out[entity].write(json.dumps(target_record[entity],indent=None)+"\n")
+    for entity in entities:
+        out[entity].close()
+        
+        
         
         
 if __name__ == "__main__":
@@ -802,49 +816,42 @@ if __name__ == "__main__":
     parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-help',action="store_true",help="print this help")
-    parser.add_argument('-prefix',type=str,default="",help='Prefix to use for output data')
+    parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     args=parser.parse_args()
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-    #outstream=None
-    #filepaths=[]
-    #if not args.debug:
-        #outstream={}
-        #for ent,mapping in entities.items():
-            #filepath=str(args.prefix+ent+"-records.ldj")
-            #filepaths.append(filepath)
-            #if os.path.isfile(filepath):
-                #outstream[ent]=open(filepath,"a")
-            #else:
-                #outstream[ent]=open(filepath,"w")
-    if args.host and args.index and args.type: #if inf not set, than try elasticsearch
-        m=Manager()
-        q=m.Queue(maxsize=-1)
-        pool = Pool(8,initializer=init_mp,initargs=(q,args.host,))
-        p = Process(target=consumer,args=(entities,q,"",))
-        p.start()
+    elif args.host and args.index and args.type and args.debug:
+        init_mp(args.host,args.port,None)
+        for ldj in esgenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       #source_include=get_source_include_str(),
+                       headless=True
+                        ):
+            record = process_line(ldj,args.host,args.port,args.index,args.type)
+            if record:
+                for k in record:
+                    print(json.dumps(record[k],indent=None))
+    elif args.host and args.index and args.type : #if inf not set, than try elasticsearch
+        setupoutput(args.prefix)
+        pool = Pool(initializer=init_mp,initargs=(args.host,args.port,args.prefix))
         for ldj in esfatgenerator(host=args.host,
-                                  port=args.port,
-                                  index=args.index,
-                                  type=args.type,
-                                  #source_include=get_source_include_str()
-                                  ):
-            pool.apply_async(producer,args=(ldj,args.host,args.port,))
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       #source_include=get_source_include_str()
+                        ):
+            pool.apply_async(worker,args=(ldj,))
         pool.join()
         pool.close()
-        q.put(None)
-        p.join()
         quit(0)
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         eprint("No host/port/index specified, trying stdin\n")
+        init_mp("localhost","DEBUG","DEBUG")
         with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
             for line in input_stream:
-                process_line(json.loads(line),args.host,args.port,args.index,args.type)
-    if not args.debug:
-        for ent,mapping in outstream.items():
-            mapping.close()
-        for path in filepaths:
-            if os.stat(path).st_size==0:
-                os.remove(path)
+                for k,v in process_line(json.loads(line),"localhost",9200,"data","mrc").items():
+                    print(v)
