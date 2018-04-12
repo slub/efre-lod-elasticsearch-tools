@@ -161,7 +161,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)   
     
     
-def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None):
+def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None):
     if not source:
         source=True
     es=elasticsearch.Elasticsearch([{'host':host}],port=port)
@@ -169,11 +169,12 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
         page = es.search(
             index = index,
             doc_type = type,
-            scroll = '2m',
+            scroll = '12h',
             size = 1000,
             body = body,
             _source=source,
-            _source_exclude=source_exclude)
+            _source_exclude=source_exclude,
+            _source_include=source_include)
     except elasticsearch.exceptions.NotFoundError:
         sys.stderr.write("aborting.\n")
         exit(-1)
@@ -181,10 +182,11 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
     scroll_size = page['hits']['total']
     yield page.get('hits').get('hits')
     while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='2d')
+        pages = es.scroll(scroll_id = sid, scroll='12h')
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
         yield pages.get('hits').get('hits')
+        
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
     if not lst:
@@ -205,8 +207,10 @@ def litter(lst, elm):
                     if element not in lst:
                         lst.append(element)
             return lst
+        else:
+            return lst
 
-def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,headless=False):
+def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,headless=False):
     if not source:
         source=True
     es=elasticsearch.Elasticsearch([{'host':host}],port=port)
@@ -214,10 +218,12 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,h
         page = es.search(
             index = index,
             doc_type = type,
-            scroll = '2m',
+            scroll = '12h',
             size = 1000,
             body = body,
-            _source=source)
+            _source=source,
+            _source_exclude=source_exclude,
+            _source_include=source_include)
     except elasticsearch.exceptions.NotFoundError:
         sys.stderr.write("not found: "+host+":"+port+"/"+index+"/"+type+"/_search\n")
         exit(-1)
@@ -229,7 +235,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,h
         else:
             yield hits
     while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='2d')
+        pages = es.scroll(scroll_id = sid, scroll='12h')
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
         for hits in pages['hits']['hits']:
@@ -238,6 +244,13 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,h
             else:
                 yield hits
 
+def isint(num):
+    try: 
+        int(num)
+        return True
+    except ValueError:
+        return False
+    
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='simple ES.Getter!')
     parser.add_argument('-host',type=str,default="127.0.0.1",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')
@@ -245,8 +258,43 @@ if __name__ == "__main__":
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
     parser.add_argument('-type',type=str,help='ElasticSearch Search Index Type to use')
     parser.add_argument('-source',type=str,help='just return this field(s)')
+    parser.add_argument("-include",type=str,help="include following _source field(s)")
+    parser.add_argument("-exclude",type=str,help="exclude following _source field(s)")
+    parser.add_argument("-id",type=str,help="retrieve single document (optional)")
+    parser.add_argument("-head",action="store_true",default=False,help="include Elasticsearch Metafields")
     parser.add_argument('-body',type=str,help='Searchbody')
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
     args=parser.parse_args()
-    
-    for json_record in esgenerator(args.host,args.port,args.index,args.type,args.body,args.source,headless=True):
-        sys.stdout.write(json.dumps(json_record)+"\n")
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.type=slashsplit[4]
+        if len(slashsplit)>5:
+            if "?pretty" in args.server:
+                args.pretty=True
+                args.id=slashsplit[5].rsplit("?")[0]
+            else:
+                args.id=slashsplit[5]
+    if args.pretty:
+        tabbing=4
+    else:
+        tabbing=None
+    if not args.id:
+        for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.head,source_exclude=args.exclude,source_include=args.include):
+            sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
+    else:
+        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
+        json_record=None
+        if args.head:
+            json_record=es.get(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
+        else:
+            json_record=es.get_source(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
+        if json_record:
+            sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
+            
+                

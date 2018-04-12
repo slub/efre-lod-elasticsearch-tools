@@ -3,6 +3,7 @@
 from rdflib import URIRef
 from uuid import uuid4
 from multiprocessing import Pool, Manager,current_process,Process,cpu_count
+import elasticsearch
 import json
 #import urllib.request
 import codecs
@@ -185,13 +186,17 @@ marc2relation = {
     "beza":"knows",
     "4:bete": "contributor",
     "4:rela":"knows",
-    "4:affi":"knows"
+    "4:affi":"knows",
+    "4:libr":"contributor",
+    "4:regi":"contributor",
+    "4:vorl":"contributor"
 }
 
-
-
-
 def gnd2uri(string):
+    if isinstance(string,list):
+        for n,uri in enumerate(string):
+            string[n]=gnd2uri(uri)
+        return string
     if string and "(DE-" in string:
         if isinstance(string,list):
             ret=[]
@@ -201,18 +206,15 @@ def gnd2uri(string):
         elif isinstance(string,str):
             return uri2url(string.split(')')[0][1:],string.split(')')[1])
 
-
-
 def uri2url(isil,num):
     if isil and num:
         return isil2sameAs.get(isil)+num
-        
 
 def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def get_or_generate_id(record,entity):
-    generate=False
+    generate=True
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
@@ -240,43 +242,57 @@ def get_or_generate_id(record,entity):
         #"identifier"        :{getmarc:"001"},
         #"name"              :{getmarc:["245..a","245..b","245..n","245..p"]},
         #"gender"            :{handlesex:["375..a"]},
-def process_field(record,value,entity):
-    ret=[]
-    if isinstance(value,dict):
-        for function,parameter in value.items():
-            ret.append(function(record,parameter,entity))
-    elif isinstance(value,str):
-        return value
-    elif isinstance(value,list):
-        for elem in value:
-            ret.append(ArrayOrSingleValue(process_field(record,elem,entity)))
-    elif callable(value):
-        return ArrayOrSingleValue(value(record,entity))
-    if ret:
-        return ArrayOrSingleValue(ret)
+
             
-def getmarc(json,regex,entity):
-    ret=None
-    if isinstance(regex,list):
+def getmarc(record,regex,entity):
+    if "+" in regex:
+        marcfield=regex[:3]
+        if marcfield in record:
+            subfields=regex.split(".")[-1].split("+")
+            data=None
+            for array in record.get("marcfield"):
+                for k,v in array.items():
+                    sset={}
+                    for subfield in v:
+                        for subfield_code in subfield:
+                            sset[subfield_code]=subfield[subfield_code]
+                    fullstr=""
+                    for sf in subfields:
+                        if sf in sset:
+                            if fullstr:
+                                fullstr+=". "
+                            fullstr+=sset[sf]
+                    if fullstr:
+                        data=litter(data,fullstr)
+            if data:
+                return ArrayOrSingleValue(data)
+        
+    else:
+        ret=[]
+        if isinstance(regex,str):
+            regex=[regex]
         for string in regex:
-            if string[:3] in json:
-                ret=litter(ret,getmarc(json,string,entity))
-    elif isinstance(regex,str):
-        if len(regex)==3 and regex in json:
-            return json.get(regex)
-        #eprint(regex+":\n"+str(json)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange json encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
+            if string[:3] in record:
+                ret=litter(ret,ArrayOrSingleValue(list(getmarcvalues(record,string,entity))))
+        if ret:
+            if isinstance(ret,list):    #simple deduplizierung via transformation zum set und retour
+                ret = list(set(ret))
+            return ArrayOrSingleValue(ret)
+
+def getmarcvalues(record,regex,entity):
+        if len(regex)==3 and regex in record:
+            yield record.get(regex)
+        #eprint(regex+":\n"+str(record)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange record encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
         else:
-            json=json.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
-            if isinstance(json,list):  
-                for elem in json:
+            record=record.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
+            if isinstance(record,list):  
+                for elem in record:
                     if isinstance(elem,dict):
                         for k in elem:
                             if isinstance(elem[k],list):
                                 for final in elem[k]:
                                     if regex[-1] in final:
-                                        ret=litter(ret,final[regex[-1]])
-    if ret:
-        return ArrayOrSingleValue(ret)
+                                        yield final.get(regex[-1])
 
 def relatedTo(jline,key,entity):
     data=[]
@@ -321,67 +337,125 @@ def relatedTo(jline,key,entity):
     if data:
         return data
 
-def areaServed(jline,key,entity):
-    data=gnd2uri(getmarc(ArrayOrSingleValue(key),jline,entity))
-    if data:
-        return data
+#def newrelatedTo(jline,key,entity):
+    ##e.g. split "551^4:orta" to 551 and orta
+    #marcfield=key[:3]
+    #data=[]
+    #if marcfield in jline:
+        #for array in jline[marcfield]:
+            #for k,v in array.items():
+                #sset={}
+                #for subfield in v:
+                    #for subfield_code in subfield:
+                        #sset[subfield_code]=subfield[subfield_code]
+                ##eprint(sset.get("9"),subfield4)
+                #eprint(sset)
+                #if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
+                    #node={}
+                    #node["_key"]=marc2relation[sset.get("9")]
+                    #if sset.get("0"):
+                        #node["sameAs"]=gnd2uri(sset.get("0"))
+                    #if sset.get("a"):
+                        #node["name"]=sset.get("a")
+                    #data.append(node)
+                #elif isinstance(sset.get("9"),list):
+                    #node={}
+                    #for elem in sset.get("9"):
+                        #if elem.startswith("v") and elem in marc2relation:
+                            #node["_key"]=marc2relation[elem]
+                            #break
+                        #elif elem in marc2relation:
+                            #node["_key"]=marc2relation[elem]
+                        #else:
+                            #continue
+                    #if not node.get("_key"):
+                        #node["_key"]="relatedTo"
+                    #if sset.get("0"):
+                        #node["sameAs"]=gnd2uri(sset.get("0"))
+                    #if sset.get("a"):
+                        #node["name"]=sset.get("a")
+                    #data.append(node)
+                    
+        #if data:
+            #return ArrayOrSingleValue(data)
+        
+def get_subfield_4(jline,key,entity):
+    #e.g. split "551^4:orta" to 551 and orta
+    marcfield=key.rsplit("^")[0]
+    subfield4=key.rsplit("^")[1]
+    data=[]
+    if marcfield in jline:
+        for array in jline[marcfield]:
+            for k,v in array.items():
+                sset={}
+                for subfield in v:
+                    for subfield_code in subfield:
+                        sset[subfield_code]=subfield[subfield_code]
+                #eprint(sset.get("9"),subfield4)
+                if subfield4 in sset.get("9"):
+                    node={}
+                    if sset.get("0"):
+                        node["sameAs"]=gnd2uri(sset.get("0"))
+                    if sset.get("a"):
+                        node["name"]=sset.get("a")
+                    data.append(node)
+        if data:
+            return ArrayOrSingleValue(data)
 
-def birthPlace(jline,key,entity):
-    bp=Place(jline.get(key[:3]),'4:ortg')
-    if bp:
-        return {"sameAs":bp}
+#def birthPlace(jline,key,entity):
+    #bp=Place(jline.get(key[:3]),'4:ortg')
+    #if bp:
+        #return {"sameAs":bp}
 
-def deathPlace(jline,key,entity):
-    bp=Place(jline.get(key[:3]),'4:orts')
-    if bp:
-        return {"sameAs":bp}
-    
-def Place(record,event):
-    data=None
-    sset={}
-    for c,w in traverse(record,""):
-        if isinstance(w,dict):
-            for mrc_indicator,ind_val in w.items():
-                if isinstance(ind_val,list):
-                    for subfield in ind_val:
-                        if isinstance(subfield,dict):
-                            for k,v in subfield.items():
-                                if k=="0":
-                                    sset[k]=gnd2uri(v)
-                                else:
-                                    sset[k]=v
-                        if isinstance(subfield,str):
-                            uri=gnd2uri(subfield)
-                            if uri:
-                                if not sset["0"]:
-                                    sset["0"]=uri
-                                elif uri not in sset["0"]:
-                                    if isinstance(sset["0"],list):
-                                        sset["0"].append(uri)
-                                    elif isinstance(sset["0"],str):
-                                        nochnenull=sset.pop("0")
-                                        sset["0"]=[]
-                                        sset["0"].append(nochnenull)
-                                        sset["0"].append(uri)
-    if event==sset.get("9") and sset.get("0"):
-        if not data:
-            data=[]    
-        zero=ArrayOrSingleValue(sset.get("0"))
-        if isinstance(zero,str):
-            data.append(zero)
-        elif isinstance(zero,list):
-            for elem in zero:
-                data.append(elem)
-    if data:
-        return ArrayOrSingleValue(data)
+#def deathPlace(jline,key,entity):
+    #bp=Place(jline.get(key[:3]),'4:orts')
+    #if bp:
+        #return {"sameAs":bp}
+
+#def Place(record,event):
+    #data=None
+    #sset={}
+    #for c,w in traverse(record,""):
+        #if isinstance(w,dict):
+            #for mrc_indicator,ind_val in w.items():
+                #if isinstance(ind_val,list):
+                    #for subfield in ind_val:
+                        #if isinstance(subfield,dict):
+                            #for k,v in subfield.items():
+                                #if k=="0":
+                                    #sset[k]=gnd2uri(v)
+                                #else:
+                                    #sset[k]=v
+                        #if isinstance(subfield,str):
+                            #uri=gnd2uri(subfield)
+                            #if uri:
+                                #if not sset["0"]:
+                                    #sset["0"]=uri
+                                #elif uri not in sset["0"]:
+                                    #if isinstance(sset["0"],list):
+                                        #sset["0"].append(uri)
+                                    #elif isinstance(sset["0"],str):
+                                        #nochnenull=sset.pop("0")
+                                        #sset["0"]=[]
+                                        #sset["0"].append(nochnenull)
+                                        #sset["0"].append(uri)
+    #if event==sset.get("9") and sset.get("0"):
+        #if not data:
+            #data=[]    
+        #zero=ArrayOrSingleValue(sset.get("0"))
+        #if isinstance(zero,str):
+            #data.append(zero)
+        #elif isinstance(zero,list):
+            #for elem in zero:
+                #data.append(elem)
+    #if data:
+        #return ArrayOrSingleValue(data)
 
 def deathDate(jline,key,entity):
     return marc_dates(jline.get(key),"deathDate")
-    
+
 def birthDate(jline,key,entity):
     return marc_dates(jline.get(key),"birthDate")
-
-
 
 def marc_dates(record,event):
     data=None
@@ -408,7 +482,26 @@ def marc_dates(record,event):
         return dateToEvent(recset["4:datl"],event)
     else:
         return None
-    
+
+def getparent(jline,key,entity):
+    data=None
+    try:
+        for i in jline[key[0][0:3]][0]:
+            sset={}
+            for j in jline[key[0][0:3]][0][i]:
+                for k,v in dict(j).items():
+                    sset[k]=v
+                conti=False
+                if "9" in sset:
+                    if sset["9"]=='4:adue':
+                            conti=True
+                if conti and "0" in sset:
+                    data=litter(data,gnd2uri(sset["0"]))
+    except:
+        pass
+    if data:
+        return data
+
 def honoricSuffix(jline,key,entity):
     data=None
     try:
@@ -428,6 +521,7 @@ def honoricSuffix(jline,key,entity):
     if data:
         return data
 
+    
 def hasOccupation(jline,key,entity):
     try:
             data=[]
@@ -510,28 +604,31 @@ def check(ldj,entity):
         v=ArrayOrSingleValue(v)
     if not ldj:
         return
-    for person in ["author","contributor"]:
-        if person in ldj:
-            if isinstance(ldj[person],str):
-                if ldj[person][:8] in isil2sameAs:
-                    uri=gnd2uri(ldj.pop(person))
-                    ldj[person]={"sameAs":uri}
-            elif isinstance(ldj[person],list):
-                persons={"sameAs":list()}
-                for author in ldj[person]:
-                    if author[:8] in isil2sameAs:
-                        persons["sameAs"].append(gnd2uri(author))
-                ldj.pop(person)
-                ldj[person]=persons
+#    for person in ["author","contributor"]:
+#        if person in ldj:
+#            if isinstance(ldj[person],str):
+#                if ldj[person][:8] in isil2sameAs:
+#                    uri=gnd2uri(ldj.pop(person))
+#                    ldj[person]={"sameAs":uri}
+#            elif isinstance(ldj[person],list):
+#                persons={"sameAs":list()}
+#                for author in ldj[person]:
+#                    if author["sameAs"][:8] in isil2sameAs:
+#                        persons["sameAs"].append(gnd2uri(author))
+#                #ldj.pop(person)
+#                #ldj[person]=persons
     if 'genre' in ldj:
         genre=ldj.pop('genre')
         ldj['genre']={}
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
     if "identifier" in ldj:
-        if "sameAs" in ldj and not isinstance(ldj["sameAs"],list):
+        if "sameAs" in ldj and isinstance(ldj["sameAs"],str):
             ldj["sameAs"]=[ldj.pop("sameAs")]
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
+        elif "sameAs" not in ldj:
+            ldj["sameAs"]=None
+            ldj["sameAs"]=litter(ldj["sameAs"],uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
             ldj["sameAs"]=litter(ldj["sameAs"],uri2url(ldj["_isil"],ldj.pop("identifier")))
         ldj["identifier"]=ldj["@id"].split("/")[4]
@@ -597,14 +694,14 @@ entities = {
         "@type"             :"http://schema.org/CreativeWork",
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
-        "name"              :{getmarc:["245..a","245..b"]},
+        "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
         "description"       :{getmarc:["245..c"]},
-        "alternateName"     :{getmarc:["130..a","130..p","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{getmarc:"100..0"},
         "contributor"       :{getmarc:"700..0"},
         "pub_name"          :{getmarc:["260..b","264..b"]},
         "pub_place"         :{getmarc:["260..a","264..a"]},
-        "datePublished"     :{getmarc:["260..c","264..c","362..a"]},
+        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
         "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
         "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
         "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
@@ -612,13 +709,15 @@ entities = {
         "hasPart"           :{getmarc:"773..g"},
         "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
         "license"           :{getmarc:"540..a"},
-        "inLanguage"        :{getmarc:["041..a","041..d","130..l","730..l"]},
+        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
         "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
         "pageStart"         :{getmarc:"773..q"},
         "issueNumber"       :{getmarc:"773..l"},
         "volumeNumer"       :{getmarc:"773..v"},
         "_recorddate"       :{getmarc:"005"},
-        "_isil"             :{getmarc:"003"}
+        "_isil"             :{getmarc:"003"},
+        "locationCreated"   :{get_subfield_4:"551^4:orth"},
+        "relatedTo"         :{newrelatedTo:"500..0"}
         },
     "persons": {
         "@id"           :get_or_generate_id,
@@ -627,17 +726,18 @@ entities = {
         "identifier"    :{getmarc:"001"},
         "name"          :{getmarc:"100..a"},
         "sameAs"        :{getmarc:"024..a"},
-        "gender"        :{handlesex:["375..a"]},
+        "gender"        :{handlesex:"375..a"},
         "alternateName" :{getmarc:["400..a","400..c"]},
-        "relatedTo"     :{relatedTo:"500..0"},
+        "relatedTo"     :{newrelatedTo:"500..0"},
         "hasOccupation" :{hasOccupation:"550..0"},
-        "birthPlace"    :{birthPlace:"551"},
-        "deathPlace"    :{deathPlace:"551"},
+        "birthPlace"    :{get_subfield_4:"551^4:ortg"},
+        "deathPlace"    :{get_subfield_4:"551^4:orts"},
         "honoricSuffix" :{honoricSuffix:["550..0","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
-        "_recorddate"         :{getmarc:"005"},
-        "_isil"             :{getmarc:"003"}
+        "_recorddate"   :{getmarc:"005"},
+        "_isil"         :{getmarc:"003"},
+        "workLocation"  :{get_subfield_4:"551^4:ortw"}
     },
     "orga": {
         "@id"               :get_or_generate_id,
@@ -645,12 +745,13 @@ entities = {
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
         "name"              :{getmarc:"110..a"},
-        "alternateName"     :{getmarc:["410..a","410..b"]},
+        "alternateName"     :{getmarc:"410..a+b"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
-        #"parentOrganization":{getparentsub:["510..0","510..9"]},
-        #"subOrganization"   :{getparentsub:["510..0","510..9"]},
-        "areaServed"        :{areaServed:["551..0"]},
-        "_recorddate"             :{getmarc:"005"},
+        "parentOrganization":{get_subfield_4:"551^4:adue"},
+        "location"          :{get_subfield_4:"551^4:orta"},
+        "additionalType"    :{get_subfield_4:"550^4:obin"},
+        "areaServed"        :{get_subfield_4:"551^4:geow"},
+        "_recorddate"       :{getmarc:"005"},
         "_isil"             :{getmarc:"003"}
         },
     "geo": {
@@ -699,7 +800,20 @@ def get_source_include_str():
     _source=",".join(items)
     return _source
     
- 
+def process_field(record,value,entity):
+    ret=[]
+    if isinstance(value,dict):
+        for function,parameter in value.items():
+            ret.append(function(record,parameter,entity))
+    elif isinstance(value,str):
+        return value
+    elif isinstance(value,list):
+        for elem in value:
+            ret.append(ArrayOrSingleValue(process_field(record,elem,entity)))
+    elif callable(value):
+        return ArrayOrSingleValue(value(record,entity))
+    if ret:
+        return ArrayOrSingleValue(ret)
 
 
 #processing a single line of json without whitespace 
@@ -739,14 +853,14 @@ def process_line(jline,host,port,index,type):
                             if dictkey not in mapline:
                                 mapline[dictkey]=[elem]
                             else:
-                                mapline[dictkey].appen
+                                mapline[dictkey].append(elem)
                         elif isinstance(elem,dict):
                             if key not in mapline:
                                 mapline[key]=[elem]
                             else:
                                 mapline[key].append(elem)
             else:
-                mapline[key]=ArrayOrSingleValue(value)
+                mapline[key]=value
     if mapline:
         mapline=check(mapline,entity)
         if host and port and index and type:
@@ -815,13 +929,40 @@ if __name__ == "__main__":
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
+    parser.add_argument('-id',type=str,help='map single document')
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
     args=parser.parse_args()
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.type=slashsplit[4]
+        if len(slashsplit)>5:
+            if "?pretty" in args.server:
+                args.pretty=True
+                args.id=slashsplit[5].rsplit("?")[0]
+            else:
+                args.id=slashsplit[5]
+    if args.pretty:
+        tabbing=4
+    else:
+        tabbing=None
     if args.help:
         parser.print_help(sys.stderr)
-        exit()
+        exit()        
+    elif args.host and args.index and args.type and args.id and args.debug:
+        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
+        json_record=None
+        json_record=es.get_source(index=args.index,doc_type=args.type,_source=True,id=args.id)
+        if json_record:
+            print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
     elif args.host and args.index and args.type and args.debug:
         init_mp(args.host,args.port,None)
         for ldj in esgenerator(host=args.host,
@@ -845,8 +986,8 @@ if __name__ == "__main__":
                        #source_include=get_source_include_str()
                         ):
             pool.apply_async(worker,args=(ldj,))
-        pool.join()
         pool.close()
+        pool.join()
         quit(0)
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         eprint("No host/port/index specified, trying stdin\n")
@@ -854,4 +995,4 @@ if __name__ == "__main__":
         with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
             for line in input_stream:
                 for k,v in process_line(json.loads(line),"localhost",9200,"data","mrc").items():
-                    print(v)
+                    print(json.dumps(v,indent=tabbing))
