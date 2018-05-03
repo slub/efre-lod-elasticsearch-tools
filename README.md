@@ -1,13 +1,13 @@
 # SLUB Linked Open Data ElasticSearch Toolchain
-Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic Metadata such as MARC21, FINC-SOLR or LIDO. Prerequisits is to have this data in a Elasticsearch-Index or as Line-delimited JSON. For MARC21, use this tool: [marc2jsonl](https://github.com/slub/marc2jsonl). LIDO can be transposed from XML to JSON-LD via a [helperscript](../master/helperscripts/xml-json). To ingest your Line-delimited JSON data to Elasticsearch, the best tool is [esbulk](https://github.com/miku/esbulk), but use the -id switch for your Pica Product Numbers. In our case, we use [Schema.org](https://schema.org), but you can use your own schema, just adjust esmarc.py.
+Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic Metadata such as MARC21, FINC-SOLR or LIDO. Prerequisits is to have this data in a Elasticsearch-Index. For MARC21, use this tool: [marc2jsonl](https://github.com/slub/marc2jsonl). LIDO can be transposed from XML to JSON-LD via a [helperscript](../master/helperscripts/xml-json). To ingest your Line-delimited JSON data to Elasticsearch, the best tool is [esbulk](https://github.com/miku/esbulk), but use the -id switch for your Pica Product Numbers. In our case, we use [Schema.org](https://schema.org), but you can use your own schema, just adjust esmarc.py.
 
 ##### Table of Contents
 
-[getindex](#getindex.py)
+[initialize environment](#init_environment.sh)
+
+[getindex](#es2json.py)
 
 [esmarc](#esmarcpy)
-
-[esfstats-python](#esfstats-python)
 
 [entityfacts-bot](#entityfacts-bot.py)
 
@@ -20,13 +20,24 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 [gnd2swb](#gnd2swb.py)
 
 
+<a name="init_environment.sh" />
 
-<a name="getindex.py"/>
+# init\_environment.sh
 
-# getindex.py
-simple download-script for saving a ElasticSearch-index into a line-delimited JSON-File
+set the PYTHONPATH variable to the path of this git repository and it's subfolders. It also works when called outside of the git repository.
+
+## Usage
+
+. ./init\_environment.sh
+
+<a name="es2json.py"/>
+
+# es2json.py
+simple download-script for saving a whole ElasticSearch-index, just the corresponding type or just a document into a line-delimited JSON-File
 
 it reads some cmdline-arguments and prints the data to stdout. you can pipe it into your next processing-programm or save it via > to a file.
+
+also contains some useful functions used in other tools.
 
 ## Usage
 
@@ -38,6 +49,8 @@ getindex.py
 	-index	   ElasticSearch Index to use
 	-type	   ElasticSearch doc_type
 	-body	   Select specific fields or body
+        -server    use http://host:port/index/doc_type/doc_id syntax
+
 ```
 
 ## Requirements
@@ -47,11 +60,12 @@ e.g.
 ```
 sudo apt-get install python3-elasticsearch
 ```
-<a name="esmarcpy"/>
+
+<a name="esmarc.py"/>
 
 # esmarc
 
-esmarc is a python3 tool to read line-delimited JSON from a file, from stdin or from an elasticSearch index, perform a simple mapping and writes out to stdout, a file or writes it via the bulk-endpoint into a new elasticSearch index.
+esmarc is a python3 tool to read line-delimited JSON from an elasticSearch index, perform a simple mapping and writes the output in a directory with a file for each mapping type.
 
 dependencies:
 python3-elasticsearch
@@ -64,49 +78,24 @@ $ esmarc.py <OPTARG>
 	-port   	Port of the ElasticSearch-node which is set by -host. default is 9200.
 	-index		ElasticSearch index to use to harvest the data.
 	-type		ElasticSearch type to use to harvest the data.
-	-tohost 	hostname or IP-Address of the ElasticSearch-node to use for Output.
-	-toport		Port of the ElasticSearch-node which is set by -tohost. default is 9200.
-	-same		Select this switch if the source- and target ElasticSearch-node are the same.
-	-toindex	ElasticSearch Index to use to ingest the processed data.
-	-show_schaemas	show the schemas which are defined in the sourcecode.
+        -id		map a single document, given by id.
+        -pretty		output tabbed json.
 	-schema		select the schema which should be defined in the sourcecode. also used for the doc_type if ingested in a new elasitcsearch-index
-	-i		Input file path. Default is stdin if no arg is given.
-	-o		Output file path. Default is stdout if no arg is given.
+        -server         use http://host:port/index/doc_type/doc_id syntax. overwrites host, port, index, type, id.
 ```
 
 examples:
 
-`$ esmarc.py -i input-ldj -o output.jsonl -schema schemaorg`
 
-transforms the marc-ldj data to line-delimited schema.org data.
 
-`$ esmarc.py -host 127.0.0.1 -index source -type mrc -schema bibframe > output.ldj`
+`$ esmarc.py -host 127.0.0.1 -index source -type mrc`
 
-harvests the data from localhost and prints the data to output.ldj in bibfra.me format.
+transforms the marcXchange data to line-delimited schema.org data.
 
-`$ esmarc.py -host 127.0.0.1 -index source -type mrc -same -toindex newindex -schema bibframe`
+creates a output directory for every type of entity set up.
 
-harvests the data from localhost and puts the transformed data to 127.0.0.1:/newindex/bibframe
 
-<a name="esfstats-python"/>
 
-# esfstats-python 
-
-esfstats-python is a Python program that extracts some statistics re. field coverage in an ElasticSearch Index.
-
-you need to install elasticsearch-python
-
-## Usage
-
-```
-esfstats 
-        -host   hostname or IP of the elasticsearch instance
-        -port   port of the native Elasticsearch transport protocol API
-        -index  index name
-        -type   document type
-        -help   print this help
-        -marc   ignore Marc identifier field if you are analysing an index of marc records
-```
 <a name="entityfacts-bot.py"/>
 
 # entityfacts-bot.py 
@@ -114,7 +103,7 @@ esfstats
 entityfacts-bot.py is a Python3 program/daemon that enrichs your elasticSearch index with facts and data from entitiyfacts.  Prerequisits is that you have a field containing your GND-Identifier. Default is a schema.org mapping but you can adjust the mapping via the schema2entity python-dict(). On the right side of that dict() you have to fill in your keys, on the left side are the keys of entityfacts. visit http://hub.culturegraph.org/entityfacts/context/v1/entityfacts.jsonld for a list of supported keys. It can be either run standalone or as a service. In case of running it as a service there are two options. Either it runs in the background and enriches all the data in the specified index or it opens a TCP Socket to wait for a list of id's to enrich in the elasticsearch Index. Configuration can also be done over a json-formatted file.
 
 
-It connects to an elasticSearch node and updates the given index.
+It connects to an elasticsearch node and updates the given index.
 
 ## Usage
 
@@ -158,6 +147,7 @@ e.g. (ubuntu)
 ```
 sudo apt-get install python3-elasticsearch
 ```
+
 <a name="ldj2rdf.py"/>
 
 # ldj2rdf.py 
@@ -181,7 +171,6 @@ This python3 program/daemon transforms line-delimited json either read in from a
 ## Requirements
 
 python3-rdflib
-python3-pyodbc
 python3-elasticsearch
 
 
