@@ -342,7 +342,10 @@ def relatedTo(jline,key,entity):
                                     node["_key"]=v
                                     break
                         elif [x for x in marc2relation if x.lower() in elem.lower()]:
-                            node["_key"]=marc2relation[elem]
+                            if elem in marc2relation:
+                                node["_key"]=marc2relation[elem]
+                            if elem.lower() in marc2relation:
+                                node["_key"]=marc2relation[elem.lower()]
                         elif not node.get("_key"):
                             node["_key"]="relatedTo"
                         #eprint(elem,node)
