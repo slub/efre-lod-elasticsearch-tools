@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from rdflib import URIRef
+import traceback
 from uuid import uuid4
 from multiprocessing import Pool, Manager,current_process,Process,cpu_count
 import elasticsearch
@@ -20,6 +21,14 @@ from es2json import esfatgenerator
 from es2json import ArrayOrSingleValue
 from es2json import eprint
 from es2json import litter
+
+def uniq(lst):
+    last = object()
+    for item in lst:
+        if item == last:
+            continue
+        yield item
+        last = item
 
 def isint(num):
     try: 
@@ -103,6 +112,7 @@ marc2relation = {
     
     "v:Tocher": "children",            #several typos in SWB dataset
     "tochter": "children",
+    "Z:Tochter":"children",
     "Sohn": "children",
     "v:Nachkomme": "children",
     "v:zweites Kind": "children",
@@ -180,16 +190,19 @@ marc2relation = {
     "assistent": "colleague",
     
     
-    #generic marc fields!
-    "bezf":"relatedTo",
-    "bezb":"colleague",
-    "beza":"knows",
+    #see also http://www.dnb.de/SharedDocs/Downloads/DE/DNB/standardisierung/inhaltserschliessung/gndCodes.pdf?__blob=publicationFile
+    "4:adel":"honorificPrefix",
+    "4:adre":"name",
+    "4:adue":"parentOrganization",
+    "4:affi":"affiliation",
+    #"4:akad":"honorificPrefix",
+    "4:akti":"hasProfession",
+    "4:bezf":"relatedTo",
+    "4:bezb":"colleague",
+    "4:beza":"knows",
     "4:bete": "contributor",
     "4:rela":"knows",
-    "4:affi":"knows",
-    "4:libr":"contributor",
-    "4:regi":"contributor",
-    "4:vorl":"contributor"
+    "4:affi":"knows"
 }
 
 def gnd2uri(string):
@@ -228,7 +241,9 @@ def get_or_generate_id(record,entity):
                 identifier=r.json().get("hits").get("hits")[0].get("_id")
             else:
                 identifier=None
-        except:
+        except Exception as e:
+            f = open("errors.txt",'a')
+            traceback.print_exc(file=f)
             identifier=None
         #r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
         #identifier=r.json().get("identifier")
@@ -250,7 +265,7 @@ def getmarc(record,regex,entity):
         if marcfield in record:
             subfields=regex.split(".")[-1].split("+")
             data=None
-            for array in record.get("marcfield"):
+            for array in record.get(marcfield):
                 for k,v in array.items():
                     sset={}
                     for subfield in v:
@@ -261,7 +276,10 @@ def getmarc(record,regex,entity):
                         if sf in sset:
                             if fullstr:
                                 fullstr+=". "
-                            fullstr+=sset[sf]
+                            if isinstance(sset[sf],str):
+                                fullstr+=sset[sf]
+                            elif isinstance(sset[sf],list):
+                                fullstr+=". ".join(sset[sf])
                     if fullstr:
                         data=litter(data,fullstr)
             if data:
@@ -276,7 +294,7 @@ def getmarc(record,regex,entity):
                 ret=litter(ret,ArrayOrSingleValue(list(getmarcvalues(record,string,entity))))
         if ret:
             if isinstance(ret,list):    #simple deduplizierung via transformation zum set und retour
-                ret = list(set(ret))
+                ret = list(uniq(ret))
             return ArrayOrSingleValue(ret)
 
 def getmarcvalues(record,regex,entity):
@@ -295,89 +313,47 @@ def getmarcvalues(record,regex,entity):
                                         yield final.get(regex[-1])
 
 def relatedTo(jline,key,entity):
+    #e.g. split "551^4:orta" to 551 and orta
+    marcfield=key[:3]
     data=[]
-    sset=None
-    if jline.get(key[:3]):
-        for mrc_indicator in jline.get(key[:3]):
-            for ind,subfields in mrc_indicator.items():
+    if marcfield in jline:
+        for array in jline[marcfield]:
+            for k,v in array.items():
                 sset={}
-                person={}
-                for element in subfields:
-                    for key,value in element.items():
-                        sset[key]=value
-                for key, value in sset.items():
-                    if key=='9':
-                        if isinstance(value,list):
-                            for val in value:
-                                for k,v in marc2relation.items():
-                                    if k.lower()==val:
-                                        person["_key"]=v
-                                        break
-                            if not person.get("_key"):
-                                for k, v in marc2relation.items():
-                                    if k.lower() in val.lower():
-                                        person["_key"]=v
-                                        break  
-                        elif isinstance(value,str):
+                for subfield in v:
+                    for subfield_code in subfield:
+                        sset[subfield_code]=subfield[subfield_code]
+                #eprint(sset.get("9"),subfield4)
+                if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
+                    node={}
+                    node["_key"]=marc2relation[sset.get("9")]
+                    if sset.get("0"):
+                        node["sameAs"]=gnd2uri(sset.get("0"))
+                    if sset.get("a"):
+                        node["name"]=sset.get("a")
+                    data.append(node)
+                elif isinstance(sset.get("9"),list):
+                    node={}
+                    for elem in sset.get("9"):
+                        if elem.startswith("v"):
                             for k,v in marc2relation.items():
-                                if k.lower()==value:
-                                    person["_key"]=v
+                                if k.lower() in elem.lower():
+                                    node["_key"]=v
                                     break
-                            if not person.get("_key"):
-                                for k, v in marc2relation.items():
-                                    if k.lower() in value.lower():
-                                        person["_key"]=v
-                                        break  
-                        if not person.get("_key"):
-                                person["_key"]="knows"
-                    elif key=='0':
-                        person["sameAs"]=gnd2uri(value)
-                if person.get("sameAs"):
-                    data=litter(data,person) ###filling the array with the person(s)
-    if data:
-        return data
-
-#def newrelatedTo(jline,key,entity):
-    ##e.g. split "551^4:orta" to 551 and orta
-    #marcfield=key[:3]
-    #data=[]
-    #if marcfield in jline:
-        #for array in jline[marcfield]:
-            #for k,v in array.items():
-                #sset={}
-                #for subfield in v:
-                    #for subfield_code in subfield:
-                        #sset[subfield_code]=subfield[subfield_code]
-                ##eprint(sset.get("9"),subfield4)
-                #eprint(sset)
-                #if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
-                    #node={}
-                    #node["_key"]=marc2relation[sset.get("9")]
-                    #if sset.get("0"):
-                        #node["sameAs"]=gnd2uri(sset.get("0"))
-                    #if sset.get("a"):
-                        #node["name"]=sset.get("a")
-                    #data.append(node)
-                #elif isinstance(sset.get("9"),list):
-                    #node={}
-                    #for elem in sset.get("9"):
-                        #if elem.startswith("v") and elem in marc2relation:
-                            #node["_key"]=marc2relation[elem]
-                            #break
-                        #elif elem in marc2relation:
-                            #node["_key"]=marc2relation[elem]
-                        #else:
-                            #continue
-                    #if not node.get("_key"):
-                        #node["_key"]="relatedTo"
-                    #if sset.get("0"):
-                        #node["sameAs"]=gnd2uri(sset.get("0"))
-                    #if sset.get("a"):
-                        #node["name"]=sset.get("a")
-                    #data.append(node)
+                        elif [x for x in marc2relation if x.lower() in elem.lower()]:
+                            node["_key"]=marc2relation[elem]
+                        elif not node.get("_key"):
+                            node["_key"]="relatedTo"
+                        #eprint(elem,node)
+                    if sset.get("0"):
+                        node["sameAs"]=gnd2uri(sset.get("0"))
+                    if sset.get("a"):
+                        node["name"]=sset.get("a")
+                    data.append(node)
+                    #eprint(node)
                     
-        #if data:
-            #return ArrayOrSingleValue(data)
+        if data:
+            return ArrayOrSingleValue(data)
         
 def get_subfield_4(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
@@ -392,7 +368,7 @@ def get_subfield_4(jline,key,entity):
                     for subfield_code in subfield:
                         sset[subfield_code]=subfield[subfield_code]
                 #eprint(sset.get("9"),subfield4)
-                if subfield4 in sset.get("9"):
+                if "9" in sset and subfield4 in sset.get("9"):
                     node={}
                     if sset.get("0"):
                         node["sameAs"]=gnd2uri(sset.get("0"))
@@ -402,54 +378,25 @@ def get_subfield_4(jline,key,entity):
         if data:
             return ArrayOrSingleValue(data)
 
-#def birthPlace(jline,key,entity):
-    #bp=Place(jline.get(key[:3]),'4:ortg')
-    #if bp:
-        #return {"sameAs":bp}
-
-#def deathPlace(jline,key,entity):
-    #bp=Place(jline.get(key[:3]),'4:orts')
-    #if bp:
-        #return {"sameAs":bp}
-
-#def Place(record,event):
-    #data=None
-    #sset={}
-    #for c,w in traverse(record,""):
-        #if isinstance(w,dict):
-            #for mrc_indicator,ind_val in w.items():
-                #if isinstance(ind_val,list):
-                    #for subfield in ind_val:
-                        #if isinstance(subfield,dict):
-                            #for k,v in subfield.items():
-                                #if k=="0":
-                                    #sset[k]=gnd2uri(v)
-                                #else:
-                                    #sset[k]=v
-                        #if isinstance(subfield,str):
-                            #uri=gnd2uri(subfield)
-                            #if uri:
-                                #if not sset["0"]:
-                                    #sset["0"]=uri
-                                #elif uri not in sset["0"]:
-                                    #if isinstance(sset["0"],list):
-                                        #sset["0"].append(uri)
-                                    #elif isinstance(sset["0"],str):
-                                        #nochnenull=sset.pop("0")
-                                        #sset["0"]=[]
-                                        #sset["0"].append(nochnenull)
-                                        #sset["0"].append(uri)
-    #if event==sset.get("9") and sset.get("0"):
-        #if not data:
-            #data=[]    
-        #zero=ArrayOrSingleValue(sset.get("0"))
-        #if isinstance(zero,str):
-            #data.append(zero)
-        #elif isinstance(zero,list):
-            #for elem in zero:
-                #data.append(elem)
-    #if data:
-        #return ArrayOrSingleValue(data)
+def get_author(jline,key,entity):
+    #e.g. split "551^4:orta" to 551 and orta
+    data=[]
+    if key in jline:
+        for array in jline[key]:
+            for k,v in array.items():
+                sset={}
+                for subfield in v:
+                    for subfield_code in subfield:
+                        sset[subfield_code]=subfield[subfield_code]
+                #eprint(sset.get("9"),subfield4)
+                node={}
+                if sset.get("0"):
+                    node["sameAs"]=gnd2uri(sset.get("0"))
+                if sset.get("a"):
+                    node["name"]=sset.get("a")
+                data.append(node)
+        if data:
+            return ArrayOrSingleValue(data)
 
 def deathDate(jline,key,entity):
     return marc_dates(jline.get(key),"deathDate")
@@ -497,17 +444,18 @@ def getparent(jline,key,entity):
                             conti=True
                 if conti and "0" in sset:
                     data=litter(data,gnd2uri(sset["0"]))
-    except:
-        pass
+    except Exception as e:
+        f = open("errors.txt",'a')
+        traceback.print_exc(file=f)
     if data:
         return data
 
-def honoricSuffix(jline,key,entity):
+def honorificSuffix(jline,key,entity):
     data=None
-    try:
-        for i in jline[key[0][0:3]][0]:
+    if key[0][:3] in jline:
+        for i in jline.get(key[0][0:3])[0]:
             sset={}
-            for j in jline[key[0][0:3]][0][i]:
+            for j in jline.get(key[0][0:3])[0][i]:
                 for k,v in dict(j).items():
                     sset[k]=v
                 conti=False
@@ -516,34 +464,30 @@ def honoricSuffix(jline,key,entity):
                             conti=True
                 if conti and "a" in sset:
                     data=litter(data,sset["a"])
-    except:
-        pass
     if data:
         return data
 
     
 def hasOccupation(jline,key,entity):
-    try:
-            data=[]
-            for i in jline[key[:3]]:
-                conti=False
-                job=None
-                sset={}
-                for k,v in i.items():               # v = [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]
-                    for w in v:                     # w = {'0': ['(DE-576)210258373', '(DE-588)4219681-4']}
-                        for c,y in dict(w).items(): # c =0 y = ['(DE-576)210258373', '(DE-588)4219681-4']
-                            sset[c]=y
-                if "9" in sset:                     #sset = {'a': 'Romanist', 'w': 'r', '0': ['(DE-576)210258373', '(DE-588)4219681-4'], 'i': 'Charakteristischer Beruf', '9': '4:berc'}
-                    if sset["9"]=='4:berc' or sset["9"]=='4:beru' or sset['9']=='4:akti':
-                            conti=True
-                if conti:
-                    if key[-1] in sset:
-                        if isinstance(sset[key[-1]],list):
-                            for field in sset[key[-1]]:
-                                if field[1:7] in isil2sameAs:
-                                    data.append(gnd2uri(field))
-    except:
-        pass
+    data=[]
+    if key[:3] in jline:
+        for i in jline[key[:3]]:
+            conti=False
+            job=None
+            sset={}
+            for k,v in i.items():               # v = [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]
+                for w in v:                     # w = {'0': ['(DE-576)210258373', '(DE-588)4219681-4']}
+                    for c,y in dict(w).items(): # c =0 y = ['(DE-576)210258373', '(DE-588)4219681-4']
+                        sset[c]=y
+            if "9" in sset:                     #sset = {'a': 'Romanist', 'w': 'r', '0': ['(DE-576)210258373', '(DE-588)4219681-4'], 'i': 'Charakteristischer Beruf', '9': '4:berc'}
+                if sset["9"]=='4:berc' or sset["9"]=='4:beru' or sset['9']=='4:akti':
+                        conti=True
+            if conti:
+                if key[-1] in sset:
+                    if isinstance(sset[key[-1]],list):
+                        for field in sset[key[-1]]:
+                            if field[1:7] in isil2sameAs:
+                                data.append(gnd2uri(field))
     if data:
         return ArrayOrSingleValue(data)
 
@@ -604,19 +548,6 @@ def check(ldj,entity):
         v=ArrayOrSingleValue(v)
     if not ldj:
         return
-#    for person in ["author","contributor"]:
-#        if person in ldj:
-#            if isinstance(ldj[person],str):
-#                if ldj[person][:8] in isil2sameAs:
-#                    uri=gnd2uri(ldj.pop(person))
-#                    ldj[person]={"sameAs":uri}
-#            elif isinstance(ldj[person],list):
-#                persons={"sameAs":list()}
-#                for author in ldj[person]:
-#                    if author["sameAs"][:8] in isil2sameAs:
-#                        persons["sameAs"].append(gnd2uri(author))
-#                #ldj.pop(person)
-#                #ldj[person]=persons
     if 'genre' in ldj:
         genre=ldj.pop('genre')
         ldj['genre']={}
@@ -635,17 +566,23 @@ def check(ldj,entity):
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
-            if isint(numstring.split(' ')[0]):
-                if numstring.split(' ')[1] == "S.":
-                    num=int(numstring.split(' ')[0])
+            if isinstance(numstring,str):
+                if "S." in numstring and isint(numstring.split('S.')[0].strip()):
+                    num=int(numstring.split('S.')[0].strip())
                     ldj['numberOfPages']=num
+            elif isinstance(numstring,list):
+                for number in numstring:
+                    if "S." in number and isint(number.split('S.')[0].strip()):
+                        num=int(number.split('S.')[0])
+                        ldj['numberOfPages']=num
         except IndexError:
             if isint(numstring):
                 ldj['numberOfPages']=numstring
             else:
                 pass
-        except AttributeError:
-            pass
+        except Exception as e:
+            with open("error.txt","a") as err:
+                print(e,file=err)
     #if entity=="Person":
         #checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
         #for key in checks:
@@ -687,6 +624,23 @@ def check(ldj,entity):
             ldj["publisher"]["location"]=ldj.pop("pub_place")
     return ldj
 
+map_entities={
+        "p":"persons",
+        "n":"persons",
+        "s":None,
+        "b":"orga",
+        "g":"geo",
+        "u":"resources"
+}
+
+def getentity(record):
+    zerosevenninedotb=getmarc(record,"079..b",None)
+    if zerosevenninedotb in map_entities:
+        return map_entities[zerosevenninedotb]
+    elif not zerosevenninedotb:
+        return "resources"
+    else:
+        return
 
 entities = {
    "resources":{
@@ -697,8 +651,8 @@ entities = {
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
         "description"       :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"            :{getmarc:"100..0"},
-        "contributor"       :{getmarc:"700..0"},
+        "author"            :{get_author:"100"},
+        "contributor"       :{get_author:"700"},
         "pub_name"          :{getmarc:["260..b","264..b"]},
         "pub_place"         :{getmarc:["260..a","264..a"]},
         "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
@@ -717,7 +671,7 @@ entities = {
         "_recorddate"       :{getmarc:"005"},
         "_isil"             :{getmarc:"003"},
         "locationCreated"   :{get_subfield_4:"551^4:orth"},
-        "relatedTo"         :{newrelatedTo:"500..0"}
+        "relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
         "@id"           :get_or_generate_id,
@@ -728,11 +682,11 @@ entities = {
         "sameAs"        :{getmarc:"024..a"},
         "gender"        :{handlesex:"375..a"},
         "alternateName" :{getmarc:["400..a","400..c"]},
-        "relatedTo"     :{newrelatedTo:"500..0"},
+        "relatedTo"     :{relatedTo:"500..0"},
         "hasOccupation" :{hasOccupation:"550..0"},
         "birthPlace"    :{get_subfield_4:"551^4:ortg"},
         "deathPlace"    :{get_subfield_4:"551^4:orts"},
-        "honoricSuffix" :{honoricSuffix:["550..0","550..i","550..a","550..9"]},
+        "honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
         "_recorddate"   :{getmarc:"005"},
@@ -760,7 +714,7 @@ entities = {
         "@context"          :"http://schema.org",
         "identifier"        :{getmarc:"001"},
         "name"              :{getmarc:"151..a"},
-        "description"       :{getmarc:["551..0","551..i"]},
+        "description"       :{get_author:"551"},
         "sameAs"            :{getmarc:"024..a"},
         "alternateName"     :{getmarc:"451..a"},
         "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
@@ -790,13 +744,10 @@ def traverse(dict_or_list, path):
 
 
 def get_source_include_str():
-    items=["079.*.b"]
+    items=["079"]
     for k,v in traverse(entities,""):
-        if isinstance(v,str) and not v.startswith("http"):
-            if ".." in v:
-                v=v.replace("..",".*.")     ##replace esmarc syntax by elasticsearch syntax
-            if v not in items:
-                items.append(v)
+        if isinstance(v,str) and isint(v[:3]) and v not in items:
+                items.append(v[:3])
     _source=",".join(items)
     return _source
     
@@ -818,54 +769,40 @@ def process_field(record,value,entity):
 
 #processing a single line of json without whitespace 
 def process_line(jline,host,port,index,type):
-    snine=getmarc(jline,"079..b",None)
-    entity=None
-    if snine=="p" or snine=="p": # invididualisierte Person
-        entity="persons"
-    elif snine=="n":
-        entity="persons"
-    elif snine=="s":
-        return
-    elif snine=="b": # Körperschaft/Organisation
-        entity="orga"
-    elif snine=="g": # Geographika
-        entity="geo"
-    elif snine is None or snine=="u": # n:Personennamef:Kongresse/s:Schlagwörter Nicht interessant
-        entity="resources"
-    else:
-        return
-    mapline={}
-    mapline["@type"]=[]
-    mapline["@type"].append(URIRef(u'http://schema.org/'+entity))
-    mapline["@context"]=[URIRef(u'http://schema.org')]
-    for key,val in entities[entity].items():
-        value=process_field(jline,val,entity)
-        if value:
-            if "related" in key:
-                if isinstance(value,dict) and "_key" in value:
-                    dictkey=value.pop("_key")
-                    mapline[dictkey]=value
-                elif isinstance(value,list):
-                    for elem in value:
-                        if isinstance(elem,dict) and "_key" in elem:
-                            relation=elem.pop("_key")
-                            dictkey=relation
-                            if dictkey not in mapline:
-                                mapline[dictkey]=[elem]
-                            else:
-                                mapline[dictkey].append(elem)
-                        elif isinstance(elem,dict):
-                            if key not in mapline:
-                                mapline[key]=[elem]
-                            else:
-                                mapline[key].append(elem)
-            else:
-                mapline[key]=value
-    if mapline:
-        mapline=check(mapline,entity)
-        if host and port and index and type:
-            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
-        return {entity:mapline}
+    entity=getentity(jline)
+    if entity:
+        mapline={}
+        mapline["@type"]=[]
+        mapline["@type"].append(URIRef(u'http://schema.org/'+entity))
+        mapline["@context"]=[URIRef(u'http://schema.org')]
+        for key,val in entities[entity].items():
+            value=process_field(jline,val,entity)
+            if value:
+                if "related" in key:
+                    if isinstance(value,dict) and "_key" in value:
+                        dictkey=value.pop("_key")
+                        mapline[dictkey]=value
+                    elif isinstance(value,list):
+                        for elem in value:
+                            if isinstance(elem,dict) and "_key" in elem:
+                                relation=elem.pop("_key")
+                                dictkey=relation
+                                if dictkey not in mapline:
+                                    mapline[dictkey]=[elem]
+                                else:
+                                    mapline[dictkey].append(elem)
+                            elif isinstance(elem,dict):
+                                if key not in mapline:
+                                    mapline[key]=[elem]
+                                else:
+                                    mapline[key].append(elem)
+                else:
+                    mapline[key]=value
+        if mapline:
+            mapline=check(mapline,entity)
+            if host and port and index and type:
+                mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
+            return {entity:mapline}
     
 def output(entity,mapline,outstream):
     if outstream:
@@ -929,12 +866,12 @@ if __name__ == "__main__":
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
-    parser.add_argument('-id',type=str,help='map single document')
+    parser.add_argument('-id',type=str,help='map single document, given by id')
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
-    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
-    parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
+    parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -960,7 +897,8 @@ if __name__ == "__main__":
     elif args.host and args.index and args.type and args.id and args.debug:
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
-        json_record=es.get_source(index=args.index,doc_type=args.type,_source=True,id=args.id)
+        source=get_source_include_str()
+        json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
         if json_record:
             print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
     elif args.host and args.index and args.type and args.debug:
@@ -969,7 +907,7 @@ if __name__ == "__main__":
                        port=args.port,
                        index=args.index,
                        type=args.type,
-                       #source_include=get_source_include_str(),
+                       source=get_source_include_str(),
                        headless=True
                         ):
             record = process_line(ldj,args.host,args.port,args.index,args.type)
@@ -983,7 +921,7 @@ if __name__ == "__main__":
                        port=args.port,
                        index=args.index,
                        type=args.type,
-                       #source_include=get_source_include_str()
+                       source=get_source_include_str()
                         ):
             pool.apply_async(worker,args=(ldj,))
         pool.close()
