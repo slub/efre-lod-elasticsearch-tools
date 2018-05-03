@@ -132,6 +132,7 @@ marc2relation = {
     "v:Halbschwester": "sibling",
     "v:Halbbruder": "sibling",
     "Vater": "parent",
+    "Z:Vater":"parent",
     "v:Stiefvater": "parent",
     "Mutter": "parent",
     
