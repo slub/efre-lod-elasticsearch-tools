@@ -33,7 +33,7 @@ class GNDTask(BaseTask):
         "username":"opendata",
         "password":"opendata",
         "file":"data",
-        "host":"194.95.145.44",
+        "host":"localhost",
         "index":"gnd",
         "port":9200,
         "workers":8,
