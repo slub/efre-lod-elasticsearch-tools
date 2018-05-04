@@ -22,7 +22,7 @@ host=None
 author_gnd_key="sameAs"
 map_id={ 
     "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
-    "geo":     ["deathPlace","birthPlace"],
+    "geo":     ["deathPlace","birthPlace","workLocation","location","areaServed"],
     "orga":["copyrightHolder"],
          }
 ### replace SWB/GND IDs by SWB IDs in your ElasticSearch Index.
@@ -198,8 +198,8 @@ def work(record):
         if not args.debug:
             lock.acquire()
         actions.append(record)
+        sys.stdout.write(".")
         if len(actions)>=1000:
-            eprint("bulk!")
             helpers.bulk(elastic,actions,stats_only=True)
             actions[:]=[]
         if not args.debug:
@@ -222,6 +222,8 @@ def resolve_uris(record):
             changed=True
     if changed:
         return record
+    else:
+        return None
 
 if __name__ == "__main__":
     #argstuff
@@ -231,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-help',action="store_true",help="print this help")
+    parser.add_argument('-id',type=str,help="enrich a single id")
     parser.add_argument('-debug',action="store_true",help="disable mp for debugging purposes")
     args=parser.parse_args()
    
@@ -241,7 +244,10 @@ if __name__ == "__main__":
     es=Elasticsearch([{'host':args.host}],port=args.port)
     
     host=args.host
-    if args.debug:
+    if args.id:
+        record=es.get(index=args.index,doc_type=args.type,id=args.id).pop("_source")
+        print(json.dumps(resolve_uris(record),indent=4))
+    elif args.debug:
         for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
             work(hit)
     else:
@@ -249,7 +255,9 @@ if __name__ == "__main__":
             a=manager.list()
             l=manager.Lock()
             with Pool(16,initializer=init,initargs=(l,a,es)) as pool:
-                pool.map(work,esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False))
+                for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
+                    pool.apply_async(work,args=(hit,))
+                #pool.map(work,esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False))
             
             if len(a)>0:
                 helpers.bulk(es,a,stats_only=True)
