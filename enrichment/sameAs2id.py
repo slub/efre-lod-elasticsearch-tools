@@ -25,8 +25,8 @@ map_id={
     "geo":     ["deathPlace","birthPlace","workLocation","location","areaServed"],
     "orga":["copyrightHolder"],
          }
-### replace SWB/GND IDs by SWB IDs in your ElasticSearch Index.
-### example usage: ./gnd2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
+### replace SWB/GND IDs by your own IDs in your ElasticSearch Index.
+### example usage: ./sameAs2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
 def handle_author(author):
     try:
         data=es.get(index=args.aut_index,doc_type=args.aut_type,id=author,_source="@id")
@@ -227,7 +227,7 @@ def resolve_uris(record):
 
 if __name__ == "__main__":
     #argstuff
-    parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
+    parser=argparse.ArgumentParser(description='Resolve sameAs of GND/SWB to your own IDs.')
     parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
@@ -248,8 +248,14 @@ if __name__ == "__main__":
         record=es.get(index=args.index,doc_type=args.type,id=args.id).pop("_source")
         print(json.dumps(resolve_uris(record),indent=4))
     elif args.debug:
+        l=[]
+        a=[]
+        init(l,a,es)
         for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
             work(hit)
+        if len(a)>0:
+            helpers.bulk(es,a,stats_only=True)
+            a[:]=[]
     else:
         with Manager() as manager:
             a=manager.list()
