@@ -1,4 +1,4 @@
-# SLUB Linked Open Data ElasticSearch Toolchain
+# EFRE Linked Open Data ElasticSearch Toolchain
 Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic Metadata such as MARC21, FINC-SOLR or LIDO. Prerequisits is to have this data in a Elasticsearch-Index. For MARC21, use this tool: [marc2jsonl](https://github.com/slub/marc2jsonl). LIDO can be transposed from XML to JSON-LD via a [helperscript](../master/helperscripts/xml-json). To ingest your Line-delimited JSON data to Elasticsearch, the best tool is [esbulk](https://github.com/miku/esbulk), but use the -id switch for your Pica Product Numbers. In our case, we use [Schema.org](https://schema.org), but you can use your own schema, just adjust esmarc.py.
 
 ##### Table of Contents
