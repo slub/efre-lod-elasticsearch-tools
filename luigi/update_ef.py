@@ -17,7 +17,7 @@ import ijson.backends.yajl2_cffi as ijson
 
 import luigi
 import luigi.contrib.esindex
-from gluish.task import BaseTask,ClosestDateParameter
+from gluish.task import BaseTask
 from gluish.utils import shellout
 
 class EFTask(BaseTask):
@@ -29,7 +29,6 @@ class EFTask(BaseTask):
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
         "url":"https://data.dnb.de/opendata/20180312-EFDump-de-DE.json.gz",
-        "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
@@ -45,6 +44,12 @@ class EFTask(BaseTask):
 
 class EFDownload(EFTask):
 
+    #downloads, uncompresses and transforms the record. from this special DNB flavoured json to line-delimited json.
+    #e.g.
+    #[{<record/>}
+    #,{<record/>}
+    #]
+    #if you delete the first character on the line by cut -c2-, you already got line-delimited json.
     def run(self):
         cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- > {file} ".format(**self.config)
         output = shellout(cmdstring)
@@ -107,9 +112,6 @@ class EFFillEsIndex(EFTask):
 
 
 class EFUpdate(EFTask, luigi.WrapperTask):
-
-    date =datetime.today()
-
     def requires(self):
         return [EFFillEsIndex()]
     
