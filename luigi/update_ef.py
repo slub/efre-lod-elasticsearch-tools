@@ -32,6 +32,7 @@ class EFTask(BaseTask):
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
+        "fixfile":"ef-dump-fixed.ldj",
         "host":"localhost",
         "index":"ef",
         "type":"gnd",
@@ -73,7 +74,25 @@ class EFDownload(EFTask):
 
     def output(self):
         return luigi.LocalTarget(self.config.get("file"))
+
+class EFFixIDs(EFTask):
+    def requires(self):
+        return EFDownload()
     
+    def run(self):
+        with open(self.config.get("fixfile"),"r") as f:
+            with open(self.config.get("fixfile"),"w") as out:
+                for line in f:
+                    try:
+                        record=json.loads(line)
+                        record["@id"]=record["@id"].split("http://d-nb.info/gnd/")[1] #make "d-nb.info/gnd/081547-11" to "081547-11"
+                    except: #bad json or missing "@id"
+                        continue
+                    print(json.dumps(record,indent=None),file=out)
+
+    def output(self):
+        return luigi.LocalTarget(self.config.get("fixfile"))
+
 class EFFillEsIndex(EFTask):
     """
     Loads processed EF data into a given ElasticSearch index (with help of esbulk)
@@ -83,10 +102,10 @@ class EFFillEsIndex(EFTask):
 
     files=None
     def requires(self):
-        return EFDownload()
+        return EFFixIDs()
 
     def run(self):
-        cmd="esbulk -verbose -host {host} -port {port} -index {index} -w {workers} -type {type} -id id {type}.ldj""".format(**self.config)
+        cmd="esbulk -verbose -host {host} -port {port} -index {index} -w {workers} -type {type} -id id {fixfile}""".format(**self.config)
         out = shellout(cmd)
         pass
 
