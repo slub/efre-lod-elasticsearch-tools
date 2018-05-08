@@ -1,6 +1,6 @@
 SOURCES=$(shell find . -name "*.mrc")
 OBJECTS=$(SOURCES:%.mrc=%.ldj)
-LOD_GIT=~/git/slub-lod-elasticsearch-tools/
+LOD_GIT=~/git/efre-lod-elasticsearch-tools/
 OUTPUT_DIR=.
 
 .PHONE: all clean
