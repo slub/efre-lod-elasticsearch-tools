@@ -49,7 +49,7 @@ def addtostats(obj,stats):
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='return single field statistics of an line-delimited JSON Input-Stream.\nOutput is a 2 coloumn CSV-Sheet.\nNavigate into nested fields via dots (.) wildcard operator is: *..')
     parser.add_argument('-help',action="store_true",help='print more help')
-    parser.add_argument('-path',type=str,help='which path to examine!')
+    parser.add_argument('-path',type=str,help='which path to examine!', required=True)
     args=parser.parse_args()
     if args.help:
         print("fieldstats-ldj.py\n"\
