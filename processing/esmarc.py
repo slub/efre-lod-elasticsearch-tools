@@ -109,7 +109,6 @@ marc2relation = {
     "v:Mitautor": "contributor",
     "v:Partner": "contributor",
     
-    
     "v:Tocher": "children",            #several typos in SWB dataset
     "tochter": "children",
     "Z:Tochter":"children",
@@ -123,7 +122,6 @@ marc2relation = {
     "Ehe": "spouse",
     "Frau": "spouse",
     "Mann": "spouse",
-    
     
     "v:Jüngster Bruder": "sibling",
     "Bruder": "sibling",
@@ -190,10 +188,9 @@ marc2relation = {
     "v:Künstler. Partner": "colleague" ,  
     "assistent": "colleague",
     
-    
     #see also http://www.dnb.de/SharedDocs/Downloads/DE/DNB/standardisierung/inhaltserschliessung/gndCodes.pdf?__blob=publicationFile
     "4:adel":"honorificPrefix",
-    "4:adre":"name",
+    "4:adre":"recipent",
     "4:adue":"parentOrganization",
     "4:affi":"affiliation",
     #"4:akad":"honorificPrefix",
@@ -203,7 +200,8 @@ marc2relation = {
     "4:beza":"knows",
     "4:bete": "contributor",
     "4:rela":"knows",
-    "4:affi":"knows"
+    "4:affi":"knows",
+    "4:aut1":"author",
 }
 
 def gnd2uri(string):
@@ -243,8 +241,8 @@ def get_or_generate_id(record,entity):
             else:
                 identifier=None
         except Exception as e:
-            f = open("errors.txt",'a')
-            traceback.print_exc(file=f)
+            with open("errors.txt",'a') as f:
+                traceback.print_exc(file=f)
             identifier=None
         #r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
         #identifier=r.json().get("identifier")
@@ -342,10 +340,9 @@ def relatedTo(jline,key,entity):
                                     node["_key"]=v
                                     break
                         elif [x for x in marc2relation if x.lower() in elem.lower()]:
-                            if elem in marc2relation:
-                                node["_key"]=marc2relation[elem]
-                            if elem.lower() in marc2relation:
-                                node["_key"]=marc2relation[elem.lower()]
+                            for x in marc2relation:
+                                if x.lower() in elem.lower():
+                                    node["_key"]=marc2relation[x]
                         elif not node.get("_key"):
                             node["_key"]="relatedTo"
                         #eprint(elem,node)
@@ -449,8 +446,8 @@ def getparent(jline,key,entity):
                 if conti and "0" in sset:
                     data=litter(data,gnd2uri(sset["0"]))
     except Exception as e:
-        f = open("errors.txt",'a')
-        traceback.print_exc(file=f)
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
     if data:
         return data
 
@@ -601,17 +598,20 @@ def check(ldj,entity):
                 #elif isinstance(ldj[key],str):
                     #ldj.pop(key)
     for label in ["name","alternativeHeadline","alternateName"]:
-        if label in ldj:
-            if isinstance(ldj[label],str):
-                if ldj[label][-2:]==" /":
-                    ldj[label]=ldj[label][:-2]
-            elif isinstance(ldj[label],list):
-                for n,i in enumerate(ldj[label]):
-                    if i[-2:]==" /":
-                        ldj[label][n]=i[:-2]
-                if label=="name":
-                    name=" ".join(ldj[label])
-                    ldj[label]=name
+        try:
+            if label in ldj:
+                if isinstance(ldj[label],str):
+                    if ldj[label][-2:]==" /":
+                        ldj[label]=ldj[label][:-2]
+                elif isinstance(ldj[label],list):
+                    for n,i in enumerate(ldj[label]):
+                        if i[-2:]==" /":
+                            ldj[label][n]=i[:-2]
+                    if label=="name":
+                        name=" ".join(ldj[label])
+                        ldj[label]=name
+        except:
+            eprint(ldj,label)
     if "publisherImprint" in ldj:
         if not isinstance(ldj["@context"],list) and isinstance(ldj["@context"],str):
             ldj["@context"]=list([ldj.pop("@context")])
@@ -626,6 +626,26 @@ def check(ldj,entity):
             ldj["publisher"]["name"]=ldj.pop("pub_name")
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
+    if isinstance(ldj.get("sameAs"),list):
+        for n,elem in enumerate(ldj.get("sameAs")):
+            if isinstance(elem,list):
+                for m,elemd in enumerate(ldj["sameAs"][n]):
+                    if " " in elemd.strip():
+                        fault=ldj["sameAs"][n].pop(m)
+                        eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),fault))
+                        if len(ldj["sameAs"][n])==1:
+                            ldj["sameAs"][n]=ldj.pop("sameAs")[n][0]
+            elif isinstance(elem,str):
+                ldj["sameAs"][n]=elem.strip()
+                if " " in elem:
+                    fault=ldj["sameAs"].pop(n)
+                    eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),fault))
+                    if len(ldj["sameAs"])==1:
+                        ldj["sameAs"]=ldj.pop("sameAs")[0]
+    elif isinstance(ldj.get("sameAs"),str):
+        ldj["sameAs"]=ldj.pop("sameAs").strip()
+        if " " in ldj.get("sameAs"):
+            eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),ldj.pop("sameAs")))
     return ldj
 
 map_entities={
@@ -793,8 +813,12 @@ def process_line(jline,host,port,index,type):
                                 dictkey=relation
                                 if dictkey not in mapline:
                                     mapline[dictkey]=[elem]
-                                else:
+                                elif isinstance(mapline[dictkey],list):
                                     mapline[dictkey].append(elem)
+                                elif isinstance(mapline[dictkey],dict):
+                                    old=mapline.pop(dictkey)
+                                    mapline[dictkey]=[elem]
+                                    mapline[dictkey]=litter(mapline[dictkey],elem)
                             elif isinstance(elem,dict):
                                 if key not in mapline:
                                     mapline[key]=[elem]
@@ -928,8 +952,16 @@ if __name__ == "__main__":
                        source=get_source_include_str()
                         ):
             pool.apply_async(worker,args=(ldj,))
+        #pool.map(worker,esfatgenerator(host=args.host,
+        #               port=args.port,
+        #               index=args.index,
+        #               type=args.type,
+        #               source=get_source_include_str()
+        #                )
+        #        )
         pool.close()
         pool.join()
+
         quit(0)
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         eprint("No host/port/index specified, trying stdin\n")
