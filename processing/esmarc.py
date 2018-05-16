@@ -356,7 +356,7 @@ def relatedTo(jline,key,entity):
         if data:
             return ArrayOrSingleValue(data)
         
-def get_subfield_4(jline,key,entity):
+def get_subfield_if_4(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
     marcfield=key.rsplit("^")[0]
     subfield4=key.rsplit("^")[1]
@@ -379,7 +379,7 @@ def get_subfield_4(jline,key,entity):
         if data:
             return ArrayOrSingleValue(data)
 
-def get_author(jline,key,entity):
+def get_subfield(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
     data=[]
     if key in jline:
@@ -649,12 +649,12 @@ def check(ldj,entity):
     return ldj
 
 map_entities={
-        "p":"persons",
-        "n":"persons",
-        "s":None,
-        "b":"orga",
-        "g":"geo",
-        "u":"resources"
+        "p":"persons",      #Personen, individualisiert
+        "n":"persons",      #Personen, namen, nicht individualisiert
+        "s":"thing",        #Schlagwörter/Berufe
+        "b":"orga",         #Organisationen
+        "g":"geo",          #Geographika
+        "u":"resources"     #Werktiteldaten
 }
 
 def getentity(record):
@@ -668,15 +668,19 @@ def getentity(record):
 
 entities = {
    "resources":{
-        "@id"               :get_or_generate_id,
         "@type"             :"http://schema.org/CreativeWork",
-        "@context"          :"http://schema.org",
-        "identifier"        :{getmarc:"001"},
+        "@context"      :"http://schema.org",
+        "@id"           :get_or_generate_id,
+        "identifier"    :{getmarc:"001"},
+        "_isil"         :{getmarc:"003"},
+        "_recorddate"   :{getmarc:"005"},
+        "sameAs"        :{getmarc:["024..a","670..u"]},
+        
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
         "description"       :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"            :{get_author:"100"},
-        "contributor"       :{get_author:"700"},
+        "author"            :{get_subfield:"100"},
+        "contributor"       :{get_subfield:"700"},
         "pub_name"          :{getmarc:["260..b","264..b"]},
         "pub_place"         :{getmarc:["260..a","264..a"]},
         "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
@@ -692,59 +696,84 @@ entities = {
         "pageStart"         :{getmarc:"773..q"},
         "issueNumber"       :{getmarc:"773..l"},
         "volumeNumer"       :{getmarc:"773..v"},
-        "_recorddate"       :{getmarc:"005"},
-        "_isil"             :{getmarc:"003"},
-        "locationCreated"   :{get_subfield_4:"551^4:orth"},
+        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
         "relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
-        "@id"           :get_or_generate_id,
-        "@context"      :"http://schema.org",
         "@type"         :"http://schema.org/Person",
+        "@context"      :"http://schema.org",
+        "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
+        "_isil"         :{getmarc:"003"},
+        "_recorddate"   :{getmarc:"005"},
+        "sameAs"        :{getmarc:["024..a","670..u"]},
+        
         "name"          :{getmarc:"100..a"},
-        "sameAs"        :{getmarc:"024..a"},
         "gender"        :{handlesex:"375..a"},
         "alternateName" :{getmarc:["400..a","400..c"]},
         "relatedTo"     :{relatedTo:"500..0"},
         "hasOccupation" :{hasOccupation:"550..0"},
-        "birthPlace"    :{get_subfield_4:"551^4:ortg"},
-        "deathPlace"    :{get_subfield_4:"551^4:orts"},
+        "birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
+        "deathPlace"    :{get_subfield_if_4:"551^4:orts"},
         "honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
-        "_recorddate"   :{getmarc:"005"},
-        "_isil"         :{getmarc:"003"},
-        "workLocation"  :{get_subfield_4:"551^4:ortw"}
+        "workLocation"  :{get_subfield_if_4:"551^4:ortw"},
     },
     "orga": {
-        "@id"               :get_or_generate_id,
         "@type"             :"http://schema.org/Organization",
         "@context"          :"http://schema.org",
+        "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
+        "_isil"             :{getmarc:"003"},
+        "_recorddate"       :{getmarc:"005"},
+        "sameAs"            :{getmarc:["024..a","670..u"]},
+        
         "name"              :{getmarc:"110..a"},
         "alternateName"     :{getmarc:"410..a+b"},
-        "sameAs"            :{getmarc:["024..a","670..u"]},
-        "parentOrganization":{get_subfield_4:"551^4:adue"},
-        "location"          :{get_subfield_4:"551^4:orta"},
-        "additionalType"    :{get_subfield_4:"550^4:obin"},
-        "areaServed"        :{get_subfield_4:"551^4:geow"},
-        "_recorddate"       :{getmarc:"005"},
-        "_isil"             :{getmarc:"003"}
+        
+        "additionalType"    :{get_subfield_if_4:"550^4:obin"},
+        "parentOrganization":{get_subfield_if_4:"551^4:adue"},
+        "location"          :{get_subfield_if_4:"551^4:orta"},
+        "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
+        "areaServed"        :{get_subfield_if_4:"551^4:geow"},
         },
     "geo": {
-        "@id"               :get_or_generate_id,
         "@type"             :"http://schema.org/Place",
         "@context"          :"http://schema.org",
+        "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
+        "_isil"             :{getmarc:"003"},
+        "_recorddate"       :{getmarc:"005"},
+        "sameAs"            :{getmarc:["024..a","670..u"]},
+        
         "name"              :{getmarc:"151..a"},
-        "description"       :{get_author:"551"},
-        "sameAs"            :{getmarc:"024..a"},
         "alternateName"     :{getmarc:"451..a"},
+        "description"       :{get_subfield:"551"},
         "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
-        "_date"             :{getmarc:"005"},
-        "_isil"             :{getmarc:"003"}
+        },
+    "thing":{                   #generisches Mapping für Schlagwörter
+        "@type"             :"http://schema.org/Thing",
+        "@context"          :"http://schema.org",
+        "@id"               :get_or_generate_id,
+        "identifier"        :{getmarc:"001"},
+        "_isil"             :{getmarc:"003"},
+        "_recorddate"       :{getmarc:"005"},
+        "sameAs"            :{getmarc:["024..a","670..u"]},
+        
+        
+        "name"              :{getmarc:"150..a"},
+        "alternateName"     :{getmarc:"450..a+x"},
+        "description"       :{getmarc:"679..a"},
+        "additionalType"    :{get_subfield:"550"},
+        "location"          :{get_subfield_if_4:"551^4:orta"},
+        "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
+        "areaServed"        :{get_subfield_if_4:"551^4:geow"},
+        "containsPlace"     :{get_subfield_if_4:"551^4:punk"},
+        "participant"       :{get_subfield_if_4:"551^4:bete"},
+        "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
         }
+        
 }
 
 def traverse(dict_or_list, path):
