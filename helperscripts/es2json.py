@@ -261,7 +261,7 @@ if __name__ == "__main__":
     parser.add_argument("-include",type=str,help="include following _source field(s)")
     parser.add_argument("-exclude",type=str,help="exclude following _source field(s)")
     parser.add_argument("-id",type=str,help="retrieve single document (optional)")
-    parser.add_argument("-head",action="store_true",default=False,help="include Elasticsearch Metafields")
+    parser.add_argument("-headless",action="store_true",default=False,help="don't include Elasticsearch Metafields")
     parser.add_argument('-body',type=str,help='Searchbody')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
     parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     else:
         tabbing=None
     if not args.id:
-        for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.head,source_exclude=args.exclude,source_include=args.include):
+        for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     else:
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
