@@ -769,11 +769,10 @@ entities = {
         "location"          :{get_subfield_if_4:"551^4:orta"},
         "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
         "areaServed"        :{get_subfield_if_4:"551^4:geow"},
-        "containsPlace"     :{get_subfield_if_4:"551^4:punk"},
+        "contentLocation"   :{get_subfield_if_4:"551^4:punk"},
         "participant"       :{get_subfield_if_4:"551^4:bete"},
         "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
         }
-        
 }
 
 def traverse(dict_or_list, path):
