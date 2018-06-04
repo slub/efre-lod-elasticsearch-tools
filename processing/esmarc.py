@@ -626,27 +626,20 @@ def check(ldj,entity):
             ldj["publisher"]["name"]=ldj.pop("pub_name")
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
-    if isinstance(ldj.get("sameAs"),list):
-        for n,elem in enumerate(ldj.get("sameAs")):
-            if isinstance(elem,list):
-                for m,elemd in enumerate(ldj["sameAs"][n]):
-                    if " " in elemd.strip():
-                        fault=ldj["sameAs"][n].pop(m)
-                        eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),fault))
-                        if len(ldj["sameAs"][n])==1:
-                            ldj["sameAs"][n]=ldj.pop("sameAs")[n][0]
-            elif isinstance(elem,str):
-                ldj["sameAs"][n]=elem.strip()
-                if " " in elem:
-                    fault=ldj["sameAs"].pop(n)
-                    eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),fault))
-                    if len(ldj["sameAs"])==1:
-                        ldj["sameAs"]=ldj.pop("sameAs")[0]
-    elif isinstance(ldj.get("sameAs"),str):
-        ldj["sameAs"]=ldj.pop("sameAs").strip()
-        if " " in ldj.get("sameAs"):
-            eprint("record {} has faulty sameAs {}".format(ldj.get("sameAs"),ldj.pop("sameAs")))
+    if "sameAs" in ldj:
+        ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
+            
     return ldj
+
+def cleanup_sameAs(sameAs):
+    if isinstance(sameAs,list):
+        for n,elem in enumerate(sameAs):
+            sameAs[n]=cleanup_sameAs(elem)
+    elif isinstance(sameAs,str):
+        if not sameAs.strip().startswith("http"):
+            return None
+    return sameAs
+        
 
 map_entities={
         "p":"persons",      #Personen, individualisiert
@@ -667,7 +660,7 @@ def getentity(record):
         return
 
 entities = {
-    "works":{
+    "works":{   # mapping is 1:1 like resources
         "@type"             :"http://schema.org/CreativeWork",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
@@ -698,7 +691,7 @@ entities = {
         "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
         "relatedTo"         :{relatedTo:"500..0"}
         },
-   "resources":{
+   "resources":{   # mapping is 1:1 like works
         "@type"             :"http://schema.org/CreativeWork",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
