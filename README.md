@@ -15,8 +15,6 @@ Collection of python3 tools/programs/daemons to harvest RDF out of bibliographic
 
 [lido2schema](#lido2schema.py)
 
-[fieldstats-ldj](#fieldstats-ldj.py)
-
 [gnd2swb](#gnd2swb.py)
 
 
@@ -192,17 +190,6 @@ pip install dpath
 
 ##TODO
 ElasticSearch ingest
-
-
-<a name="fieldstats-ldj.py"/>
-# fieldstats-ldj.py - return occurency statistics of a single field of an line delimited json stream
-
-This small pythonscript reads a line delimited json stream and returns the occurency statistics of a field given via -path Parameter.
-
-## Requirements
-
-python3-numpy
-
 <a name="gnd2swb.py"/>
 
 # gnd2swb.py
