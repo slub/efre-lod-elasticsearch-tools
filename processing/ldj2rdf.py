@@ -40,9 +40,7 @@ def init(l,c,m,i):
     
 def get_bulkrdf(doc):
     text=None
-    #print(doc)
     for n,elem in enumerate(doc):
-        print(elem)
         if isinstance(elem,dict):
             toRemove=[]
             for key in elem:
