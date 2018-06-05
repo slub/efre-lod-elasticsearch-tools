@@ -219,8 +219,10 @@ def gnd2uri(string):
             return uri2url(string.split(')')[0][1:],string.split(')')[1])
 
 def uri2url(isil,num):
-    if isil and num:
+    if isil and num and isil in isil2sameAs:
         return isil2sameAs.get(isil)+num
+    else:
+        return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
 
 def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
@@ -327,7 +329,19 @@ def relatedTo(jline,key,entity):
                     node={}
                     node["_key"]=marc2relation[sset.get("9")]
                     if sset.get("0"):
-                        node["sameAs"]=gnd2uri(sset.get("0"))
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith("http"):
+                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,str):
+                            node["identifier"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem.startswith("http"):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
@@ -347,7 +361,19 @@ def relatedTo(jline,key,entity):
                             node["_key"]="relatedTo"
                         #eprint(elem,node)
                     if sset.get("0"):
-                        node["sameAs"]=gnd2uri(sset.get("0"))
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith("http"):
+                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,str):
+                            node["identifier"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem.startswith("http"):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
@@ -372,7 +398,19 @@ def get_subfield_if_4(jline,key,entity):
                 if "9" in sset and subfield4 in sset.get("9"):
                     node={}
                     if sset.get("0"):
-                        node["sameAs"]=gnd2uri(sset.get("0"))
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith("http"):
+                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,str):
+                            node["identifier"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem.startswith("http"):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
@@ -392,7 +430,19 @@ def get_subfield(jline,key,entity):
                 #eprint(sset.get("9"),subfield4)
                 node={}
                 if sset.get("0"):
-                    node["sameAs"]=gnd2uri(sset.get("0"))
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith("http"):
+                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,str):
+                            node["identifier"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem.startswith("http"):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
                 if sset.get("a"):
                     node["name"]=sset.get("a")
                 data.append(node)
@@ -554,7 +604,7 @@ def check(ldj,entity):
         ldj['genre']={}
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
-    if "identifier" in ldj:
+    if "identifier" in ldj and "_isil" in ldj and "_isil" in isil2sameAs:
         if "sameAs" in ldj and isinstance(ldj["sameAs"],str):
             ldj["sameAs"]=[ldj.pop("sameAs")]
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))

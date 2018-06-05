@@ -18,6 +18,7 @@ from multiprocessing import Pool, Manager,current_process,Process,cpu_count
 from es2json import eprint
 from es2json import esgenerator
 from es2json import esfatgenerator
+from es2json import isint
 from es2json import litter
 
 global args
@@ -154,13 +155,34 @@ if __name__ == "__main__":
     parser.add_argument('-debug',action="store_true",help='debug')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
+    parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-type',type=str,help='ElasticSearch Search Index Type to use')
     parser.add_argument('-doc',type=str,help='id of the document to serialize to RDF')
     parser.add_argument('-scroll',action="store_true",help="print out the whole index as RDF instead getting a single doc")
     parser.add_argument('-inp',type=str,help="generate RDF out of LDJ")
-    args=   parser.parse_args()
-    #con =    Isql('DSN=Local Virtuoso;UID=dba;PWD=dba')
-    if args.inp:
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id")
+    args=parser.parse_args()
+    
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.scroll=True
+            args.type=slashsplit[4]
+        if len(slashsplit)>5 and slashsplit[5]:
+            args.scroll=False
+            if "?pretty" in args.server:
+                args.doc=slashsplit[5].rsplit("?")[0]
+            else:
+                args.doc=slashsplit[5]
+    if args.help:
+        parser.print_help(sys.stderr)
+        exit()        
+        
+    elif args.inp:
         with open(args.inp,"r") as inp:
             m = Manager()
             l = m.Lock()
@@ -171,7 +193,6 @@ if __name__ == "__main__":
             pool = Pool(processes=cpu_count()*2,initializer=init,initargs=(l,c,True,i,))
             for line in inp:
                 pool.apply_async(get_rdf,args=(json.loads(line),))
-        
     elif args.scroll:
         if not args.debug:
             m = Manager()
@@ -196,10 +217,25 @@ if __name__ == "__main__":
                 get_bulkrdf(doc)
     elif args.doc:
         es=Elasticsearch([{'host':args.host}],port=args.port)  
-        process_stuff(es.get(index=args.index,doc_type=args.type,id=args.doc))
+        record=es.get(index=args.index,doc_type=args.type,id=args.doc,_source_exclude="_isil,_recorddate,identifier")
+        m = Manager()
+        l = m.Lock()
+        c = m.dict()
+        i = m.dict({"host":args.host,
+                    "type":args.type,
+                    "index":args.index})
+        init(l,c,True,i,)
+        get_rdf(record.get("_source"))
     else:
+        m = Manager()
+        l = m.Lock()
+        c = m.dict()
+        i = m.dict({"host":"",
+                    "type":"",
+                    "index":""})
+        pool = Pool(processes=cpu_count()*2,initializer=init,initargs=(l,c,True,i,))
         for line in sys.stdin:
-            get_rdf(json.loads(line))
+            pool.apply_async(get_rdf,args=(json.loads(line),))
         #print("neither given the -scroll optarg or given a -doc id or even an -inp file. nothing to do her. exiting")
     #out.close()
   
