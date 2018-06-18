@@ -33,7 +33,7 @@ class EFTask(BaseTask):
         "password":"opendata",
         "file":"ef-dump.ldj",
         "fixfile":"ef-dump-fixed.ldj",
-        "host":"localhost",
+        "host":"127.0.0.1",
         "index":"ef",
         "type":"gnd",
         "port":9200,
@@ -80,7 +80,7 @@ class EFFixIDs(EFTask):
         return EFDownload()
     
     def run(self):
-        with open(self.config.get("fixfile"),"r") as f:
+        with open(self.config.get("file"),"r") as f:
             with open(self.config.get("fixfile"),"w") as out:
                 for line in f:
                     try:
@@ -105,7 +105,7 @@ class EFFillEsIndex(EFTask):
         return EFFixIDs()
 
     def run(self):
-        cmd="esbulk -verbose -host {host} -port {port} -index {index} -w {workers} -type {type} -id id {fixfile}""".format(**self.config)
+        cmd="esbulk -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
         out = shellout(cmd)
         pass
 
@@ -117,16 +117,18 @@ class EFFillEsIndex(EFTask):
         uniq=set()
         r = get(cmd)
         #result=self.es.search(index=self.config["index"],doc_type=typ,size=0)
-        if os.path.exists(self.config["file"]):
-            with open(self.config["file"],"r") as f:
+        if os.path.exists(self.config["fixfile"]):
+            with open(self.config["fixfile"],"r") as f:
                 for line in f:
                     try:
                         record=json.loads(line)
                         uniq.add(record["@id"])
                     except:
                         continue
-            if len(uniq)==r.json().get("hits").get("total"):
+            if isinstance(r.json(),dict) and r.json().get("hits") and len(uniq)==r.json().get("hits").get("total"):
                     return True
+        else:
+            return False
         return False
 
 
