@@ -55,15 +55,15 @@ def compact_object(jsonobject):
                     compacted.pop(date)
                 if isinstance(compacted.get("gndIdentifier"),list):
                     compacted["gndIdentifier"]=compacted.pop("gndIdentifier")[0]
-            for fix in ["definition"]:
-                if isinstance(compacted[fix],(dict,list)):
-                    compacted.pop(fix)
+            #for fix in ["definition"]:
+            #    if isinstance(compacted.get("fix"),(dict,list)):
+            #        compacted.pop(fix)
             if (node and compacted.get("@id") and compacted.get("@id").startswith("_:")) or (node and compacted.get("id") and compacted.get("id").startswith("_:")):
                 with open(pathprefix+str(current_process().name)+"-bnodes.ldj","a") as fileout:           ###avoid raceconditions
-                    fileout.write(json.dumps(compacted, indent=None))
+                    fileout.write(json.dumps(compacted, indent=None)+"\n")
             else:
                 with open(pathprefix+str(current_process().name)+".ldj","a") as fileout:
-                    fileout.write(json.dumps(compacted, indent=None))
+                    fileout.write(json.dumps(compacted, indent=None)+"\n")
             
 def yield_obj(path,basepath):
     with open(path,"rb") as fin:
@@ -114,7 +114,8 @@ class GNDTask(BaseTask):
         "password":"opendata",
         "file":"data",
         "host":"localhost",
-        "index":"gnd",
+        "indices":{"record":"gnd-records",
+                   "bnode":"gnd-bnodes"},
         "port":9200,
         "workers":8,
         "doc_types":["bnodes","records"]
@@ -174,6 +175,8 @@ class GNDcompactedJSONdata(GNDTask):
     def output(self):
         return [luigi.LocalTarget("chunks")]
 
+
+
 class GNDconcatChunks(GNDTask):
     def requires(self):
         return [ GNDcompactedJSONdata()]
@@ -186,11 +189,19 @@ class GNDconcatChunks(GNDTask):
             if "bnode" in f:
                 with open(directory + f,"r") as chunk:
                     for line in chunk:
-                        print(line,file=bnodes)
+                        jline=json.loads(line)
+                        for date in ("dateOfBirth","dateOfDeath"):
+                            if isinstance(jline.get(date),(str,list)):
+                                jline.pop(date)
+                        bnodes.write(json.dumps(jline)+"\n")
             else:
                 with open(directory + f,"r") as chunk:
                     for line in chunk:
-                        print(line,file=records)
+                        jline=json.loads(line)
+                        for date in ("dateOfBirth","dateOfDeath"):
+                            if isinstance(jline.get(date),(str,list)):
+                                jline.pop(date)
+                        records.write(json.dumps(jline)+"\n")
         records.close()
         bnodes.close()
         
@@ -209,30 +220,32 @@ class GNDFillEsIndex(GNDTask):
         return GNDconcatChunks()
 
     def run(self):
-        for typ in self.config["doc_types"]:
-            cmd="esbulk -verbose -host {host} -port {port} -index {index} -w {workers} -type {type} -id id {type}.ldj""".format(**self.config,type=typ)
-            out = shellout(cmd)
+        cmd="esbulk -verbose -server http://{host}:{port} -w {workers}""".format(**self.config)
+        for k,v in self.config.get("indices").items():
+            out = shellout(cmd+""" -index {index} -type {type} -id id {type}s.ldj""".format(index=v,type=k))
+            
 
     def complete(self):
         self.es=elasticsearch.Elasticsearch([{'host':self.config.get("host")}],port=self.config.get("port"))
         fail=0
-        for typ in self.config["doc_types"]:
-            cmd="http://{host}:{port}/{index}/{type}/_search?size=0".format(**self.config,type=typ)
+        for k,v in self.config.get("indices").items():
+            cmd="http://{host}:{port}/{index}/{type}/_search?size=0".format(**self.config,type=k,index=v)
             i=0
             r = get(cmd)
-            #result=self.es.search(index=self.config["index"],doc_type=typ,size=0)
             try:
-                with open(str(typ)+".ldj","r") as f:
+                with open(str(k)+"s.ldj","r") as f:
                     for i,l in enumerate(f):
                         pass
             except FileNotFoundError:
                 fail+=1
                 i=-100
             i+=1
-            if i!=r.json().get("hits").get("total"):
+            if r.ok:
+                if i!=r.json().get("hits").get("total"):
+                    fail+=1
+            else:
                 fail+=1
         if fail==0:
-            print(True)
             return True
         else:
             return False
@@ -248,15 +261,3 @@ class GNDUpdate(GNDTask, luigi.WrapperTask):
     def run(self):
         pass
 
-
-
-if __name__ == "__main__":
-    date1 = datetime.today()
-    
-    GNDDownload().complete()
-    #CleanWorkspace().run()
-    #GNDcompactedJSONdata().run()
-    #GNDFillEsIndex().run()
-    
-    #GNDFillEsIndex().complete()
-    #GNDUpdate().run()
