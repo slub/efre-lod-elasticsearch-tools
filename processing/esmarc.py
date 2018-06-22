@@ -313,6 +313,30 @@ def getmarcvalues(record,regex,entity):
                                     if regex[-1] in final:
                                         yield final.get(regex[-1])
 
+def handle_rvk(jline,key,entity):
+    ret=[]
+    data=getmarc(jline,key,None)
+    for marc_indicator in data:
+        for subfield in marc_indicator:
+            sset={}
+            record={}
+            for endfield in marc_indicator.get(subfield):
+                for k,v in endfield.items():
+                    sset[k]=v
+            if "0" in sset:
+                record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
+            if "a" in sset:
+                record["identifier"]=sset.get("a")
+            if "b" in sset:
+                record["mainEntityofPage"]=sset.get("b")
+            if "k" in sset:
+                record["description"]=sset.get("k")
+            if record:
+                ret.append(record)
+    return ret
+            
+
+
 def relatedTo(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
     marcfield=key[:3]
@@ -771,7 +795,8 @@ entities = {
         "issueNumber"       :{getmarc:"773..l"},
         "volumeNumer"       :{getmarc:"773..v"},
         "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
-        "relatedTo"         :{relatedTo:"500..0"}
+        "relatedTo"         :{relatedTo:"500..0"},
+        "about"             :{handle_rvk:"936"}
         },
     "persons": {
         "@type"         :"http://schema.org/Person",
@@ -834,7 +859,6 @@ entities = {
         "_isil"             :{getmarc:"003"},
         "_recorddate"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
-        
         
         "name"              :{getmarc:"150..a"},
         "alternateName"     :{getmarc:"450..a+x"},
