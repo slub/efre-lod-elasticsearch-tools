@@ -220,7 +220,7 @@ def gnd2uri(string):
 
 def uri2url(isil,num):
     if isil and num and isil in isil2sameAs:
-        return isil2sameAs.get(isil)+num
+        return str(isil2sameAs.get(isil)+num)
     else:
         return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
 
@@ -316,26 +316,38 @@ def getmarcvalues(record,regex,entity):
 def handle_rvk(jline,key,entity):
     ret=[]
     data=getmarc(jline,key,None)
-    for marc_indicator in data:
-        for subfield in marc_indicator:
-            sset={}
-            record={}
-            for endfield in marc_indicator.get(subfield):
-                for k,v in endfield.items():
-                    sset[k]=v
-            if "0" in sset:
-                record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
-            if "a" in sset:
-                record["identifier"]=sset.get("a")
-            if "b" in sset:
-                record["mainEntityofPage"]=sset.get("b")
-            if "k" in sset:
-                record["description"]=sset.get("k")
-            if record:
-                ret.append(record)
-    return ret
+    if isinstance(data,list):
+        for elem in data:
+            ret.append(handle_single_rvk(elem))
+        return ret
+    elif isinstance(data,dict):
+        return handle_single_rvk(data)
             
-
+def handle_single_rvk(data):
+    sset={}
+    record={}
+    if not "rv" in data:
+        return
+    for subfield in data.get("rv"):
+        for k,v in subfield.items():
+            sset[k]=v
+    if "0" in sset:
+        record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
+    if "a" in sset:
+        record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a").replace(" ","+")
+        record["identifier"]={  "@type"     :"PropertyValue",
+                                "propertyID":"RVK",
+                                "value"     :sset.get("a")}
+    if "b" in sset:
+        record["name"]=sset.get("b")
+    if "k" in sset:
+        record["keywords"]=sset.get("k")
+    return record
+    
+def handlePPN(jline,key,entity):
+    return {    "@type"     :"PropertyValue",
+                "propertyID":"Pica Product Number",
+                "value"     :jline.get(key)}
 
 def relatedTo(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
@@ -628,16 +640,15 @@ def check(ldj,entity):
         ldj['genre']={}
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
-    if "identifier" in ldj and "_isil" in ldj and "_isil" in isil2sameAs:
-        if "sameAs" in ldj and isinstance(ldj["sameAs"],str):
+    if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
+        if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
             ldj["sameAs"]=[ldj.pop("sameAs")]
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
-        elif "sameAs" not in ldj:
-            ldj["sameAs"]=None
-            ldj["sameAs"]=litter(ldj["sameAs"],uri2url(ldj["_isil"],ldj.pop("identifier")))
+        elif "sameAs" in ldj and isinstance(ldj.get("sameAs"),list):
+            ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
-            ldj["sameAs"]=litter(ldj["sameAs"],uri2url(ldj["_isil"],ldj.pop("identifier")))
-        ldj["identifier"]=ldj["@id"].split("/")[4]
+            ldj["sameAs"]=uri2url(ldj.get("_isil"),ldj.get("identifier"))
+    ldj["identifier"]=ldj.get("@id").split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
@@ -740,7 +751,7 @@ entities = {
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getmarc:"003"},
-        "_recorddate"   :{getmarc:"005"},
+        "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
         "description"       :{getmarc:["245..c"]},
@@ -771,7 +782,7 @@ entities = {
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getmarc:"003"},
-        "_recorddate"   :{getmarc:"005"},
+        "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
@@ -804,7 +815,7 @@ entities = {
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getmarc:"003"},
-        "_recorddate"   :{getmarc:"005"},
+        "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         
         "name"          :{getmarc:"100..a"},
@@ -825,7 +836,7 @@ entities = {
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getmarc:"003"},
-        "_recorddate"       :{getmarc:"005"},
+        "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:"110..a"},
@@ -843,7 +854,7 @@ entities = {
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getmarc:"003"},
-        "_recorddate"       :{getmarc:"005"},
+        "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:"151..a"},
@@ -857,7 +868,7 @@ entities = {
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getmarc:"003"},
-        "_recorddate"       :{getmarc:"005"},
+        "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:"150..a"},
