@@ -481,9 +481,10 @@ def get_subfield(jline,key,entity):
                                     node["identifier"]=litter(node["identifier"],elem)
                 if sset.get("a"):
                     node["name"]=sset.get("a")
-                data.append(node)
+                if node:
+                    data.append(node)
         if data:
-            return ArrayOrSingleValue(data)
+            return  ArrayOrSingleValue(data)
 
 def deathDate(jline,key,entity):
     return marc_dates(jline.get(key),"deathDate")
@@ -807,7 +808,8 @@ entities = {
         "volumeNumer"       :{getmarc:"773..v"},
         "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
         "relatedTo"         :{relatedTo:"500..0"},
-        "about"             :{handle_rvk:"936"}
+        "about"             :{handle_rvk:"936"},
+        "mentions"          :{get_subfield:"689"}
         },
     "persons": {
         "@type"         :"http://schema.org/Person",
@@ -1059,7 +1061,7 @@ if __name__ == "__main__":
     if args.help:
         parser.print_help(sys.stderr)
         exit()        
-    elif args.host and args.index and args.type and args.id and args.debug:
+    elif args.host and args.index and args.type and args.id:
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
         source=get_source_include_str()
