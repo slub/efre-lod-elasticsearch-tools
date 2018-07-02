@@ -28,12 +28,12 @@ class EFTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/opendata/20180312-EFDump-de-DE.json.gz",
+        "url":"https://data.dnb.de/opendata/20180608-EFDump-de-DE.jsonld.gz",
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
         "fixfile":"ef-dump-fixed.ldj",
-        "host":"127.0.0.1",
+        "host":"localhost",
         "index":"ef",
         "type":"gnd",
         "port":9200,
