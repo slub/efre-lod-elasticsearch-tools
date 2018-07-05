@@ -285,7 +285,6 @@ def getmarc(record,regex,entity):
                         data=litter(data,fullstr)
             if data:
                 return ArrayOrSingleValue(data)
-        
     else:
         ret=[]
         if isinstance(regex,str):
@@ -481,6 +480,20 @@ def get_subfield(jline,key,entity):
                                     node["identifier"]=litter(node["identifier"],elem)
                 if sset.get("a"):
                     node["name"]=sset.get("a")
+                if sset.get("D"):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
+                    node["@type"]="http://schema.org/"
+                    if sset.get("D")=="p":
+                        node["@type"]+="Person"
+                    if sset.get("D")=="b":
+                        node["@type"]+="Organization"
+                    if sset.get("D")=="f":
+                        node["@type"]+="Event"
+                    if sset.get("D")=="u":
+                        node["@type"]+="CreativeWork"
+                    if sset.get("D")=="g":
+                        node["@type"]+="Place"
+                    if sset.get("D")=="s":
+                        node.pop("@type")
                 if node:
                     data.append(node)
         if data:

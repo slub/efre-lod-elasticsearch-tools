@@ -14,6 +14,7 @@ from multiprocessing import Lock, Pool, Manager
 from es2json import esgenerator
 from es2json import eprint
 from esmarc import gnd2uri
+from esmarc import isint
 from esmarc import ArrayOrSingleValue
 from es2json import simplebar
 args=None
@@ -24,6 +25,7 @@ map_id={
     "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
     "geo":     ["deathPlace","birthPlace","workLocation","location","areaServed"],
     "orga":["copyrightHolder"],
+    "tags":["mentions"],
          }
 ### replace SWB/GND IDs by your own IDs in your ElasticSearch Index.
 ### example usage: ./sameAs2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
@@ -59,6 +61,8 @@ def getidbygnd(gnd,cache=None):
               "type" :"schemaorg"},
              {"index":"resources",
               "type" :"schemaorg"},
+              {"index":"tags",
+               "type":"schemaorg"},
              {"index":"dnb",
               "type" :"gnd",
               "index":"ef",
@@ -235,7 +239,22 @@ if __name__ == "__main__":
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-id',type=str,help="enrich a single id")
     parser.add_argument('-debug',action="store_true",help="disable mp for debugging purposes")
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id syntax. overwrites host/port/index/id/pretty")
     args=parser.parse_args()
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.type=slashsplit[4]
+        if len(slashsplit)>5:
+            if "?pretty" in args.server:
+                args.pretty=True
+                args.id=slashsplit[5].rsplit("?")[0]
+            else:
+                args.id=slashsplit[5]
    
     if args.help:
         parser.print_help(sys.stderr)
