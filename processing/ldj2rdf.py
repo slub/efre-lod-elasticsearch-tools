@@ -25,9 +25,27 @@ global args
 global es
 
 listcontexts={"http://schema.org":"http://schema.org/docs/jsonldcontext.json",
-              "http://schema.org/":"http://schema.org/docs/jsonldcontext.json"}
+              "http://schema.org/":"http://schema.org/docs/jsonldcontext.json",
+              "http://lobid.org/gnd/context.jsonld":"http://lobid.org/gnd/context.jsonld"}
 
-
+def get_context(con_dict,con_url):
+    if con_url not in con_dict:
+        if con_url in listcontexts:
+            r=requests.get(listcontexts[con_url])
+            if r.ok:
+                con_dict[text]=r.json()
+                eprint("got context from "+listcontexts[con_url])
+            else:
+                eprint("Error, could not get context from "+con_url)
+                exit(-1)
+        else:
+            r=requests.get(con_url)
+            if r.ok:
+                con_dict[text]=r.json()
+                eprint("got context from "+con_url)
+                return
+            eprint("Error, context unknown :( "+str(con_url),doc)
+            exit(-1)
 
 def init(l,c,m,i):
     global lock
@@ -40,7 +58,8 @@ def init(l,c,m,i):
     lock = l
     
 def get_bulkrdf(doc):
-    text=None
+    global text
+    text=""
     for n,elem in enumerate(doc):
         if isinstance(elem,dict):
             toRemove=[]
@@ -71,25 +90,14 @@ def get_bulkrdf(doc):
                                 toremove.append(k)
                         for item in toremove:
                             doc[n]["sameAs"].pop(item)
-            if not text or elem.get("@context")==text:
+            if (not text or elem.get("@context")==text ) and elem.get("@context"):
                 text=doc[n].pop("@context")
     if doc:
         g=ConjunctiveGraph()
         if text not in con:
             if mp:
                 lock.acquire()
-            if text not in con:
-                if text in listcontexts:
-                    r=requests.get(listcontexts[text])
-                    if r.ok:
-                        con[text]=r.json()
-                        eprint("got context from "+listcontexts[text])
-                    else:
-                        eprint("Error, could not get context from "+text)
-                        return
-                else:
-                    eprint("Error, context unknown :( "+str(text),doc)
-                    return
+            get_context(con,text)
             if mp:
                 lock.release()
         if not args.debug:
@@ -115,25 +123,14 @@ def get_rdf(doc):
             for key in toRemove:
                 doc.pop(key)
             toRemove.clear()
-    if not text or doc.get("@context")==text:
+    if (not text or doc.get("@context")==text ) and doc.get("@context"):
         text=doc.pop("@context")
     if doc:
         g=ConjunctiveGraph()
         if text not in con:
             if mp:
                 lock.acquire()
-            if text not in con:
-                if text in listcontexts:
-                    r=requests.get(listcontexts[text])
-                    if r.ok:
-                        con[text]=r.json()
-                        eprint("got context from "+listcontexts[text])
-                    else:
-                        eprint("Error, could not get context from "+text)
-                        return
-                else:
-                    eprint("Error, context unknown :( "+str(text),doc)
-                    return
+            get_context()
             if mp:
                 lock.release()
         if not args.debug:
@@ -161,6 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('-scroll',action="store_true",help="print out the whole index as RDF instead getting a single doc")
     parser.add_argument('-inp',type=str,help="generate RDF out of LDJ")
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id")
+    parser.add_argument('-context',type=str,help="deliver a url to the context if there is no @context field in the data")
     args=parser.parse_args()
     
     if args.server:
@@ -225,6 +223,7 @@ if __name__ == "__main__":
                     "type":args.type,
                     "index":args.index})
         init(l,c,True,i,)
+        record["_source"]["@id"]="http://d-nb.info/gnd/"+record["_source"].pop("id")
         get_rdf(record.get("_source"))
     else:
         m = Manager()
