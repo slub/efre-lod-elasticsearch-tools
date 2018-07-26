@@ -3,7 +3,7 @@ import sys
 import json
 import requests
 
-server="http:/127.0.0.1:9200/gnd-records/record/"
+server="http://127.0.0.1:9200/gnd-records/record/"
 
 def process(record,dnb_uri):
     r = requests.get(server+dnb_uri.replace("/","%2F").replace(":","%3A"))
@@ -12,8 +12,16 @@ def process(record,dnb_uri):
             if not record.get("about"):
                 record["about"]={"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}}
             else:
-                record["about"]=[record.pop("about")]
-                record["about"].append({"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}})
+                if isinstance(record.get("about"),str) and elem not in record.get("about").get("identifier").get("value"):
+                    record["about"]=[record.pop("about")]
+                    record["about"].append({"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}})
+                elif isinstance(record.get("about"),list):
+                    dont_add=False
+                    for item in record.get("about"):
+                        if elem in item.get("identifier").get("value"):
+                            dont_add=True
+                    if dont_add==False:
+                        record["about"].append({"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}})
         return record
         
 def find_gnd(jline):
