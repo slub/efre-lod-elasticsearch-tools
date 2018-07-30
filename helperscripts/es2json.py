@@ -290,7 +290,7 @@ if __name__ == "__main__":
     else:
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
-        if args.head:
+        if not args.headless:
             json_record=es.get(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
         else:
             json_record=es.get_source(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
