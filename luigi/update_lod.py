@@ -44,8 +44,8 @@ class LODTask(BaseTask):
     config={
         "date":int(yesterday.strftime("%y%m%d")),
         "url":"ftp://vftp.bsz-bw.de/006/lod/",
-        "username":"swb",
-        "password":"nix da",
+        "username":"nix",
+        "password":"da",
         "host":"http://127.0.0.1:9200",
         "workers":8
         }
@@ -100,13 +100,6 @@ class LODFillRawdataIndex(LODTask):
     files=None
     def requires(self):
         return LODTransform2ldj()
-
-    # ES=http://194.95.145.44:9200
-    # index=swb-aut-${DATE}
-    # curl -XPUT $ES/$index -d '{"mappings":{"mrc":{"date_detection":false}}}' -H "Content-Type: application/json"
-    # curl -XPUT $ES/$index/_settings -d '{"index.mapping.total_fields.limit":5000}'  -H "Content-Type: application/json"
-    # esbulk -server $ES -index $index -type mrc -id 001 -w 8 < norm-aut.ldj 
-
     def run(self):
         put_dict("{host}/swb-aut-{date}".format(**self.config),{"mappings":{"mrc":{"date_detection":False}}})
         put_dict("{host}/swb-aut-{date}/_settings".format(**self.config),{"index.mapping.total_fields.limit":5000})

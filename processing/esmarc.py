@@ -235,7 +235,7 @@ def get_or_generate_id(record,entity):
         identifier = None
     else:
         ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
-        url="http://194.95.145.44:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
+        url="http://127.0.0.1:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
         try:
             r=requests.get(url)
             if r.json().get("hits").get("total")>=1:
