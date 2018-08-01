@@ -228,14 +228,14 @@ def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def get_or_generate_id(record,entity):
-    generate=True
+    generate=False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
         identifier = None
     else:
-        ppn=gnd2uri("("+str(getmarc(record,"003",entity)[0]+")"+str(getmarc(record,"001",entity))))
-        url="http://"+host+":9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
+        ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
+        url="http://194.95.145.44:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
         try:
             r=requests.get(url)
             if r.json().get("hits").get("total")>=1:
@@ -1052,6 +1052,7 @@ if __name__ == "__main__":
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
+    parser.add_argument('-w',type=int,default=8,help="how many processes to use")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -1096,7 +1097,7 @@ if __name__ == "__main__":
                     print(json.dumps(record[k],indent=None))
     elif args.host and args.index and args.type : #if inf not set, than try elasticsearch
         setupoutput(args.prefix)
-        pool = Pool(initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
         for ldj in esfatgenerator(host=args.host,
                        port=args.port,
                        index=args.index,

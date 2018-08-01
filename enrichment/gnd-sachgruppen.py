@@ -8,8 +8,7 @@ server="http://127.0.0.1:9200/gnd-records/record/"
 
 def process(record,dnb_uri):
     r = requests.get(server+dnb_uri.replace("/","%2F").replace(":","%3A"))
-    try:
-        if r.ok and r.json().get("_source").get("gndSubjectCategory"):
+    if r.ok and r.json().get("_source").get("gndSubjectCategory"):
             for elem in r.json().get("_source").get("gndSubjectCategory"):
                 if not record.get("about"):
                     record["about"]={"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}}
@@ -24,21 +23,19 @@ def process(record,dnb_uri):
                                 dont_add=True
                         if dont_add==False:
                             record["about"].append({"identifier":{"propertyID":"GND-Sachgruppe","@type":"PropertyValue","value": elem}})
-            return record
-    except AttributeError:
-        pass
+    return record
         
 def find_gnd(jline):
     if isinstance(jline.get("sameAs"),str):
         if jline.get("sameAs").startswith("http://d-nb.info"):
             return process(jline,jline.get("sameAs"))
         else:
-            return None
+            return jline
     elif isinstance(jline.get("sameAs"),list):
         for elem in jline.get("sameAs"):
             if isinstance(elem,str) and elem.startswith("http://d-nb.info"):
-                return process(jline,elem)
-            
+                jline=process(jline,elem)
+        return jline
 if __name__ == "__main__":
     for line in sys.stdin:
         try:
