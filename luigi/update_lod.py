@@ -39,10 +39,11 @@ class LODTask(BaseTask):
     """
     Just a base class for GND
     """
-    TAG = 'gnd'
+    PPNs=[]
+    TAG = 'lod'
     yesterday = date.today() - timedelta(1)
     config={
-        "date":int(yesterday.strftime("%y%m%d")),
+        "dates":[],
         "url":"ftp://vftp.bsz-bw.de/006/lod/",
         "username":"nix",
         "password":"da",
@@ -56,12 +57,23 @@ class LODTask(BaseTask):
 class LODDownload(LODTask):
 
     def run(self):
-        cmdstring="wget --user {username} --password {password} {url}TA-MARC-norm-{date}.tar.gz".format(**self.config)
-        output = shellout(cmdstring)
+        r=get("{host}/date/actual/1".format(**self.config))
+        lu=r.json().get("_source").get("date")
+        lastupdate=date(int(lu.split('-')[0]),int(lu.split('-')[1]),int(lu.split('-')[2]))
+        span=self.yesterday-lastupdate
+        for i in range(span.days+1):
+            self.config["dates"].append((lastupdate+timedelta(days=i)).strftime("%y%m%d"))
+        
+        for dat in self.config.get("dates"):
+            cmdstring="wget --user {username} --password {password} {url}TA-MARC-norm-{date}.tar.gz".format(**self.config,date=dat)
+            output = shellout(cmdstring)
         return 0
 
     def output(self):
-        return luigi.LocalTarget("TA-MARC-norm-{date}.tar.gz".format(**self.config))
+        ret=[]
+        for date in self.config.get("dates"):
+            ret.append(luigi.LocalTarget("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)))
+        return ret
 
 class LODExtract(LODTask):
     
@@ -69,57 +81,58 @@ class LODExtract(LODTask):
         return LODDownload()
     
     def run(self):
-        cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz".format(**self.config)
-        output = shellout(cmdstring)
+        for date in self.config.get("dates"):
+            cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz && cat norm-aut.mrc >> norm.mrc && rm norm-*.mrc".format(**self.config,date=date)
+            output = shellout(cmdstring)
         return 0
     
     def output(self):
-        return luigi.LocalTarget("norm-aut.mrc")
+        return luigi.LocalTarget("norm.mrc")
 
 class LODTransform2ldj(LODTask):
     
-    def _requires(self):
+    def requires(self):
         return LODExtract()
 
     def run(self):
-        cmdstring="marc2jsonl < norm-aut.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py > norm-aut.ldj"
+        cmdstring="marc2jsonl < norm.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py > norm-aut.ldj".format(**self.config)
         output=shellout(cmdstring)
         return 0
     
     def output(self):
-        return luigi.LocalTarget("norm-aut.ldj")
+        return luigi.LocalTarget("norm-aut.ldj".format(**self.config))
 
 
 class LODFillRawdataIndex(LODTask):
     """
     Loads raw data into a given ElasticSearch index (with help of esbulk)
     """
-    date = datetime.today()
-    es = None
-
-    files=None
+    
     def requires(self):
         return LODTransform2ldj()
+    
     def run(self):
-        put_dict("{host}/swb-aut-{date}".format(**self.config),{"mappings":{"mrc":{"date_detection":False}}})
-        put_dict("{host}/swb-aut-{date}/_settings".format(**self.config),{"index.mapping.total_fields.limit":5000})
+        put_dict("{host}/swb-aut-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
+        put_dict("{host}/swb-aut-{date}/_settings".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
         
-        cmd="esbulk -verbose -server {host} -w {workers} -index swb-aut-{date} -type mrc -id 001 norm-aut.ldj""".format(**self.config)
+        cmd="esbulk -verbose -server {host} -w {workers} -index swb-aut-{date} -type mrc -id 001 norm-aut.ldj""".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
 
     def complete(self):
         fail=0
-        cmd="{host}/swb-aut-{date}/mrc/_search?size=0".format(**self.config)
+        cmd="{host}/swb-aut-{date}/mrc/_search?size=0".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         i=0
         r = get(cmd)
         try:
-            with open("norm-aut.ldj","r") as f:
-                for i,l in enumerate(f):
-                    pass
+            with open("norm-aut.ldj".format(**self.config),"r") as fd:
+                ids=set()
+                for line in fd:
+                    jline=json.loads(line)
+                    ids.add(jline.get("001"))
+            i=len(ids)
         except FileNotFoundError:
             fail+=1
             i=-100
-        i+=1
         if r.ok:
             if i!=r.json().get("hits").get("total"):
                 fail+=1
@@ -135,7 +148,7 @@ class LODProcessFromRdi(LODTask):
         return LODFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut-{date}/mrc".format(**self.config)
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut-{date}/mrc".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
@@ -160,6 +173,7 @@ class LODFillLODIndex(LODTask):
                 cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
                 luigi.LocalTarget(output).move(self.output().path)
+        put_dict("{host}/date/actual/1".format(**self.config),{"date":str(self.yesterday.strftime("%Y-%m-%d"))})
     
     def output(self):
         return luigi.LocalTarget(path=self.path())
