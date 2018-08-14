@@ -15,7 +15,7 @@ import elasticsearch
 from multiprocessing import Pool,current_process
 from pyld import jsonld
 import ijson.backends.yajl2_cffi as ijson
-
+import sameAs2id
 
 import luigi
 import luigi.contrib.esindex
@@ -39,16 +39,8 @@ class LODTask(BaseTask):
     """
     Just a base class for LOD
     """
-    
-    config={
-        "lastupdate":"",
-        "dates":[],
-        "url":"ftp://vftp.bsz-bw.de/006/lod/",
-        "username":"geht",
-        "password":"dich",
-        "host":"http://nixan:9200",
-        "workers":8
-        }
+    with open('lod_config.json') as data_file:    
+        config = json.load(data_file)
     r=get("{host}/date/actual/1".format(**config))
     lu=r.json().get("_source").get("date")
     config["lastupdate"]=date(int(lu.split('-')[0]),int(lu.split('-')[1]),int(lu.split('-')[2]))
@@ -169,12 +161,27 @@ class LODFillLODIndex(LODTask):
         return LODProcessFromRdi()
     
     def run(self):
+        enrichmentstr=[]
         for index in os.listdir("ldj"):
             for f in os.listdir("ldj/"+index):
                 cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
-                luigi.LocalTarget(output).move(self.output().path)
+                with open("{fd}".format(fd="ldj/"+index+"/"+f)) as fdd:
+                    for line in fdd:
+                        rec=json.loads(line)
+                        enrichmentstr.append((self.config.get("host").split("/")[2].split(":")[0],self.config.get("host").split("/")[2].split(":")[1],index,"schemaorg",rec.get("identifier")))
         put_dict("{host}/date/actual/1".format(**self.config),{"date":str(self.yesterday.strftime("%Y-%m-%d"))})
+        for host,port,index,type,id in enrichmentstr:
+            rec=sameAs2id.run(host,port,index,type,id,False)
+            if rec:
+                with open(index+"-toReIndex.ldj","a") as fd:
+                    json.dump(rec,fd,indent=None)
+        for index in os.listdir("ldj"):
+            if os.path.isfile(str(index)+"-toReIndex.ldj"):
+                cmd="esbulk -verbose -server {host} -index {index} -type schemaorg -id identifier -w {workers} < {index}-toReIndex.ldj".format(**self.config,index=index)
+                output=shellout(cmd)
+                os.remove(str(index)+"-toReIndex.ldj")
+                luigi.LocalTarget(output).move(self.output().path)
     
     def output(self):
         return luigi.LocalTarget(path=self.path())

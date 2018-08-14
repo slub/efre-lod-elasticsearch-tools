@@ -17,8 +17,6 @@ from esmarc import gnd2uri
 from esmarc import isint
 from esmarc import ArrayOrSingleValue
 from es2json import simplebar
-args=None
-host=None
 
 author_gnd_key="sameAs"
 map_id={ 
@@ -95,8 +93,8 @@ def getidbygnd(gnd,cache=None):
                 else:
                     return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
 
-def useadlookup(feld,index,uri):
-        url="http://"+host+":9200/"+str(index)+"/schemaorg/_search?_source=@id,sameAs&q="+str(feld)+":\""+str(uri)+"\""
+def useadlookup(feld,uri,host,port,index,type,id):
+        url="http://"+host+":"+str(port)+"/"+str(index)+"/"+type+"/_search?_source=@id,sameAs&q="+str(feld)+":\""+str(uri)+"\""
         r=requests.get(url,headers={'Connection':'close'})
         if r.ok:
             response=r.json().get("hits")
@@ -137,10 +135,10 @@ def traverse(obj,path):
     else:
         yield path,obj
         
-def sameAs2ID(index,entity,record):
+def sameAs2ID(entity,record,host,port,index,type,id):
     changed=False
     if "sameAs" in record and isinstance(record["sameAs"],str):
-        r=useadlookup("sameAs",index,record["sameAs"])
+        r=useadlookup("sameAs",record["sameAs"],host,port,index,type,id)
         if isinstance(r,dict) and r.get("@id"):
             changed=True
             record.pop("sameAs")
@@ -148,7 +146,7 @@ def sameAs2ID(index,entity,record):
     elif "sameAs" in record and isinstance(record["sameAs"],list):
         record["@id"]=None
         for n,sameAs in enumerate(record['sameAs']):
-            r=useadlookup("sameAs",index,sameAs)
+            r=useadlookup("sameAs",sameAs,host,port,index,type,id)
             if isinstance(r,dict) and r.get("@id"):
                 changed=True
                 del record["sameAs"][n]
@@ -164,19 +162,19 @@ def sameAs2ID(index,entity,record):
     else:
         return None
                 
-def resolve(record,index):
+def resolve(record,key,host,port,index,type,id):
     changed=False
     if index in map_id:
         for entity in map_id[index]:
             if entity in record:
                 if isinstance(record[entity],list):
                     for n,sameAs in enumerate(record[entity]):
-                        rec=sameAs2ID(index,entity,sameAs)
+                        rec=sameAs2ID(entity,sameAs,host,port,index,type,id)
                         if rec:
                             changed=True
                             record[entity][n]=rec
                 elif isinstance(record[entity],dict):
-                    rec=sameAs2ID(index,entity,record[entity])
+                    rec=sameAs2ID(entity,record[entity],host,port,index,type,id)
                     if rec:
                         changed=True
                         record[entity]=rec
@@ -185,16 +183,8 @@ def resolve(record,index):
     else:
         return None
         
-###1337 h4x:
-#
-#        #!/bin/bash
-#for i in geo orga persons resources; do
-#~/git/slub-lod-elasticsearch-tools/enrichment/gnd2swb.py -host ### args.host -index ${i} -type schemaorg | esbulk -host 194.95.145.44 -index ${i} -type schemaorg -id identifier -w 8
-#done
-
-
-def work(record):
-    data=resolve_uris(record.pop("_source"))
+def work(record,host,port,index,type,id,debug):
+    data=resolve_uris(record.pop("_source"),host,port,index,type,id)
     if data:
         record.pop("_score")
         record["_op_type"]="index"
@@ -217,10 +207,10 @@ def init(l,a,es):
     actions=a
     lock = l
         
-def resolve_uris(record):
+def resolve_uris(record,host,port,index,type,id):
     changed=False
     for key in map_id:
-        newrecord = resolve(record,key)
+        newrecord = resolve(record,key,host,port,index,type,id)
         if newrecord:
             record=newrecord
             changed=True
@@ -229,6 +219,31 @@ def resolve_uris(record):
     else:
         return None
 
+def run(host,port,index,type,id,debug):
+    es=Elasticsearch([{'host':host}],port=port)
+    if id:
+        record=es.get(index=index,doc_type=type,id=id).pop("_source")
+        return resolve_uris(record,host,port,index,type,id)
+    elif debug:
+        l=[]
+        a=[]
+        init(l,a,es)
+        for hit in esgenerator(host=host,port=port,index=index,type=type,headless=False):
+            work(hit,host,port,index,type,id,debug)
+        if len(a)>0:
+            helpers.bulk(es,a,stats_only=True)
+            a[:]=[]
+    else:
+        with Manager() as manager:
+            a=manager.list()
+            l=manager.Lock()
+            with Pool(16,initializer=init,initargs=(l,a,es)) as pool:
+                for hit in esgenerator(host=host,port=port,index=index,type=type,headless=False):
+                    pool.apply_async(work,args=(hit,host,port,index,type,id,debug))
+            if len(a)>0:
+                helpers.bulk(es,a,stats_only=True)
+                a[:]=[]
+    
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Resolve sameAs of GND/SWB to your own IDs.')
@@ -255,72 +270,7 @@ if __name__ == "__main__":
                 args.id=slashsplit[5].rsplit("?")[0]
             else:
                 args.id=slashsplit[5]
-   
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-    
-    es=Elasticsearch([{'host':args.host}],port=args.port)
-    
-    host=args.host
-    if args.id:
-        record=es.get(index=args.index,doc_type=args.type,id=args.id).pop("_source")
-        print(json.dumps(resolve_uris(record),indent=4))
-    elif args.debug:
-        l=[]
-        a=[]
-        init(l,a,es)
-        for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
-            work(hit)
-        if len(a)>0:
-            helpers.bulk(es,a,stats_only=True)
-            a[:]=[]
-    else:
-        with Manager() as manager:
-            a=manager.list()
-            l=manager.Lock()
-            with Pool(16,initializer=init,initargs=(l,a,es)) as pool:
-                for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False):
-                    pool.apply_async(work,args=(hit,))
-                #pool.map(work,esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=False))
-            
-            if len(a)>0:
-                helpers.bulk(es,a,stats_only=True)
-                a[:]=[]
-        #record=resolve_uris(hits,args)
-        #if record:
-            #sb.update()
-            #sys.stdout.write(json.dumps(record,indent=None)+"\n")   #pipe that to esbulk
-            #sys.stdout.flush()
-            #record=resolve(hits,"persons")
-            #if record:
-            #    ret=resolve(record,"geo")
-            #    if ret:
-            #        record=ret
-            #else:
-            #    ret=resolve(hits,"geo")
-            #    if ret:
-            #        record=ret
-            #if record:
-            #    sb.update()
-            #    sys.stdout.write(json.dumps(record,indent=None)+"\n")
-            #    sys.stdout.flush()
-                
-#if __name__ == "__main__":
-    #parser=argparse.ArgumentParser(description='replace DNB IDs (GND) by SWB IDs in your ElasticSearch Index!')
-    #parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use.')
-    #parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
-    #parser.add_argument('-type',type=str,help='ElasticSearch Index to use')
-    #parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
-    #parser.add_argument('-aut_index',type=str,help="Authority-Index")
-    #parser.add_argument('-aut_type',type=str,help="Authority-Type")
-    #parser.add_argument('-mp',action='store_true',help="Enable Multiprocessing")
-    #args=parser.parse_args()
-    #es=Elasticsearch(host=args.host)
-    #if args.mp:
-        #pool = Pool(32)
-        #pool.map(process_stuff, esgenerator(host=args.host,port=args.port,type=args.type,source="author",index=args.index,headless=False))
-    #else:
-        #for record in esgenerator(host=args.host,port=args.port,type=args.type,index=args.index,headless=False):
-            #process_stuff(record)
-     
+    run(args.host,args.port,args.index,args.type,args.id,args.debug)
