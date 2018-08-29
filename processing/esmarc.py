@@ -205,18 +205,21 @@ marc2relation = {
 }
 
 def gnd2uri(string):
-    if isinstance(string,list):
-        for n,uri in enumerate(string):
-            string[n]=gnd2uri(uri)
-        return string
-    if string and "(DE-" in string:
+    try:
         if isinstance(string,list):
-            ret=[]
-            for st in string:
-                ret.append(gnd2uri(st))
-            return ret
-        elif isinstance(string,str):
-            return uri2url(string.split(')')[0][1:],string.split(')')[1])
+            for n,uri in enumerate(string):
+                string[n]=gnd2uri(uri)
+            return string
+        if string and "(DE-" in string:
+            if isinstance(string,list):
+                ret=[]
+                for st in string:
+                    ret.append(gnd2uri(st))
+                return ret
+            elif isinstance(string,str):
+                return uri2url(string.split(')')[0][1:],string.split(')')[1])
+    except:
+        return 
 
 def uri2url(isil,num):
     if isil and num and isil in isil2sameAs:
@@ -228,7 +231,7 @@ def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def get_or_generate_id(record,entity):
-    generate=False
+    generate= False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
@@ -253,13 +256,6 @@ def get_or_generate_id(record,entity):
     else:
         return id2uri(siphash.SipHash_2_4(b'slub-dresden.de/').update(uuid4().bytes).hexdigest().decode('utf-8').upper(),entity)
 
-        #                    :value
-        #"@id"               :0,
-        #"identifier"        :{getmarc:"001"},
-        #"name"              :{getmarc:["245..a","245..b","245..n","245..p"]},
-        #"gender"            :{handlesex:["375..a"]},
-
-            
 def getmarc(record,regex,entity):
     if "+" in regex:
         marcfield=regex[:3]
@@ -474,7 +470,7 @@ def get_subfield(jline,key,entity):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith("http"):
+                                if elem and elem.startswith("http"):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -725,6 +721,9 @@ def check(ldj,entity):
             ldj["publisher"]["name"]=ldj.pop("pub_name")
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
+        for value in ["name","location"]        # LOD-JIRA Ticket #105
+            if ldj.get("publisher").get(value)[-1] in [",",":",";"]:
+                ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
             
@@ -759,37 +758,6 @@ def getentity(record):
         return
 
 entities = {
-    "works":{   # mapping is 1:1 like resources
-        "@type"             :"http://schema.org/CreativeWork",
-        "@context"      :"http://schema.org",
-        "@id"           :get_or_generate_id,
-        "identifier"    :{getmarc:"001"},
-        "_isil"         :{getmarc:"003"},
-        "dateModified"   :{getmarc:"005"},
-        "sameAs"        :{getmarc:["024..a","670..u"]},
-        "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
-        "description"       :{getmarc:["245..c"]},
-        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"            :{get_subfield:"100"},
-        "contributor"       :{get_subfield:"700"},
-        "pub_name"          :{getmarc:["260..b","264..b"]},
-        "pub_place"         :{getmarc:["260..a","264..a"]},
-        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
-        "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
-        "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
-        "genre"             :{getmarc:"655..a"},
-        "hasPart"           :{getmarc:"773..g"},
-        "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
-        "license"           :{getmarc:"540..a"},
-        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
-        "pageStart"         :{getmarc:"773..q"},
-        "issueNumber"       :{getmarc:"773..l"},
-        "volumeNumer"       :{getmarc:"773..v"},
-        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
-        "relatedTo"         :{relatedTo:"500..0"}
-        },
    "resources":{   # mapping is 1:1 like works
         "@type"             :"http://schema.org/CreativeWork",
         "@context"      :"http://schema.org",
@@ -798,9 +766,8 @@ entities = {
         "_isil"         :{getmarc:"003"},
         "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
-        
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
-        "description"       :{getmarc:["245..c"]},
+        "disambiguatingDescription"       :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{get_subfield:"100"},
         "contributor"       :{get_subfield:"700"},
@@ -822,7 +789,39 @@ entities = {
         "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
         "relatedTo"         :{relatedTo:"500..0"},
         "about"             :{handle_rvk:"936"},
+        "description"       :{getmarc:"520..a"},
         "mentions"          :{get_subfield:"689"}
+        },
+    "works":{   # mapping is 1:1 like resources
+        "@type"             :"http://schema.org/CreativeWork",
+        "@context"      :"http://schema.org",
+        "@id"           :get_or_generate_id,
+        "identifier"    :{getmarc:"001"},
+        "_isil"         :{getmarc:"003"},
+        "dateModified"   :{getmarc:"005"},
+        "sameAs"        :{getmarc:["024..a","670..u"]},
+        "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
+        "disambiguatingDescription"      :{getmarc:["245..c"]},
+        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "author"            :{get_subfield:"100"},
+        "contributor"       :{get_subfield:"700"},
+        "pub_name"          :{getmarc:["260..b","264..b"]},
+        "pub_place"         :{getmarc:["260..a","264..a"]},
+        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
+        "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
+        "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
+        "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
+        "genre"             :{getmarc:"655..a"},
+        "hasPart"           :{getmarc:"773..g"},
+        "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
+        "license"           :{getmarc:"540..a"},
+        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
+        "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "pageStart"         :{getmarc:"773..q"},
+        "issueNumber"       :{getmarc:"773..l"},
+        "volumeNumer"       :{getmarc:"773..v"},
+        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
+        "relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
         "@type"         :"http://schema.org/Person",
@@ -1105,13 +1104,6 @@ if __name__ == "__main__":
                        source=get_source_include_str()
                         ):
             pool.apply_async(worker,args=(ldj,))
-        #pool.map(worker,esfatgenerator(host=args.host,
-        #               port=args.port,
-        #               index=args.index,
-        #               type=args.type,
-        #               source=get_source_include_str()
-        #                )
-        #        )
         pool.close()
         pool.join()
 
@@ -1121,5 +1113,7 @@ if __name__ == "__main__":
         init_mp("localhost","DEBUG","DEBUG")
         with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
             for line in input_stream:
-                for k,v in process_line(json.loads(line),"localhost",9200,"data","mrc").items():
-                    print(json.dumps(v,indent=tabbing))
+                ret=process_line(json.loads(line),"localhost",9200,"data","mrc")
+                if isinstance(ret,dict):
+                    for k,v in ret.items():
+                        print(json.dumps(v,indent=tabbing))
