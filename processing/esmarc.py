@@ -721,7 +721,7 @@ def check(ldj,entity):
             ldj["publisher"]["name"]=ldj.pop("pub_name")
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
-        for value in ["name","location"]        # LOD-JIRA Ticket #105
+        for value in ["name","location"]:        # LOD-JIRA Ticket #105
             if ldj.get("publisher").get(value)[-1] in [",",":",";"]:
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
