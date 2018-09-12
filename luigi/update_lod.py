@@ -156,7 +156,7 @@ class LODProcessFromRdi(LODTask):
             return False
         return True
     
-class LODFillLODIndex(LODTask):
+class LODUpdate(LODTask):
     def requires(self):
         return LODProcessFromRdi()
     
@@ -187,11 +187,15 @@ class LODFillLODIndex(LODTask):
         return luigi.LocalTarget(path=self.path())
 
 
-class LODUpdate(LODTask, luigi.WrapperTask):
-
-    def requires(self):
-        return [LODFillLODIndex()]
-    
-    def run(self):
-        pass
-
+    def complete(self):
+        yesterday = date.today() - timedelta(1)
+        now=yesterday.strftime("%Y-%m-%d")
+        r=get("{host}/date/actual/1".format(**self.config))
+        lu=r.json().get("_source").get("date")
+        if lu==now:
+            cmd="rm -rf ldj"
+            output=shellout(cmd)
+            return True
+        else:
+            return False
+        

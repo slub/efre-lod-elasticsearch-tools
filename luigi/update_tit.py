@@ -42,7 +42,7 @@ class LODTITSolrHarvesterMakeConfig(LODTITTask):
         r=get("{host}/date/actual/2".format(**self.config))
         lu=r.json().get("_source").get("date")
         with open(self.now+".conf","w") as fd:
-            print("---\nsolr_endpoint: '{host}'\nsolr_parameters:\n    fq: last_indexed:[{last} TO {now}]\nrows_size: 100\nchunk_size: 1000\nfullrecord_field: 'fullrecord'\nfullrecord_format: 'marc'\nreplace_method: 'decimal'\noutput_directory: './'\noutput_prefix: 'finc_'\noutput_format: 'marc'".format(last=lu,now=self.now,host=self.config.get("url")),file=fd)
+            print("---\nsolr_endpoint: '{host}'\nsolr_parameters:\n    fq: last_indexed:[{last} TO {now}]\nrows_size: 999\nchunk_size: 10000\nfullrecord_field: 'fullrecord'\nfullrecord_format: 'marc'\nreplace_method: 'decimal'\noutput_directory: './'\noutput_prefix: 'finc_'\noutput_format: 'marc'".format(last=lu,now=self.now,host=self.config.get("url")),file=fd)
     
     def output(self):
         return luigi.LocalTarget(self.now+".conf")
@@ -84,7 +84,7 @@ class LODTITFillRawdataIndex(LODTITTask):
     
     def run(self):
         put_dict("{host}/finc-main-{date}".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
-        put_dict("{host}/finc-main-{date}/_settings".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"index.mapping.total_fields.limit":5000})
+        put_dict("{host}/finc-main-{date}/_settings".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"index.mapping.total_fields.limit":20000})
         
         cmd="esbulk -verbose -server {host} -w {workers} -index finc-main-{date} -type mrc -id 001 {date}.ldj""".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
         output=shellout(cmd)
@@ -134,7 +134,7 @@ class LODTITProcessFromRdi(LODTITTask):
             return False
         return True
     
-class LODTITFillLODIndex(LODTITTask):
+class LODTITUpdate(LODTITTask):
     def requires(self):
         return LODTITProcessFromRdi()
     
@@ -142,7 +142,7 @@ class LODTITFillLODIndex(LODTITTask):
         enrichmentstr=[]
         for index in os.listdir("ldj"):
             for f in os.listdir("ldj/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && pv {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-finc"+str(datetime.today().strftime("%y%m%d")),fd="ldj/"+index+"/"+f)
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && pv {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-finc",fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
                 with open("{fd}".format(fd="ldj/"+index+"/"+f)) as fdd:
                     for line in fdd:
@@ -152,25 +152,17 @@ class LODTITFillLODIndex(LODTITTask):
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
         put_dict("{host}/date/actual/2".format(**self.config),{"date":str(now)})
-        #for host,port,index,type,id in enrichmentstr:
-            #rec=sameAs2id.run(host,port,index,type,id,False)
-            #if rec:
-                #with open(index+"-toReIndex.ldj","a") as fd:
-                    #json.dump(rec,fd,indent=None)
-        #for index in os.listdir("ldj"):
-            #if os.path.isfile(str(index)+"-toReIndex.ldj"):
-                #cmd="esbulk -verbose -server {host} -index {index}-finc -type schemaorg -id identifier -w {workers} < {index}-toReIndex.ldj".format(**self.config,index=index)
-                #output=shellout(cmd)
-                #os.remove(str(index)+"-toReIndex.ldj")
-        luigi.LocalTarget(output).move(self.output().path)
     
-    def output(self):
-        return luigi.LocalTarget(path=self.path())
+    def complete(self):
+        yesterday = date.today() - timedelta(1)
+        now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
+        r=get("{host}/date/actual/2".format(**self.config))
+        lu=r.json().get("_source").get("date")
+        if lu==now:
+            cmd="rm -rf ldj" #cleanup
+            output=shellout(cmd)
+            return True
+        else:
+            return False
+        
 
-class LODTITUpdate(LODTITTask, luigi.WrapperTask):
-
-    def requires(self):
-        return [LODTITFillLODIndex()]
-    
-    def run(self):
-        pass
