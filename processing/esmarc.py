@@ -237,18 +237,25 @@ def get_or_generate_id(record,entity):
     if generate:
         identifier = None
     else:
-        ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
-        url="http://127.0.0.1:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
-        try:
-            r=requests.get(url)
-            if r.json().get("hits").get("total")>=1:
-                identifier=r.json().get("hits").get("hits")[0].get("_id")
+        if record.get("003") and record.get("001"):
+            ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
+            if ppn:
+                url="http://194.95.145.44:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
+                try:
+                    r=requests.get(url)
+                    if r.json().get("hits").get("total")>=1:
+                        identifier=r.json().get("hits").get("hits")[0].get("_id")
+                    else:
+                        identifier=None
+                except Exception as e:
+                    with open("errors.txt",'a') as f:
+                        traceback.print_exc(file=f)
+                    identifier=None
             else:
                 identifier=None
-        except Exception as e:
-            with open("errors.txt",'a') as f:
-                traceback.print_exc(file=f)
-            identifier=None
+        else:
+                identifier=None
+        
         #r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
         #identifier=r.json().get("identifier")
     if identifier:
@@ -721,8 +728,8 @@ def check(ldj,entity):
             ldj["publisher"]["name"]=ldj.pop("pub_name")
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
-        for value in ["name","location"]        # LOD-JIRA Ticket #105
-            if ldj.get("publisher").get(value)[-1] in [",",":",";"]:
+        for value in ["name","location"]:        # LOD-JIRA Ticket #105
+            if ldj.get("publisher") and ldj.get("publisher").get(value) and isinstance(ldj.get("publisher").get(value),str)and ldj.get("publisher").get(value)[-1] in [",",":",";"]:
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
