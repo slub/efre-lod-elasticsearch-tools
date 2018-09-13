@@ -729,11 +729,7 @@ def check(ldj,entity):
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
         for value in ["name","location"]:        # LOD-JIRA Ticket #105
-<<<<<<< HEAD
             if ldj.get("publisher") and ldj.get("publisher").get(value) and isinstance(ldj.get("publisher").get(value),str)and ldj.get("publisher").get(value)[-1] in [",",":",";"]:
-=======
-            if ldj.get("publisher").get(value)[-1] in [",",":",";"]:
->>>>>>> b9e0ef903484d8b00c3ff7e3b6b222cd8e029067
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
