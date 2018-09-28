@@ -1,3 +1,6 @@
+# usage for debug:
+# PYTHONPATH="$PYTHONPATH:." luigi --module update_tit LODTITUpdate --local-scheduler
+
 import json
 import sys
 from datetime import datetime,date,timedelta
@@ -5,6 +8,7 @@ from dateutil import parser
 from requests import get,head,put
 from time import sleep
 import os
+import shutil
 from httplib2 import Http
 import subprocess
 import luigi
@@ -68,6 +72,7 @@ class LODTITTransform2ldj(LODTITTask):
     def run(self):
         cmdstring="cat {name}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(name=datetime.today().strftime("%Y%m%d"),date=datetime.today().strftime("%Y%m%d"))
         output=shellout(cmdstring)
+        shutil.rmtree(str(datetime.today().strftime("%Y%m%d")))
         return 0
     
     def output(self):
@@ -152,17 +157,25 @@ class LODTITUpdate(LODTITTask):
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
         put_dict("{host}/date/actual/2".format(**self.config),{"date":str(now)})
+        for f in os.listdir("ldj/resources"):
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove",fd="ldj/resources/"+f)
+            output=shellout(cmd)
+            
+            
     
     def complete(self):
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
         r=get("{host}/date/actual/2".format(**self.config))
-        lu=r.json().get("_source").get("date")
-        if lu==now:
-            cmd="rm -rf ldj" #cleanup
-            output=shellout(cmd)
-            return True
-        else:
-            return False
+        if r.ok:
+            lu=r.json().get("_source").get("date")
+            if lu==now:
+                try:
+                    shutil.rmtree("ldj")
+                    os.remove(self.now+".conf")
+                except OSError as ex:
+                    print(ex)
+                return True
+        return False
         
 

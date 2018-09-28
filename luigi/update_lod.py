@@ -1,3 +1,6 @@
+# usage for debug:
+# PYTHONPATH="$PYTHONPATH:." luigi --module update_lod LODUpdate --local-scheduler
+
 import json
 import sys
 from datetime import datetime,date,timedelta
@@ -164,7 +167,7 @@ class LODUpdate(LODTask):
         enrichmentstr=[]
         for index in os.listdir("ldj"):
             for f in os.listdir("ldj/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py  {host} < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
                 with open("{fd}".format(fd="ldj/"+index+"/"+f)) as fdd:
                     for line in fdd:
@@ -193,8 +196,10 @@ class LODUpdate(LODTask):
         r=get("{host}/date/actual/1".format(**self.config))
         lu=r.json().get("_source").get("date")
         if lu==now:
-            cmd="rm -rf ldj"
-            output=shellout(cmd)
+            try:
+                os.rmdir("ldj")
+            except OSError as ex:
+                print(ex)
             return True
         else:
             return False

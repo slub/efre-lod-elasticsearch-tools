@@ -240,7 +240,7 @@ def get_or_generate_id(record,entity):
         if record.get("003") and record.get("001"):
             ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
             if ppn:
-                url="http://194.95.145.44:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
+                url="http://localhost:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
                 try:
                     r=requests.get(url)
                     if r.json().get("hits").get("total")>=1:
@@ -254,10 +254,8 @@ def get_or_generate_id(record,entity):
             else:
                 identifier=None
         else:
-                identifier=None
+            identifier=None
         
-        #r=requests.get("http://"+host+":8000/welcome/default/data?feld=sameAs&uri="+gnd2uri(str(getmarc(record,"005",entity)+getmarc(record,"001",entity))))
-        #identifier=r.json().get("identifier")
     if identifier:
         return id2uri(identifier,entity)
     else:
@@ -483,20 +481,22 @@ def get_subfield(jline,key,entity):
                                     node["identifier"]=litter(node["identifier"],elem)
                 if sset.get("a"):
                     node["name"]=sset.get("a")
-                if sset.get("D"):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
-                    node["@type"]="http://schema.org/"
-                    if sset.get("D")=="p":
-                        node["@type"]+="Person"
-                    if sset.get("D")=="b":
-                        node["@type"]+="Organization"
-                    if sset.get("D")=="f":
-                        node["@type"]+="Event"
-                    if sset.get("D")=="u":
-                        node["@type"]+="CreativeWork"
-                    if sset.get("D")=="g":
-                        node["@type"]+="Place"
-                    if sset.get("D")=="s":
-                        node.pop("@type")
+                for typ in ["D","d"]:
+                    if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
+                        node["@type"]="http://schema.org/"
+                        if sset.get(typ)=="p":
+                            node["@type"]+="Person"
+                        elif sset.get(typ)=="b":
+                            node["@type"]+="Organization"
+                        elif sset.get(typ)=="f":
+                            node["@type"]+="Event"
+                        elif sset.get(typ)=="u":
+                            node["@type"]+="CreativeWork"
+                        elif sset.get(typ)=="g":
+                            node["@type"]+="Place"
+                        else:
+                            node.pop("@type")
+                            
                 if node:
                     data.append(node)
         if data:
@@ -729,11 +729,7 @@ def check(ldj,entity):
         if "pub_place" in ldj:
             ldj["publisher"]["location"]=ldj.pop("pub_place")
         for value in ["name","location"]:        # LOD-JIRA Ticket #105
-<<<<<<< HEAD
             if ldj.get("publisher") and ldj.get("publisher").get(value) and isinstance(ldj.get("publisher").get(value),str)and ldj.get("publisher").get(value)[-1] in [",",":",";"]:
-=======
-            if ldj.get("publisher").get(value)[-1] in [",",":",";"]:
->>>>>>> b9e0ef903484d8b00c3ff7e3b6b222cd8e029067
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
@@ -774,7 +770,7 @@ entities = {
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
-        "_isil"         :{getmarc:"003"},
+        "_isil"         :{getmarc:["003","852..a"]},
         "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
@@ -1100,7 +1096,7 @@ if __name__ == "__main__":
                        type=args.type,
                        source=get_source_include_str(),
                        headless=True
-                        ):
+                        ): 
             record = process_line(ldj,args.host,args.port,args.index,args.type)
             if record:
                 for k in record:
