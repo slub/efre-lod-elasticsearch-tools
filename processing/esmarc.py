@@ -238,7 +238,7 @@ def get_or_generate_id(record,entity):
         identifier = None
     else:
         if record.get("003") and record.get("001"):
-            ppn=gnd2uri("("+str(getmarc(record,"003",entity)+")"+str(getmarc(record,"001",entity))))
+            ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(getmarc(record,"001",entity)))
             if ppn:
                 url="http://localhost:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
                 try:
@@ -260,6 +260,15 @@ def get_or_generate_id(record,entity):
         return id2uri(identifier,entity)
     else:
         return id2uri(siphash.SipHash_2_4(b'slub-dresden.de/').update(uuid4().bytes).hexdigest().decode('utf-8').upper(),entity)
+
+def getisil(record,regex,entity):
+    isil=getmarc(record,regex,entity)
+    if isinstance(isil,str) and isil in isil2sameAs:
+        return isil
+    elif isinstance(isil,list):
+        for item in isil:
+            if item in isil2sameAs:
+                return item
 
 def getmarc(record,regex,entity):
     if "+" in regex:
@@ -294,7 +303,7 @@ def getmarc(record,regex,entity):
             if string[:3] in record:
                 ret=litter(ret,ArrayOrSingleValue(list(getmarcvalues(record,string,entity))))
         if ret:
-            if isinstance(ret,list):    #simple deduplizierung via transformation zum set und retour
+            if isinstance(ret,list):    #simple deduplizierung via uniq() 
                 ret = list(uniq(ret))
             return ArrayOrSingleValue(ret)
 
@@ -657,6 +666,7 @@ def check(ldj,entity):
         ldj['genre']={}
         ldj['genre']['@type']="Text"
         ldj['genre']["Text"]=genre
+    #print(ldj.get("_isil"))
     if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
         if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
             ldj["sameAs"]=[ldj.pop("sameAs")]
@@ -770,7 +780,7 @@ entities = {
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
-        "_isil"         :{getmarc:["003","852..a"]},
+        "_isil"         :{getisil:["003","852..a"]},
         "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
@@ -804,7 +814,7 @@ entities = {
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
-        "_isil"         :{getmarc:"003"},
+        "_isil"         :{getisil:"003"},
         "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
@@ -835,7 +845,7 @@ entities = {
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
-        "_isil"         :{getmarc:"003"},
+        "_isil"         :{getisil:"003"},
         "dateModified"   :{getmarc:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         
@@ -856,7 +866,7 @@ entities = {
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
-        "_isil"             :{getmarc:"003"},
+        "_isil"             :{getisil:"003"},
         "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
@@ -874,7 +884,7 @@ entities = {
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
-        "_isil"             :{getmarc:"003"},
+        "_isil"             :{getisil:"003"},
         "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
@@ -888,7 +898,7 @@ entities = {
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
-        "_isil"             :{getmarc:"003"},
+        "_isil"             :{getisil:"003"},
         "dateModified"       :{getmarc:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
