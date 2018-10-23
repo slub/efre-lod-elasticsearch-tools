@@ -8,6 +8,7 @@ import shutil
 from gzip import decompress
 import subprocess
 import argparse
+from httplib2 import Http
 
 import elasticsearch
 from multiprocessing import Pool,current_process
@@ -41,6 +42,19 @@ def init_mp(c,rf,url,pr,bn):
     else:
         record_field=None
 
+def put_dict(url, dictionary):
+    '''
+    Pass the whole dictionary as a json body to the url.
+    Make sure to use a new Http object each time for thread safety.
+    '''
+    http_obj = Http()
+    resp, content = http_obj.request(
+        uri=url,
+        method='PUT',
+        headers={'Content-Type': 'application/json'},
+        body=json.dumps(dictionary),
+    )
+    
 def compact_object(jsonobject):
     dnb_split=True
     if isinstance(jsonobject,list) and len(jsonobject)==1:
@@ -50,7 +64,7 @@ def compact_object(jsonobject):
             compacted = jsonld.compact(jsonobject, context,  {'skipExpansion': True})
             if context_url:
                 compacted['@context'] = context_url#
-            for date in ["dateOfBirth","dateOfDeath","definition"]:
+            for date in ["definition"]:
                 if isinstance(compacted.get(date),str):
                     compacted.pop(date)
                 if isinstance(compacted.get("gndIdentifier"),list):
@@ -63,6 +77,8 @@ def compact_object(jsonobject):
                     fileout.write(json.dumps(compacted, indent=None)+"\n")
             else:
                 with open(pathprefix+str(current_process().name)+".ldj","a") as fileout:
+                    _id=compacted.pop("id")
+                    compacted["id"]=_id.split("/")[-1]
                     fileout.write(json.dumps(compacted, indent=None)+"\n")
             
 def yield_obj(path,basepath):
@@ -108,11 +124,17 @@ class GNDTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/GND.jsonld.gz",
+        "urls":["https://data.dnb.de/opendata/Tbgesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tfgesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tggesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tngesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tpgesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tsgesamt1806gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tugesamt1806gnd.jsonld.gz"
+               ],
         "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
         "username":"opendata",
         "password":"opendata",
-        "file":"data",
         "host":"localhost",
         "indices":{"record":"gnd-records",
                    "bnode":"gnd-bnodes"},
@@ -127,25 +149,27 @@ class GNDTask(BaseTask):
 class GNDDownload(GNDTask):
 
     def run(self):
-        cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c > {file} ".format(**self.config)
-        output = shellout(cmdstring)
+        for url in self.config.get("urls"):
+            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
+            output = shellout(cmdstring)
         return 0
 
     def complete(self):
-        r=head(self.config["url"],auth=(self.config["username"],self.config["username"]))
-        remote=None
-        if r.headers["Last-Modified"]:
-            datetime_object=parser.parse(r.headers["Last-Modified"])
-            remote=float(datetime_object.timestamp())
-        if os.path.isfile(self.config["file"]):
-            statbuf=os.stat(self.config["file"])
-            here=float(statbuf.st_mtime)
-        else:
-            return False
-        if here>remote:
-            return True
-        else:
-            return False
+        for url in self.config["urls"]:
+            fd=url.split("/")[-1].split(".gz")[0]
+            r=head(url,auth=(self.config["username"],self.config["username"]))
+            remote=None
+            if r.headers.get("Last-Modified"):
+                datetime_object=parser.parse(r.headers["Last-Modified"])
+                remote=float(datetime_object.timestamp())
+            if os.path.isfile(fd):
+                statbuf=os.stat(fd)
+                here=float(statbuf.st_mtime)
+            else:
+                return False
+            if here<=remote:
+                return False
+        return True
 
     def output(self):
         return luigi.LocalTarget(self.config.get("file"))
@@ -170,7 +194,8 @@ class GNDcompactedJSONdata(GNDTask):
     def run(self):
         CleanWorkspace().run()
         os.mkdir("chunks")
-        process(self.config.get("file"),None,self.config.get("context"),"chunks/",True,28)
+        for url in self.config.get("urls"):
+            process(url.split("/")[-1].split(".gz")[0],None,self.config.get("context"),"chunks/",True,28)
 
     def output(self):
         return [luigi.LocalTarget("chunks")]
@@ -191,16 +216,21 @@ class GNDconcatChunks(GNDTask):
                     for line in chunk:
                         jline=json.loads(line)
                         for date in ("dateOfBirth","dateOfDeath"):
-                            if isinstance(jline.get(date),(str,list)):
-                                jline.pop(date)
+                            if isinstance(jline.get(date),list):
+                                for i,item in enumerate(jline[date]):
+                                    if isinstance(item,str):
+                                        jline[date][i]={"@value":item}
                         bnodes.write(json.dumps(jline)+"\n")
             else:
                 with open(directory + f,"r") as chunk:
                     for line in chunk:
                         jline=json.loads(line)
                         for date in ("dateOfBirth","dateOfDeath"):
-                            if isinstance(jline.get(date),(str,list)):
-                                jline.pop(date)
+                            if isinstance(jline.get(date),list):
+                                for i,item in enumerate(jline[date]):
+                                    if isinstance(item,str):
+                                        jline[date][i]={"@value":item}
+                                        
                         records.write(json.dumps(jline)+"\n")
         records.close()
         bnodes.close()
@@ -220,8 +250,9 @@ class GNDFillEsIndex(GNDTask):
         return GNDconcatChunks()
 
     def run(self):
-        cmd="esbulk -verbose -server http://{host}:{port} -w {workers}""".format(**self.config)
+        cmd="esbulk -verbose -purge -server http://{host}:{port} -w {workers}""".format(**self.config)
         for k,v in self.config.get("indices").items():
+            put_dict("http://{host}/{index}".format(**self.config,index=v),{"mappings":{k:{"date_detection":False}}})
             out = shellout(cmd+""" -index {index} -type {type} -id id {type}s.ldj""".format(index=v,type=k))
             
 
