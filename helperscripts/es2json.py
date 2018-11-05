@@ -210,11 +210,18 @@ def litter(lst, elm):
         else:
             return lst
 
-def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,headless=False):
+def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False):
     if not source:
         source=True
     es=elasticsearch.Elasticsearch([{'host':host}],port=port)
     try:
+        if id:
+            record=es.get(index=index,doc_type=type,id=id)
+            if headless:
+                yield record["_source"]
+            else:
+                yield record
+            return
         page = es.search(
             index = index,
             doc_type = type,
@@ -225,7 +232,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,s
             _source_exclude=source_exclude,
             _source_include=source_include)
     except elasticsearch.exceptions.NotFoundError:
-        sys.stderr.write("not found: "+host+":"+port+"/"+index+"/"+type+"/_search\n")
+        sys.stderr.write("not found: "+host+":"+str(port)+"/"+index+"/"+type+"/_search\n")
         exit(-1)
     sid = page['_scroll_id']
     scroll_size = page['hits']['total']

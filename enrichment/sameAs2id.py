@@ -18,231 +18,79 @@ from esmarc import isint
 from esmarc import ArrayOrSingleValue
 from es2json import simplebar
 
-author_gnd_key="sameAs"
-map_id={ 
-    "persons": ["author","relatedTo","colleague","contributor","knows","follows","parent","sibling","spouse","children"],
-    "geo":     ["deathPlace","birthPlace","workLocation","location","areaServed"],
-    "orga":["copyrightHolder"],
-    "tags":["mentions"],
-         }
-### replace SWB/GND IDs by your own IDs in your ElasticSearch Index.
-### example usage: ./sameAs2swb.py -host ELASTICSEARCH_SERVER -index swbfinc -type finc -aut_index=source-schemaorg -aut_type schemaorg
-def handle_author(author):
-    try:
-        data=es.get(index=args.aut_index,doc_type=args.aut_type,id=author,_source="@id")
-    except elasticsearch.exceptions.NotFoundError:
-        return None
-    if "@id" in data["_source"]:
-        return data["_source"]["@id"]
-    
-    if changed:
-        es.index(index=args.index,doc_type=args.type,body=jline["_source"],id=jline["_id"])
-
-def checkurl(gnd):
-    url="https://d-nb.info/gnd/"+str(gnd)
-    c = urllib3.PoolManager()
-    c.request("HEAD", '')
-    if c.getresponse().status == 200:
-        return url
-    else:
-        return None
-
-def getidbygnd(gnd,cache=None):
-    if cache:
-        if gnd in cache:
-            return cache[gnd]
-    indices=[{"index":"orga",
-              "type" :"schemaorg"},
-             {"index":"persons",
-              "type" :"schemaorg"},
-             {"index":"geo",
-              "type" :"schemaorg"},
-             {"index":"resources",
-              "type" :"schemaorg"},
-              {"index":"tags",
-               "type":"schemaorg"},
-             {"index":"dnb",
-              "type" :"gnd",
-              "index":"ef",
-              "type" :"gnd"}]
-    if gnd.startswith("(DE-588)"):
-        uri=gnd2uri(gnd)
-    elif gnd.startswith("http://d"):
-        uri=gnd
-    else:
-        uri=checkurl(gnd)
-        if not uri:
-            return
-    for elastic in indices:
-        http = urllib3.PoolManager()
-        url="http://"+args.host+":9200/"+elastic["index"]+"/"+elastic["type"]+"/_search?q=sameAs:\""+uri+"\""
-        try:
-                r=http.request('GET',url)
-                data = json.loads(r.data.decode('utf-8'))
-                if 'Error' in data or not 'hits' in data:
-                    continue
-        except:
-            continue
-        if data['hits']['total']!=1:
-            continue
-        for hit in data["hits"]["hits"]:
-            if "_id" in hit:
-                if cache:
-                    cache[gnd]=str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
-                    return cache[gnd]
-                else:
-                    return str("http://data.slub-dresden.de/"+str(elastic["index"])+"/"+hit["_id"])
-
-def useadlookup(feld,uri,host,port,index,type,id):
-        url="http://"+host+":"+str(port)+"/"+str(index)+"/"+type+"/_search?_source=@id,sameAs&q="+str(feld)+":\""+str(uri)+"\""
-        r=requests.get(url,headers={'Connection':'close'})
-        if r.ok:
-            response=r.json().get("hits")
-            if response.get("total")==1:
-                return response.get("hits")[0].get("_source")
-            else:
-                return None
-        else:
-            return None
-
-        
-### avoid dublettes and nested lists when adding elements into lists
-def litter(lst, elm):
-    if not lst:
-        lst=elm
-    else:
-        if isinstance(lst,str):
-            lst=[lst]
-        if isinstance(elm,(str,dict)):
-            if elm not in lst:
-                lst.append(elm)
-        elif isinstance(elm,list):
-            for element in elm:
-                if element not in lst:
-                    lst.append(element)
-    return lst
-
-
-def traverse(obj,path):
-    if isinstance(obj,dict):
-        for k,v in obj.items():
-            for c,w in traverse(v,path+"."+str(k)):
-                yield c,w
-    elif isinstance(obj,list):
-        for elem in obj:
-            for c,w in traverse(elem,path+"."):
-                yield c,w
-    else:
-        yield path,obj
-        
-def sameAs2ID(entity,record,host,port,index,type,id):
-    changed=False
-    if "sameAs" in record and isinstance(record["sameAs"],str):
-        r=useadlookup("sameAs",record["sameAs"],host,port,index,type,id)
-        if isinstance(r,dict) and r.get("@id"):
-            changed=True
-            record.pop("sameAs")
-            record["@id"]=r.get("@id")
-    elif "sameAs" in record and isinstance(record["sameAs"],list):
-        record["@id"]=None
-        for n,sameAs in enumerate(record['sameAs']):
-            r=useadlookup("sameAs",sameAs,host,port,index,type,id)
-            if isinstance(r,dict) and r.get("@id"):
-                changed=True
-                del record["sameAs"][n]
-                record["@id"]=litter(record["@id"],r.get("@id"))
-                for m,sameBs in enumerate(record["sameAs"]):
-                    if sameBs in r.get("sameAs"):
-                        del record["sameAs"][m]
-        for checkfield in ["@id","sameAs"]:
-            if not record[checkfield]:
-                record.pop(checkfield)
-    if changed:
-        return record
-    else:
-        return None
-                
-def resolve(record,key,host,port,index,type,id):
-    changed=False
-    if index in map_id:
-        for entity in map_id[index]:
-            if entity in record:
-                if isinstance(record[entity],list):
-                    for n,sameAs in enumerate(record[entity]):
-                        rec=sameAs2ID(entity,sameAs,host,port,index,type,id)
-                        if rec:
-                            changed=True
-                            record[entity][n]=rec
-                elif isinstance(record[entity],dict):
-                    rec=sameAs2ID(entity,record[entity],host,port,index,type,id)
-                    if rec:
-                        changed=True
-                        record[entity]=rec
-    if changed:
-        return record
-    else:
-        return None
-        
-def work(record,host,port,index,type,id,debug):
-    data=resolve_uris(record.pop("_source"),host,port,index,type,id)
-    if data:
-        record.pop("_score")
-        record["_op_type"]="index"
-        record["_source"]=data
-        if not args.debug:
-            lock.acquire()
-        actions.append(record)
-        sys.stdout.write(".")
-        if len(actions)>=1000:
-            helpers.bulk(elastic,actions,stats_only=True)
-            actions[:]=[]
-        if not args.debug:
-            lock.release()
-            
-def init(l,a,es):
-    global lock
-    global actions
-    global elastic
-    elastic=es
-    actions=a
-    lock = l
-        
-def resolve_uris(record,host,port,index,type,id):
-    changed=False
-    for key in map_id:
-        newrecord = resolve(record,key,host,port,index,type,id)
-        if newrecord:
-            record=newrecord
-            changed=True
-    if changed:
-        return record
-    else:
-        return None
-
-def run(host,port,index,type,id,debug):
+map_id={"additionalType":"",
+        "areaServed":["geo"],
+        "fromLocation":["geo"],
+        "location":["geo"],
+        "parentOrganization":["orga"],
+        "contentLocation":["geo"],
+        "participant":["persons"],
+        "relatedTo":["persons","orga","tags"],
+        "about":["tags","persons","orga"],
+        "author":["persons"],
+        "contributor":["persons"],
+        "mentions":["tags","orga","persons","geo"],
+        "colleague":["persons"],
+        "knows":["persons"],
+        "locationCreated":["geo"],
+        "recipent":["persons"],
+        "spouse":["persons"],
+        "birthPlace":["geo"],
+        "children":["persons"],
+        "deathPlace":["geo"],
+        "follows":["persons"],
+        "honorificPrefix":["tags"],
+        "parent":["persons"],
+        "sibling":["persons"],
+        "workLocation":["geo","orga"],
+        "description":["tags"]
+}
+def handlerec(record,field,host,port):
+    changed=True
     es=Elasticsearch([{'host':host}],port=port)
-    if id:
-        record=es.get(index=index,doc_type=type,id=id).pop("_source")
-        return resolve_uris(record,host,port,index,type,id)
-    elif debug:
-        l=[]
-        a=[]
-        init(l,a,es)
-        for hit in esgenerator(host=host,port=port,index=index,type=type,headless=False):
-            work(hit,host,port,index,type,id,debug)
-        if len(a)>0:
-            helpers.bulk(es,a,stats_only=True)
-            a[:]=[]
-    else:
-        with Manager() as manager:
-            a=manager.list()
-            l=manager.Lock()
-            with Pool(16,initializer=init,initargs=(l,a,es)) as pool:
-                for hit in esgenerator(host=host,port=port,index=index,type=type,headless=False):
-                    pool.apply_async(work,args=(hit,host,port,index,type,id,debug))
-            if len(a)>0:
-                helpers.bulk(es,a,stats_only=True)
-                a[:]=[]
+    query="sameAs:"
+    quotedlist=[]
+    if isinstance(record.get("sameAs"),list):
+        for item in record.get("sameAs"):
+            if item:
+                quotedlist.append("\""+item+"\"")
+    if quotedlist:
+        query="sameAs:"+str(',').join(quotedlist)
+        hits=[]
+        for index in map_id.get(field):
+            search=es.search(index=index,doc_type="schemaorg",q=query,_source=False)
+            if search.get("hits").get("total")>0:
+                hits+=search.get("hits").get("hits")
+            #print(record.get("sameAs"),field)
+            #print(json.dumps(search.get("hits").get("hits"),indent=4))
+        newlist = sorted(hits, key=lambda k: k['_score'],reverse=True) 
+        if newlist:
+            return str("http://data.slub-dresden.de/"+newlist[0].get("_index")+"/"+newlist[0].get("_type")+"/"+newlist[0].get("_id"))
+    return None
+
+def run(host,port,index,type,id,search_host,search_port):
+    for hit in esgenerator(host=host,port=port,index=index,type=type,headless=False):
+        change=False
+        if(hit.get("_source")):
+            for field in hit.get("_source"):
+                if isinstance(hit.get("_source").get(field),list):
+                    for n,elem in enumerate(hit.get("_source").get(field)):
+                        if "sameAs" in elem:
+                            _id=handlerec(elem,field,search_host,search_port)
+                            if _id:
+                                hit["_source"][field][n]["@id"]=_id
+                                change=True
+                elif isinstance(hit.get("_source").get(field),dict) and "sameAs" in hit.get("_source").get(field):
+                    _id=handlerec(hit.get("_source").get(field),field,search_host,search_port)
+                    if _id:
+                        hit["_source"][field]["@id"]=_id
+                        change=True
+                else:
+                    continue
+        if change:
+            print(json.dumps(hit.get("_source"),indent=None))
+            #sys.stdin.read(1)
+
     
 if __name__ == "__main__":
     #argstuff
@@ -253,8 +101,8 @@ if __name__ == "__main__":
     parser.add_argument('-index',type=str,help='ElasticSearch Type to use')
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-id',type=str,help="enrich a single id")
-    parser.add_argument('-debug',action="store_true",help="disable mp for debugging purposes")
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id syntax. overwrites host/port/index/id/pretty")
+    parser.add_argument('-searchserver',type=str,help="search instance to use. default is -server e.g. http://127.0.0.1:9200")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -273,4 +121,13 @@ if __name__ == "__main__":
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-    run(args.host,args.port,args.index,args.type,args.id,args.debug)
+    
+    if args.searchserver:
+        slashsplit=args.server.split("/")
+        search_host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            searchport=args.server.split(":")[2].split("/")[0]
+    else:
+        search_host=args.host
+        search_port=args.port
+    run(args.host,args.port,args.index,args.type,args.id,search_host,search_port)

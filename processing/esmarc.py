@@ -92,7 +92,9 @@ isil2sameAs = {
     "DE-601":"http://gso.gbv.de/PPN?PPN=",
     "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
     "(DE-588)":"http://d-nb.info/gnd/",
-    "(DE-601)":"http://gso.gbv.de/PPN?PPN="
+    "(DE-601)":"http://gso.gbv.de/PPN?PPN=",
+    "DE-15":"Univeristätsbibliothek Leipzig",
+    "DE-14":"Sächsische Landesbibliothek – Staats- und Universitätsbibliothek Dresden",
 }
 
 marc2relation = {
@@ -230,15 +232,22 @@ def uri2url(isil,num):
 def id2uri(string,entity):
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
+def getmarcid(record,regex,entity): # in this function we try to get PPNs by fields defined in regex. regex should always be a list and the most "important" field on the left. if we found a ppn in a field, we'll return it
+    for reg in regex:           
+        ret=getmarc(record,reg,entity)
+        if ret:
+            return ret
+
 def get_or_generate_id(record,entity):
-    generate= False
+    generate=True
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
         identifier = None
     else:
-        if record.get("003") and record.get("001"):
-            ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(getmarc(record,"001",entity)))
+        marcid=getmarcid(record,entity)
+        if record.get("003") and marcid:
+            ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
             if ppn:
                 url="http://localhost:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
                 try:
@@ -343,7 +352,7 @@ def handle_single_rvk(data):
     if "0" in sset:
         record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
     if "a" in sset:
-        record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a").replace(" ","+")
+        record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
         record["identifier"]={  "@type"     :"PropertyValue",
                                 "propertyID":"RVK",
                                 "value"     :sset.get("a")}
@@ -619,9 +628,42 @@ def getGeoCoordinates(record,key,entity):
     for k,v in key.items():
         coord=getgeo(getmarc(record,v,entity))
         if coord:
+            ret["@type"]="GeoCoordinates"
             ret[k]=coord
     if ret:
         return ret
+
+def getav(record,key,entity):
+    retOffers={"@type": "AggregateOffer",
+            "offers": list()}
+    offers=getmarc(record,key[0],entity)
+    ppn=getmarc(record,key[1],entity)
+    if isinstance(offers,str) and offers in isil2sameAs:
+        retOffers["offers"].append({
+           "@type": "Offer",
+           "offeredBy": {
+                "@id": "https://data.finc.info/resource/organisation/"+offers,
+                "@type": "Library",
+                "name": isil2sameAs.get(offers),
+                "branchCode": offers
+            },
+           "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offers+":ppn:"+ppn
+       })
+    elif isinstance(offers,list):
+        for offer in offers:
+            if offer in isil2sameAs:
+                retOffers["offers"].append({
+                        "@type": "Offer",
+                        "offeredBy": {
+                            "@id": "https://data.finc.info/resource/organisation/"+offer,
+                "@type": "Library",
+                "name": isil2sameAs.get(offer),
+                "branchCode": offer
+            },
+           "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offer+":ppn:"+ppn
+               })
+    if len(retOffers.get("offers"))>0:
+        return retOffers
 
 def removeNone(obj):
     if isinstance(obj, (list, tuple, set)):
@@ -736,8 +778,12 @@ def check(ldj,entity):
         ldj["publisher"]={}
         if "pub_name" in ldj:
             ldj["publisher"]["name"]=ldj.pop("pub_name")
+            ldj["publisher"]["@type"]="Organization"
         if "pub_place" in ldj:
-            ldj["publisher"]["location"]=ldj.pop("pub_place")
+            ldj["publisher"]["location"]={"name":ldj.pop("pub_place"),
+                                          "type":"Place"}
+            if ldj["publisher"]["location"]["name"][-1] in [".",",",";",":"]:
+                ldj["publisher"]["location"]["name"]=ldj["publisher"]["location"]["name"][:-1].strip()
         for value in ["name","location"]:        # LOD-JIRA Ticket #105
             if ldj.get("publisher") and ldj.get("publisher").get(value) and isinstance(ldj.get("publisher").get(value),str)and ldj.get("publisher").get(value)[-1] in [",",":",";"]:
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
@@ -774,17 +820,27 @@ def getentity(record):
     else:
         return
 
+def getdateModified(record,key,entity):
+    date=getmarc(record,key,entity)
+    newdate=str(date[0:4]+"-"+date[4:6]+"-"+date[6:8]+"T"+date[8:10]+":"+date[10:12])
+    if len(date.split(".")[0])<14:
+        newdate+=":00Z"
+    else:
+        newdate+=str(":"+date[12:14]+"Z")
+    return newdate
+
 entities = {
    "resources":{   # mapping is 1:1 like works
-        "@type"             :"http://schema.org/CreativeWork",
+        "@type"             :"CreativeWork",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
-        "identifier"    :{getmarc:"001"},
-        "_isil"         :{getisil:["003","852..a"]},
-        "dateModified"   :{getmarc:"005"},
+        "identifier"    :{getmarcid:["980..a","001"]},
+        "offers"        :{getav:["852..a","980..a"]},
+        "_isil"         :{getisil:["003","852..a","924..b"]},
+        "dateModified"   :{getdateModified:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
-        "disambiguatingDescription"       :{getmarc:["245..c"]},
+        "alternativeHeadline":{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{get_subfield:"100"},
         "contributor"       :{get_subfield:"700"},
@@ -807,18 +863,18 @@ entities = {
         "relatedTo"         :{relatedTo:"500..0"},
         "about"             :{handle_rvk:"936"},
         "description"       :{getmarc:"520..a"},
-        "mentions"          :{get_subfield:"689"}
+        "mentions"          :{get_subfield:"689"},
         },
     "works":{   # mapping is 1:1 like resources
-        "@type"             :"http://schema.org/CreativeWork",
+        "@type"             :"CreativeWork",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getisil:"003"},
-        "dateModified"   :{getmarc:"005"},
+        "dateModified"   :{getdateModified:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
-        "disambiguatingDescription"      :{getmarc:["245..c"]},
+        "alternativeHeadline"      :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{get_subfield:"100"},
         "contributor"       :{get_subfield:"700"},
@@ -841,12 +897,12 @@ entities = {
         "relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
-        "@type"         :"http://schema.org/Person",
+        "@type"         :"Person",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getisil:"003"},
-        "dateModified"   :{getmarc:"005"},
+        "dateModified"   :{getdateModified:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
         
         "name"          :{getmarc:"100..a"},
@@ -862,12 +918,12 @@ entities = {
         "workLocation"  :{get_subfield_if_4:"551^4:ortw"},
     },
     "orga": {
-        "@type"             :"http://schema.org/Organization",
+        "@type"             :"Organization",
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getisil:"003"},
-        "dateModified"       :{getmarc:"005"},
+        "dateModified"       :{getdateModified:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:"110..a"},
@@ -880,28 +936,28 @@ entities = {
         "areaServed"        :{get_subfield_if_4:"551^4:geow"},
         },
     "geo": {
-        "@type"             :"http://schema.org/Place",
+        "@type"             :"Place",
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getisil:"003"},
-        "dateModified"       :{getmarc:"005"},
+        "dateModified"       :{getdateModified:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
         "name"              :{getmarc:"151..a"},
         "alternateName"     :{getmarc:"451..a"},
         "description"       :{get_subfield:"551"},
-        "GeoCoordinates"    :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
+        "geo"               :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
+        "adressRegion"      :{getmarc:"043..c"}
         },
     "tags":{                   #generisches Mapping für Schlagwörter
-        "@type"             :"http://schema.org/Thing",
+        "@type"             :"Thing",
         "@context"          :"http://schema.org",
         "@id"               :get_or_generate_id,
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getisil:"003"},
-        "dateModified"       :{getmarc:"005"},
+        "dateModified"       :{getdateModified:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
-        
         "name"              :{getmarc:"150..a"},
         "alternateName"     :{getmarc:"450..a+x"},
         "description"       :{getmarc:"679..a"},
