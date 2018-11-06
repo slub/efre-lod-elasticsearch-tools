@@ -10,65 +10,52 @@ from requests import get
 import json
 import sys
 
-mapping={"persons":["relatedTo","hasOccupation","about","workLocation"],
-         "geo":["GeoCoordinates"]}
-       
-def handle_record(record,host,port):
-        changed=False
-        for person in ["author","contributor","mentions"]:
-            if record.get(person):
-                if isinstance(record[person],dict):
-                    if record[person].get("@id"):
-                        for index,attributes in mapping.items():
-                            r=get("http://"+host+":"+port+"/"+index+"/schemaorg/"+record[person]["@id"].split("/")[4])
-                            if r.ok:
-                                print(r.json())
-                    elif record[person].get("sameAs"):
-                        if isinstance(record[person]["sameAs"],list):
-                            for sameAs in record[person]["sameAs"]:
-                                for index,attributes in mapping.items():
-                                    r=get("http://"+host+":"+port+"/"+index+"/schemaorg/_search?q=sameAs:\""+sameAs+"\"")
-                                    if r.ok and r.json().get("hits").get("total")>=1:
-                                        response=r.json().get("hits").get("hits")[0].get("_source")
-                                        for attr in attributes:
-                                            if response.get(attr):
-                                                record[person][attr]=response[attr]
-                        elif isinstance(record[person]["sameAs"],str):
-                            for index,attributes in mapping.items():
-                                r=get("http://"+host+":"+port+"/"+index+"/schemaorg/_search?q=sameAs:\""+record[person]["sameAs"]+"\"")
-                                if r.ok and r.json().get("hits").get("total")>=1:
-                                    response=r.json().get("hits").get("hits")[0].get("_source")
-                                    for attr in attributes:
-                                        if response.get(attr):
-                                            record[person][attr]=response[attr]
-                elif isinstance(record[person],list):
-                    for i,author in enumerate(record[person]):
-                        if isinstance(author,dict):
-                            if author.get("@id"):
-                                for index,attributes in mapping.items():
-                                    r=get("http://"+host+":"+port+"/"+index+"/schemaorg/"+author["@id"].split("/")[4])
-                                    if r.ok:
-                                        print(r.json())
-                            elif author.get("sameAs"):
-                                if isinstance(author["sameAs"],list):
-                                    for sameAs in author["sameAs"]:
-                                        for index,attributes in mapping.items():
-                                            r=get("http://"+host+":"+port+"/"+index+"/schemaorg/_search?q=sameAs:\""+sameAs+"\"")
-                                            if r.ok and r.json().get("hits").get("total")>=1:
-                                                response=r.json().get("hits").get("hits")[0].get("_source")
-                                                for attr in attributes:
-                                                    if response.get(attr):
-                                                        record[person][i][attr]=response[attr]
-                                elif isinstance(author["sameAs"],str):
-                                    for index, attributes in mapping.items():
-                                        r=get("http://"+host+":"+port+"/"+index+"/schemaorg/_search?q=sameAs:\""+author["sameAs"]+"\"")
-                                        if r.ok and r.json().get("hits").get("total")>=1:
-                                            response=r.json().get("hits").get("hits")[0].get("_source")
-                                            for attr in attributes:
-                                                if response.get(attr):
-                                                    record[person][i][attr]=response[attr]
-        print(json.dumps(record,indent=None))
+mapping={"author":{         "fields":["relatedTo","hasOccupation","about","workLocation"],
+                            "index":"persons/schemaorg"},
+         "contributor":{    "fields":["relatedTo","hasOccupation","about","workLocation"],
+                            "index":"persons/schemaorg"},
+         "workLocation":{   "fields":["geo","adressRegion"],
+                            "index":"geo/schemaorg"},
+         "mentions":{       "fields":["geo","adressRegion"],
+                            "index":"geo/schemaorg"}
+         }
 
+def enrich_record(node,entity,host,port):
+    change=False
+    if entity:
+        if node.get("@id"):
+            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/"+node.get("@id").split("/")[5])
+            if r.ok:
+                for key in mapping[entity]["fields"]:
+                    if key in r.json().get("_source") and key not in node:
+                        node[key]=r.json().get("_source").get(key)
+        elif node.get("sameAs") and isinstance(node.get("sameAs"),str):
+            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/_search?q=sameAs:\""+node.get("sameAs")+"\"")
+            if r.ok and r.json().get("hits").get("total")>=1:
+                response=r.json().get("hits").get("hits")[0].get("_source")
+                for key in mapping[entity]["fields"]:
+                    if response.get(key):
+                        node[key]=response[key]
+        elif node.get("sameAs") and isinstance(node.get("sameAs"),list):
+            for sameAs in node.get("sameAs"):
+                r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/_search?q=sameAs:\""+sameAs+"\"")
+                if r.ok and r.json().get("hits").get("total")>=1:
+                    response=r.json().get("hits").get("hits")[0].get("_source")
+                    for key in mapping[entity]["fields"]:
+                        if response.get(key):
+                            node[key]=response[key]
+                    break
+        else:
+            pass
+    for field in mapping:
+        if isinstance(node.get(field),dict):
+            node[field]=enrich_record(node.get(field),field,host,port)
+        elif isinstance(node.get(field),list):
+            for n,fld in enumerate(node.get(field)):
+                node[field][n]=enrich_record(fld,field,host,port)
+        else:
+            continue
+    return node
 
 if __name__ == "__main__":
     #argstuff
@@ -106,10 +93,18 @@ if __name__ == "__main__":
     
     if args.stdin:
         for line in sys.stdin:
-            jline=json.loads(line)
-            handle_record(jline,args.host,args.port)
+            length=len(line.rstrip())
+            newrecord=enrich_record(json.loads(line),None,args.host,str(args.port))
+            dumpstring=json.dumps(newrecord,indent=None)
+            if len(dumpstring) > length:
+                print(dumpstring)
     else:
-        for record in esgenerator(host=args.host,port=9200,index=args.index,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True):
-            handle_record(record,args.host,str(args.port))
+        for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True):
+            length=len(json.dumps(record,indent=None))
+            newrecord=enrich_record(record,None,args.host,str(args.port))
+            dumpstring=str(json.dumps(newrecord,indent=None))
+            if len(dumpstring) > length:
+                print(json.dumps(newrecord,indent=4))
+                sys.stdin.read(1)
                                         
                 
