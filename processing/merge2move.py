@@ -7,40 +7,43 @@ from es2json import eprint
 from es2json import litter
 from es2json import isint
 from requests import get
+from elasticsearch import Elasticsearch, helpers
 import json
 import sys
 
+es=None
+
 mapping={"author":{         "fields":["relatedTo","hasOccupation","about","workLocation"],
-                            "index":"persons/schemaorg"},
+                            "index":"persons"},
          "contributor":{    "fields":["relatedTo","hasOccupation","about","workLocation"],
-                            "index":"persons/schemaorg"},
+                            "index":"persons"},
          "workLocation":{   "fields":["geo","adressRegion"],
-                            "index":"geo/schemaorg"},
+                            "index":"geo"},
          "mentions":{       "fields":["geo","adressRegion"],
-                            "index":"geo/schemaorg"}
+                            "index":"geo"}
          }
 
 def enrich_record(node,entity,host,port):
     change=False
     if entity:
         if node.get("@id"):
-            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/"+node.get("@id").split("/")[5])
+            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/schemaorg/"+node.get("@id").split("/")[5])
             if r.ok:
                 for key in mapping[entity]["fields"]:
                     if key in r.json().get("_source") and key not in node:
                         node[key]=r.json().get("_source").get(key)
         elif node.get("sameAs") and isinstance(node.get("sameAs"),str):
-            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/_search?q=sameAs:\""+node.get("sameAs")+"\"")
-            if r.ok and r.json().get("hits").get("total")>=1:
-                response=r.json().get("hits").get("hits")[0].get("_source")
+            search=es.search(index=mapping[entity]["index"],doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":node.get("sameAs")}}},_source=True)
+            if search.get("hits").get("total")>0:
+                response=search.get("hits").get("hits")[0].get("_source")
                 for key in mapping[entity]["fields"]:
                     if response.get(key):
                         node[key]=response[key]
         elif node.get("sameAs") and isinstance(node.get("sameAs"),list):
             for sameAs in node.get("sameAs"):
-                r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/_search?q=sameAs:\""+sameAs+"\"")
-                if r.ok and r.json().get("hits").get("total")>=1:
-                    response=r.json().get("hits").get("hits")[0].get("_source")
+                search=es.search(index=mapping[entity]["index"],doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":sameAs}}},_source=True)
+                if search.get("hits").get("total")>0:
+                    response=search.get("hits").get("hits")[0].get("_source")
                     for key in mapping[entity]["fields"]:
                         if response.get(key):
                             node[key]=response[key]
@@ -69,8 +72,9 @@ if __name__ == "__main__":
     parser.add_argument('-stdin',action="store_true",help="If you want to read from stdin")
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
-    parser.add_argument('-w',type=int,default=8,help="how many processes to use")
+    parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
     args=parser.parse_args()
+    
     if args.server:
         slashsplit=args.server.split("/")
         args.host=slashsplit[2].rsplit(":")[0]
@@ -88,8 +92,12 @@ if __name__ == "__main__":
                 args.id=slashsplit[5]
     if args.help:
         parser.print_help(sys.stderr)
-        exit()     
-    
+        exit()
+    if args.pretty:
+        tabbing=4
+    else:
+        tabbing=None
+    es=Elasticsearch([{'host':args.host}],port=args.port)
     
     if args.stdin:
         for line in sys.stdin:
@@ -100,11 +108,10 @@ if __name__ == "__main__":
                 print(dumpstring)
     else:
         for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True):
-            length=len(json.dumps(record,indent=None))
-            newrecord=enrich_record(record,None,args.host,str(args.port))
-            dumpstring=str(json.dumps(newrecord,indent=None))
-            if len(dumpstring) > length:
-                print(json.dumps(newrecord,indent=4))
-                sys.stdin.read(1)
+            #length=len(json.dumps(record,indent=None))
+            #newrecord=enrich_record(record,None,args.host,str(args.port))
+            #dumpstring=str(json.dumps(newrecord,indent=None))
+            #if len(dumpstring) > length:
+            print(json.dumps(enrich_record(record,None,args.host,str(args.port)),indent=tabbing))
                                         
                 

@@ -22,6 +22,8 @@ from es2json import ArrayOrSingleValue
 from es2json import eprint
 from es2json import litter
 
+es=None
+
 def uniq(lst):
     last = object()
     for item in lst:
@@ -239,21 +241,24 @@ def getmarcid(record,regex,entity): # in this function we try to get PPNs by fie
             return ret
 
 def get_or_generate_id(record,entity):
-    generate=True
+    global es
+    generate=False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
         identifier = None
     else:
-        marcid=getmarcid(record,entity)
+        if not es:
+             es=elasticsearch.Elasticsearch([{'host':"localhost"}],port=9200)
+        marcid=getmarcid(record,["980..a","001"],entity)
         if record.get("003") and marcid:
             ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
             if ppn:
-                url="http://localhost:9200/"+entity+"/schemaorg/_search?q=sameAs:\""+ppn+"\""
                 try:
-                    r=requests.get(url)
-                    if r.json().get("hits").get("total")>=1:
-                        identifier=r.json().get("hits").get("hits")[0].get("_id")
+                    search=es.search(index=entity,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":ppn}}},_source=False)
+                    if search.get("hits").get("total")>0:
+                        newlist = sorted(search.get("hits").get("hits"), key=lambda k: k['_score'],reverse=True) 
+                        identifier=newlist[0].get("_id")
                     else:
                         identifier=None
                 except Exception as e:
@@ -461,10 +466,11 @@ def get_subfield_if_4(jline,key,entity):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith("http"):
-                                    node["sameAs"]=litter(node["sameAs"],elem)
-                                else:
-                                    node["identifier"]=litter(node["identifier"],elem)
+                                if isinstance(elem,str):
+                                    if elem.startswith("http"):
+                                        node["sameAs"]=litter(node["sameAs"],elem)
+                                    else:
+                                        node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
@@ -554,21 +560,17 @@ def marc_dates(record,event):
 
 def getparent(jline,key,entity):
     data=None
-    try:
-        for i in jline[key[0][0:3]][0]:
-            sset={}
-            for j in jline[key[0][0:3]][0][i]:
-                for k,v in dict(j).items():
-                    sset[k]=v
-                conti=False
-                if "9" in sset:
-                    if sset["9"]=='4:adue':
-                            conti=True
-                if conti and "0" in sset:
-                    data=litter(data,gnd2uri(sset["0"]))
-    except Exception as e:
-        with open("errors.txt",'a') as f:
-            traceback.print_exc(file=f)
+    for i in jline[key[0][0:3]][0]:
+        sset={}
+        for j in jline[key[0][0:3]][0][i]:
+            for k,v in dict(j).items():
+                sset[k]=v
+            conti=False
+            if "9" in sset:
+                if sset["9"]=='4:adue':
+                    conti=True
+            if conti and "0" in sset:
+                data=litter(data,gnd2uri(sset["0"]))
     if data:
         return data
 
@@ -822,12 +824,23 @@ def getentity(record):
 
 def getdateModified(record,key,entity):
     date=getmarc(record,key,entity)
-    newdate=str(date[0:4]+"-"+date[4:6]+"-"+date[6:8]+"T"+date[8:10]+":"+date[10:12])
-    if len(date.split(".")[0])<14:
-        newdate+=":00Z"
-    else:
-        newdate+=str(":"+date[12:14]+"Z")
-    return newdate
+    newdate=""
+    if date:
+        for i in range(0,13,2):
+            if isint(date[i:i+2]):
+                newdate+=date[i:i+2]
+            else:
+                newdate+="00"
+            if i in (2,4):
+                newdate+="-"
+            elif i==6:
+                newdate+="T"
+            elif i in (8,10):
+                newdate+=":"
+            elif i==12:
+                newdate+="Z"
+        return newdate
+    
 
 entities = {
    "resources":{   # mapping is 1:1 like works
@@ -909,7 +922,7 @@ entities = {
         "gender"        :{handlesex:"375..a"},
         "alternateName" :{getmarc:["400..a","400..c"]},
         "relatedTo"     :{relatedTo:"500..0"},
-        "hasOccupation" :{hasOccupation:"550..0"},
+        "hasOccupation" :{get_subfield:"550"},
         "birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
         "deathPlace"    :{get_subfield_if_4:"551^4:orts"},
         "honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
@@ -1101,7 +1114,11 @@ def worker(ldj):
         record=source_record.pop("_source")
         type=source_record.pop("_type")
         index=source_record.pop("_index")
-        target_record=process_line(record,host,port,index,type)
+        try:
+            target_record=process_line(record,host,port,index,type)
+        except Exception as e:
+            with open("errors.txt",'a') as f:
+                traceback.print_exc(file=f)
         if target_record:
             for entity in target_record:
                 out[entity].write(json.dumps(target_record[entity],indent=None)+"\n")
