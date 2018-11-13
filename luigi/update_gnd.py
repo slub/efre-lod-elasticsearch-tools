@@ -124,13 +124,13 @@ class GNDTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "urls":["https://data.dnb.de/opendata/Tbgesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tfgesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tggesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tngesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tpgesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tsgesamt1806gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tugesamt1806gnd.jsonld.gz"
+        "urls":["https://data.dnb.de/opendata/Tbgesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tfgesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tggesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tngesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tpgesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tsgesamt2018_10gnd.jsonld.gz",
+               "https://data.dnb.de/opendata/Tugesamt2018_10gnd.jsonld.gz"
                ],
         "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
         "username":"opendata",
@@ -238,7 +238,7 @@ class GNDconcatChunks(GNDTask):
     def output(self):
         return [luigi.LocalTarget("bnodes.ldj"),luigi.LocalTarget("records.ldj")]
     
-class GNDFillEsIndex(GNDTask):
+class GNDUpdate(GNDTask):
     """
     Loads processed GND data into a given ElasticSearch index (with help of esbulk)
     """
@@ -280,15 +280,4 @@ class GNDFillEsIndex(GNDTask):
             return True
         else:
             return False
-
-
-class GNDUpdate(GNDTask, luigi.WrapperTask):
-
-    date =datetime.today()
-
-    def requires(self):
-        return [GNDFillEsIndex()]
-    
-    def run(self):
-        pass
 
