@@ -267,6 +267,13 @@ def isfloat(num):
     except (ValueError, TypeError):
         return False
     
+def isiter(obj):
+    try:
+        _ = (e for e in obj)
+        return True
+    except TypeError:
+        return False
+    
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='simple ES.Getter!')
     parser.add_argument('-host',type=str,default="127.0.0.1",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')

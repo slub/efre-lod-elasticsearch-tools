@@ -4,29 +4,30 @@ import argparse
 import json
 import sys
 import requests
-from es2json import esgenerator,isint,litter,eprint,isfloat
+from es2json import esgenerator,isint,litter,eprint,isfloat,isiter
 from rdflib import Graph
 
 
 
 def get_gnid(rec):
-    changed=False
-    lat=rec["geo"].get("latitude")
-    lng=rec["geo"].get("longitude")
-    if lat and not isfloat(lat) and isfloat(lat[1:]):
-        lat=lat[1:]
-    if lng and not isfloat(lng) and isfloat(lng[1:]):
-        lng=lng[1:]
-    r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+lat+"&lng="+lng+"&username=slub")
-    if r.ok:
-        for geoNameRecord in r.json().get("geonames"):
-            if rec.get("name") in geoNameRecord.get("name"):    #match!
-                rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(geoNameRecord.get("geonameId"))+"/")
-                changed=True
-    if changed:
-        return rec
-    else:
-        return None
+    if not any("http://www.geonames.org" in s for s in rec.get("sameAs")):
+        changed=False
+        lat=rec["geo"].get("latitude")
+        lng=rec["geo"].get("longitude")
+        if lat and not isfloat(lat) and isfloat(lat[1:]):
+            lat=lat[1:]
+        if lng and not isfloat(lng) and isfloat(lng[1:]):
+            lng=lng[1:]
+        r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+lat+"&lng="+lng+"&username=slub")
+        if r.ok and isiter(r.json().get("geonames")):
+            for geoNameRecord in r.json().get("geonames"):
+                if rec.get("name") in geoNameRecord.get("name"):    #match!
+                    rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(geoNameRecord.get("geonameId"))+"/")
+                    changed=True
+        if changed:
+            return rec
+        else:
+            return None
         
     
 
