@@ -249,7 +249,7 @@ def get_or_generate_id(record,entity):
         identifier = None
     else:
         if not es:
-             es=elasticsearch.Elasticsearch([{'host':"localhost"}],port=9200)
+             es=elasticsearch.Elasticsearch([{'host':"127.0.0.1"}],port=9200)
         marcid=getmarcid(record,["980..a","001"],entity)
         if record.get("003") and marcid:
             ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
@@ -636,12 +636,11 @@ def getGeoCoordinates(record,key,entity):
         return ret
 
 def getav(record,key,entity):
-    retOffers={"@type": "AggregateOffer",
-            "offers": list()}
+    retOffers=list()
     offers=getmarc(record,key[0],entity)
     ppn=getmarc(record,key[1],entity)
     if isinstance(offers,str) and offers in isil2sameAs:
-        retOffers["offers"].append({
+        retOffers.append({
            "@type": "Offer",
            "offeredBy": {
                 "@id": "https://data.finc.info/resource/organisation/"+offers,
@@ -654,7 +653,7 @@ def getav(record,key,entity):
     elif isinstance(offers,list):
         for offer in offers:
             if offer in isil2sameAs:
-                retOffers["offers"].append({
+                retOffers.append({
                         "@type": "Offer",
                         "offeredBy": {
                             "@id": "https://data.finc.info/resource/organisation/"+offer,
@@ -664,7 +663,7 @@ def getav(record,key,entity):
             },
            "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offer+":ppn:"+ppn
                })
-    if len(retOffers.get("offers"))>0:
+    if len(retOffers)>0:
         return retOffers
 
 def removeNone(obj):
