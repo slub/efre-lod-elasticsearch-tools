@@ -199,6 +199,8 @@ def litter(lst, elm):
                 elif isinstance(lst,list):
                     lst.append(elm)
                     return lst
+            else:
+                return lst
         elif isinstance(elm,list):
             if isinstance(lst,str):
                 lst=[lst]
@@ -256,6 +258,13 @@ def isint(num):
         int(num)
         return True
     except ValueError:
+        return False
+
+def isfloat(num):
+    try: 
+        float(num)
+        return True
+    except (ValueError, TypeError):
         return False
     
 if __name__ == "__main__":
