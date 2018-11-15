@@ -46,29 +46,30 @@ map_id={"additionalType":"",
         "sibling":["persons"],
         "workLocation":["geo","orga"],
         "description":["tags"]
-}
+} 
 def handlesameAs(record,field,host,port):
-    changed=True
-    hits=[]
-    index=','.join(map_id.get(field))
-    if isinstance(record.get("sameAs"),list):
-        for elem in record["sameAs"]:
-            search=es.search(index=index,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":elem}}},_source=False)
+    if record and field and host and port and map_id.get(field):
+        changed=True
+        hits=[]
+        index=','.join(map_id.get(field))
+        if isinstance(record.get("sameAs"),list):
+            for elem in record["sameAs"]:
+                search=es.search(index=index,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":elem}}},_source=False)
+                if search.get("hits").get("total")>0:
+                    hits+=search.get("hits").get("hits")
+                #print(record.get("sameAs"),field)
+                #print(json.dumps(search.get("hits").get("hits"),indent=4))
+        elif isinstance(record.get("sameAs"),str):
+            search=es.search(index=index,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":record.get("sameAs")}}},_source=False)
             if search.get("hits").get("total")>0:
                 hits+=search.get("hits").get("hits")
-            #print(record.get("sameAs"),field)
-            #print(json.dumps(search.get("hits").get("hits"),indent=4))
-    elif isinstance(record.get("sameAs"),str):
-        search=es.search(index=index,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":record.get("sameAs")}}},_source=False)
-        if search.get("hits").get("total")>0:
-            hits+=search.get("hits").get("hits")
-    newlist = sorted(hits, key=lambda k: k['_score'],reverse=True) 
-    if newlist:
-        return str("http://data.slub-dresden.de/"+newlist[0].get("_index")+"/"+newlist[0].get("_type")+"/"+newlist[0].get("_id"))
+        newlist = sorted(hits, key=lambda k: k['_score'],reverse=True) 
+        if newlist:
+            return str("http://data.slub-dresden.de/"+newlist[0].get("_index")+"/"+newlist[0].get("_type")+"/"+newlist[0].get("_id"))
     return None
 
            
-def run(hit,search_host,search_port):
+def enrich_sameAs(hit,search_host,search_port,pipeline):
     change=False
     for field in hit:
         if isinstance(hit.get(field),list):
@@ -85,7 +86,7 @@ def run(hit,search_host,search_port):
                 change=True
         else:
            continue
-    if change:
+    if change or pipeline:
         print(json.dumps(hit,indent=None))
 
     
@@ -101,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument('-id',type=str,help="enrich a single id")
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-searchserver',type=str,help="search instance to use. default is -server e.g. http://127.0.0.1:9200")
+    parser.add_argument('-pipeline',action="store_true",help="output every record (even if not enriched) to put this script into a pipeline")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -133,9 +135,9 @@ if __name__ == "__main__":
     if args.stdin:
         for line in sys.stdin:
             hit=json.loads(line)
-            run(hit,search_host,search_port)
+            enrich_sameAs(hit,search_host,search_port,args.pipeline)
             
     else:
         for hit in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True):
-            run(hit,search_host,search_port)
+            enrich_sameAs(hit,search_host,search_port,args.pipeline)
  
