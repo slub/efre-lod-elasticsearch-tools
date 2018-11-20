@@ -124,16 +124,17 @@ class LODTITProcessFromRdi(LODTITTask):
         return LODTITFillRawdataIndex()
     
     def run(self):
-        cmd="rm -rf ldj/ && . ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/finc-main-{date}/mrc".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/finc-main-{date}/mrc -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
     def complete(self):
         returnarray=[]
+        path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
         try:
-            for index in os.listdir("ldj"):
-                for f in os.listdir("ldj/"+index):
-                    if not os.path.isfile("ldj/"+index+"/"+f):
+            for index in os.listdir(path):
+                for f in os.listdir(path+"/"+index):
+                    if not os.path.isfile(path+"/"+index+"/"+f):
                         return False
         except FileNotFoundError:
             return False
@@ -144,22 +145,17 @@ class LODTITUpdate(LODTITTask):
         return LODTITProcessFromRdi()
     
     def run(self):
-        enrichmentstr=[]
-        for index in os.listdir("ldj"):
-            for f in os.listdir("ldj/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && pv {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-finc",fd="ldj/"+index+"/"+f)
+        path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
+        for index in os.listdir(path):
+            for f in os.listdir(path+"/"+index):
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -pipeline -stdin -searchserver {host}<  {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
-                with open("{fd}".format(fd="ldj/"+index+"/"+f)) as fdd:
-                    for line in fdd:
-                        rec=json.loads(line)
-                        enrichmentstr.append((self.config.get("host").split("/")[2].split(":")[0],self.config.get("host").split("/")[2].split(":")[1],index,"schemaorg",rec.get("identifier")))
-                        
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
-        put_dict("{host}/date/actual/2".format(**self.config),{"date":str(now)})
-        for f in os.listdir("ldj/resources"):
-            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove",fd="ldj/resources/"+f)
+        for f in os.listdir(path+"/resources"):
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py -stdin -searchserver {host} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove",fd=path+"/resources/"+f)
             output=shellout(cmd)
+        put_dict("{host}/date/actual/2".format(**self.config),{"date":str(now)})
             
             
     
@@ -170,11 +166,6 @@ class LODTITUpdate(LODTITTask):
         if r.ok:
             lu=r.json().get("_source").get("date")
             if lu==now:
-                try:
-                    shutil.rmtree("ldj")
-                    os.remove(self.now+".conf")
-                except OSError as ex:
-                    print(ex)
                 return True
         return False
         

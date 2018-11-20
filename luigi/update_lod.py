@@ -18,7 +18,6 @@ import elasticsearch
 from multiprocessing import Pool,current_process
 from pyld import jsonld
 import ijson.backends.yajl2_cffi as ijson
-import sameAs2id
 
 import luigi
 import luigi.contrib.esindex
@@ -144,16 +143,17 @@ class LODProcessFromRdi(LODTask):
         return LODFillRawdataIndex()
     
     def run(self):
-        cmd="rm -rf ldj/ && . ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut-{date}/mrc".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut-{date}/mrc -prefix {date}-aut-data".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
     def complete(self):
         returnarray=[]
+        path="{date}-aut-data".format(date=self.yesterday.strftime("%y%m%d"))
         try:
-            for index in os.listdir("ldj"):
-                for f in os.listdir("ldj/"+index):
-                    if not os.path.isfile("ldj/"+index+"/"+f):
+            for index in os.listdir(path):
+                for f in os.listdir(path+"/"+index):
+                    if not os.path.isfile(path+"/"+index+"/"+f):
                         return False
         except FileNotFoundError:
             return False
@@ -164,27 +164,13 @@ class LODUpdate(LODTask):
         return LODProcessFromRdi()
     
     def run(self):
+        path="{date}-aut-data".format(date=self.yesterday.strftime("%y%m%d"))
         enrichmentstr=[]
-        for index in os.listdir("ldj"):
-            for f in os.listdir("ldj/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py  {host} < {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
+        for index in os.listdir(path):
+            for f in os.listdir(path+"/"+index):
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py  -server {host} -pipeline < {fd} | ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py -pipeline -stdin -searchserver {host} | ~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py -pipeline -stdin | ~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py -server {host} -pipeline -stdin |  esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
                 output=shellout(cmd)
-                with open("{fd}".format(fd="ldj/"+index+"/"+f)) as fdd:
-                    for line in fdd:
-                        rec=json.loads(line)
-                        enrichmentstr.append((self.config.get("host").split("/")[2].split(":")[0],self.config.get("host").split("/")[2].split(":")[1],index,"schemaorg",rec.get("identifier")))
         put_dict("{host}/date/actual/1".format(**self.config),{"date":str(self.yesterday.strftime("%Y-%m-%d"))})
-        for host,port,index,type,id in enrichmentstr:
-            rec=sameAs2id.run(host,port,index,type,id,False)
-            if rec:
-                with open(index+"-toReIndex.ldj","a") as fd:
-                    json.dump(rec,fd,indent=None)
-        for index in os.listdir("ldj"):
-            if os.path.isfile(str(index)+"-toReIndex.ldj"):
-                cmd="esbulk -verbose -server {host} -index {index} -type schemaorg -id identifier -w {workers} < {index}-toReIndex.ldj".format(**self.config,index=index)
-                output=shellout(cmd)
-                os.remove(str(index)+"-toReIndex.ldj")
-                luigi.LocalTarget(output).move(self.output().path)
     
     def output(self):
         return luigi.LocalTarget(path=self.path())
@@ -196,10 +182,6 @@ class LODUpdate(LODTask):
         r=get("{host}/date/actual/1".format(**self.config))
         lu=r.json().get("_source").get("date")
         if lu==now:
-            try:
-                os.rmdir("ldj")
-            except OSError as ex:
-                print(ex)
             return True
         else:
             return False
