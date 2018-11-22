@@ -9,6 +9,8 @@ def fix_mrc_id(jline):
         _id=jline.pop("001")
         for elem in _id:
             jline["001"]=elem
+            if elem=="0021114284":  # this particulary FINC-MARC21 Record is broken and will break the whole toolchain
+                return None
     return jline
 
 if __name__ == "__main__":
@@ -19,6 +21,7 @@ if __name__ == "__main__":
             eprint("corrupt json: "+str(line))
             continue
         jline=fix_mrc_id(jline)
-        sys.stdout.write(json.dumps(jline)+"\n")
-        sys.stdout.flush()
+        if jline:
+            sys.stdout.write(json.dumps(jline)+"\n")
+            sys.stdout.flush()
 
