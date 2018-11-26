@@ -8,27 +8,50 @@ from es2json import esgenerator,isint,litter,eprint,isfloat,isiter
 from rdflib import Graph
 
 
-
+# Use geonames API (slow and quota limit for free accounts)
 def get_gnid(rec):
-    if not any("http://www.geonames.org" in s for s in rec.get("sameAs")):
+    if not any("http://www.geonames.org" in s for s in rec.get("sameAs")) and rec["geo"].get("latitude") and rec["geo"].get("longitude"):
         changed=False
-        lat=rec["geo"].get("latitude")
-        lng=rec["geo"].get("longitude")
-        if lat and not isfloat(lat) and isfloat(lat[1:]):
-            lat=lat[1:]
-        if lng and not isfloat(lng) and isfloat(lng[1:]):
-            lng=lng[1:]
-        r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+lat+"&lng="+lng+"&username=slub")
+        r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+rec["geo"].get("latitude")+"&lng="+rec["geo"].get("longitude")+"&username=slublod")
         if r.ok and isiter(r.json().get("geonames")):
             for geoNameRecord in r.json().get("geonames"):
-                if rec.get("name") in geoNameRecord.get("name"):    #match!
+                if rec.get("name") in geoNameRecord.get("name") or geoNameRecord.get("name") in rec.get("name"):    #match!
                     rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(geoNameRecord.get("geonameId"))+"/")
                     changed=True
+        else:
+            if r.json().get("status").get("message").startswith("the hourly limit") or r.json().get("status").get("message").startswith("the daily limit"):
+                eprint("Limit exceeded!\n")
+                exit(0)
         if changed:
             return rec
-        else:
-            return None
         
+        
+
+def get_gnid_by_es(rec,host,port,index,typ):
+    if not any("http://www.geonames.org" in s for s in rec.get("sameAs")) and rec["geo"].get("latitude") and rec["geo"].get("longitude"):
+        changed=False
+        records=[]
+        for record in esgenerator(headless=True,host=host,port=port,index=index,type=typ,body={"query":{"bool":{"filter":{"geo_distance":{"distance":"0.1km","location":{"lat":float(rec["geo"].get("latitude")),"lon":float(rec["geo"].get("longitude"))}}}}}}):
+            records.append(record)
+        for record in records:
+            if record.get("name") in rec.get("name") or rec.get("name") in record.get("name") or len(records)==1:
+                #eprint(rec.get("name"),record.get("name"),record.get("id"),record.get("location"))
+                rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(record.get("id"))+"/")
+                changed=True
+        
+        #r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+rec["geo"].get("latitude")+"&lng="+rec["geo"].get("longitude")+"&username=slublod")
+        #if r.ok and isiter(r.json().get("geonames")):
+            #for geoNameRecord in r.json().get("geonames"):
+                #if rec.get("name") in geoNameRecord.get("name"):    #match!
+                    #rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(geoNameRecord.get("geonameId"))+"/")
+                    #changed=True
+        #else:
+            #if r.json().get("status").get("message").startswith("the hourly limit") or r.json().get("status").get("message").startswith("the daily limit"):
+                #eprint("Limit exceeded!\n")
+                #exit(0)
+        if changed:
+            return rec
+    
     
 
 if __name__ == "__main__":
@@ -40,7 +63,8 @@ if __name__ == "__main__":
     parser.add_argument("-id",type=str,help="retrieve single document (optional)")
     parser.add_argument('-stdin',action="store_true",help="get data from stdin")
     parser.add_argument('-pipeline',action="store_true",help="output every record (even if not enriched) to put this script into a pipeline")
-    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty")  #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-searchserver',type=str,default="http://127.0.0.1:9200/geonames/record",help="search instance to use. default is -server e.g. http://127.0.0.1:9200")      #index with geonames_data
     args=parser.parse_args()
     tabbing=None
     if args.server:
@@ -57,6 +81,15 @@ if __name__ == "__main__":
                 args.id=slashsplit[5].rsplit("?")[0]
             else:
                 args.id=slashsplit[5]
+    if args.searchserver:
+        slashsplit=args.searchserver.split("/")
+        search_host=slashsplit[2].rsplit(":")[0]
+        if isint(args.searchserver.split(":")[2].rsplit("/")[0]):
+            search_port=args.searchserver.split(":")[2].split("/")[0]
+        search_index=args.searchserver.split("/")[3]
+        if len(slashsplit)>4:
+            search_type=slashsplit[4]
+            
     if args.stdin:
         for line in sys.stdin:
             rec=json.loads(line)
@@ -66,8 +99,9 @@ if __name__ == "__main__":
             if args.pipeline or newrec:
                 print(json.dumps(rec,indent=tabbing))
     else:
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"exists":{"field":"geo"}}}):
-            newrec=get_gnid(rec)
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"bool":{"must":{"exists":{"field":"geo"}},"must_not":{"prefix":{"sameAs.keyword":"http://www.geonames.org/"}}}}}):
+            #newrec=get_gnid(rec)
+            newrec=get_gnid_by_es(rec,search_host,search_port,search_index,search_type)
             if newrec:
                 rec=newrec
             if args.pipeline or newrec:
