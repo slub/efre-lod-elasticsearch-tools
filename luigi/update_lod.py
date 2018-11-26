@@ -51,7 +51,10 @@ class LODTask(BaseTask):
     yesterday = date.today() - timedelta(1)
     span = yesterday-config.get("lastupdate")
     for i in range(span.days+1):
-        config["dates"].append((config.get("lastupdate")+timedelta(days=i)).strftime("%y%m%d"))
+        date=(config.get("lastupdate")+timedelta(days=i)).strftime("%y%m%d")
+        if os.path.isfile("TA-MARC-norm-{date}.tar.gz".format(date=date)):
+            continue
+        config["dates"].append(date)
         
     def closest(self):
         return daily(date=self.date)
@@ -59,14 +62,14 @@ class LODTask(BaseTask):
 class LODDownload(LODTask):
 
     def run(self):
-        for dat in self.config.get("dates"):
+        for n,dat in enumerate(self.config.get("dates")):
             cmdstring="wget --user {username} --password {password} {url}TA-MARC-norm-{date}.tar.gz".format(**self.config,date=dat)
             output = shellout(cmdstring)
         return 0
 
     def output(self):
         ret=[]
-        for date in self.config.get("dates"):
+        for n,date in enumerate(self.config.get("dates")):
             ret.append(luigi.LocalTarget("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)))
         return ret
 
@@ -168,7 +171,14 @@ class LODUpdate(LODTask):
         enrichmentstr=[]
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py  -server {host} -pipeline < {fd} | ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py -pipeline -stdin -searchserver {host} | ~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py -pipeline -stdin | ~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py -server {host} -pipeline -stdin |  esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
+                if index=="geo":
+                    cmd+="~git/efre-lod-elasticsearch-tools/enrichment/geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)
+                cmd+="esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(**self.config,index=index)
                 output=shellout(cmd)
         put_dict("{host}/date/actual/1".format(**self.config),{"date":str(self.yesterday.strftime("%Y-%m-%d"))})
     
