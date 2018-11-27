@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import requests
+import elasticsearch
 from es2json import esgenerator,isint,litter,eprint,isfloat,isiter
 from rdflib import Graph
 
@@ -31,26 +32,25 @@ def get_gnid_by_es(rec,host,port,index,typ):
     if not any("http://www.geonames.org" in s for s in rec.get("sameAs")) and rec["geo"].get("latitude") and rec["geo"].get("longitude"):
         changed=False
         records=[]
-        for record in esgenerator(headless=True,host=host,port=port,index=index,type=typ,body={"query":{"bool":{"filter":{"geo_distance":{"distance":"0.1km","location":{"lat":float(rec["geo"].get("latitude")),"lon":float(rec["geo"].get("longitude"))}}}}}}):
-            records.append(record)
-        for record in records:
-            if record.get("name") in rec.get("name") or rec.get("name") in record.get("name") or len(records)==1:
-                #eprint(rec.get("name"),record.get("name"),record.get("id"),record.get("location"))
-                rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(record.get("id"))+"/")
-                changed=True
+        searchbody={"query":{"bool":{"filter":{"geo_distance":{"distance":"0.1km","location":{"lat":float(rec["geo"].get("latitude")),"lon":float(rec["geo"].get("longitude"))}}}}}}
+        try:
+            for record in esgenerator(headless=True,host=host,port=port,index=index,type=typ,body=searchbody):
+                records.append(record)
+        except elasticsearch.exceptions.RequestError as e:
+            eprint(e,json.dumps(searchbody,indent=4),json.dumps(rec,indent=4))
+            return
         
-        #r=requests.get("http://api.geonames.org/findNearbyJSON?lat="+rec["geo"].get("latitude")+"&lng="+rec["geo"].get("longitude")+"&username=slublod")
-        #if r.ok and isiter(r.json().get("geonames")):
-            #for geoNameRecord in r.json().get("geonames"):
-                #if rec.get("name") in geoNameRecord.get("name"):    #match!
-                    #rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(geoNameRecord.get("geonameId"))+"/")
-                    #changed=True
-        #else:
-            #if r.json().get("status").get("message").startswith("the hourly limit") or r.json().get("status").get("message").startswith("the daily limit"):
-                #eprint("Limit exceeded!\n")
-                #exit(0)
+        
+        if records:
+            for record in records:
+                if record.get("name") in rec.get("name") or rec.get("name") in record.get("name") or len(records)==1 or rec.get("name") in record.get("alternateName"):
+                #eprint(rec.get("name"),record.get("name"),record.get("id"),record.get("location"))
+                    rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(record.get("id"))+"/")
+                    changed=True
         if changed:
             return rec
+        else:
+            return None
     
     
 
@@ -94,8 +94,9 @@ if __name__ == "__main__":
         for line in sys.stdin:
             rec=json.loads(line)
             if rec.get("geo"):
-                newrec=get_gnid(rec)
-                rec=newrec
+                newrec=get_gnid_by_es(rec,search_host,search_port,search_index,search_type)
+                if newrec:
+                    rec=newrec
             if args.pipeline or newrec:
                 print(json.dumps(rec,indent=tabbing))
     else:
