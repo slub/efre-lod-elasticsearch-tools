@@ -148,12 +148,15 @@ class LODTITUpdate(LODTITTask):
         path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -pipeline -stdin -searchserver {host}<  {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd="ldj/"+index+"/"+f)
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -pipeline -stdin -searchserver {host} <  {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
                 output=shellout(cmd)
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")+"T23:59:59.999Z"
         for f in os.listdir(path+"/resources"):
-            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py -stdin -searchserver {host} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove",fd=path+"/resources/"+f)
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
+            cmd+="~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ".format(**self.config,fd=path+"/resources/"+f)
+            cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -searchserver {host} -stdin  | ".format(**self.config,fd=path+"/resources/"+f)
+            cmd+="esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove")
             output=shellout(cmd)
         put_dict("{host}/date/actual/2".format(**self.config),{"date":str(now)})
             

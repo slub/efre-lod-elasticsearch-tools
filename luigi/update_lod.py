@@ -170,11 +170,11 @@ class LODUpdate(LODTask):
         path="{date}-aut-data".format(date=self.yesterday.strftime("%y%m%d"))
         enrichmentstr=[]
         for index in os.listdir(path):
-            for f in os.listdir(path+"/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} | ".format(**self.config)
+            for f in os.listdir(path+"/"+index):                                        ### doing several enrichment things before indexing the data
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && " #with -pipeline, all the data get's thru, not only enriched docs
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host}  | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
                 if index=="geo":
                     cmd+="~git/efre-lod-elasticsearch-tools/enrichment/geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)
