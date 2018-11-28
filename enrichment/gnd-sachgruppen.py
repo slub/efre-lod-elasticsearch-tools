@@ -11,8 +11,8 @@ map=["gndSubjectCategory","fieldOfStudy","fieldOfActivity","biographicalOrHistor
 
 def process(record,dnb_uri,server):
     server+="/gnd-records/record/"
-    change=False
-    r = requests.get(server+dnb_uri.split("/")[-1])
+    change=False                                    #   [0]   [1] [2]         [3]   [4,-1]
+    r = requests.get(server+dnb_uri.split("/")[-1]) #	http: / / d-nb.info / gnd / 102859268X get the GND number 
     if r.ok:
         for gndItem in map:
             if r.json().get("_source").get(gndItem):
@@ -44,7 +44,9 @@ def find_gnd(jline,server):
     elif isinstance(jline.get("sameAs"),list):
         for elem in jline.get("sameAs"):
             if isinstance(elem,str) and elem.startswith("http://d-nb.info"):
-                jline=process(jline,elem,server)
+                newrec=process(jline,elem,server)
+                if newrec:
+                    jline=newrec
         return jline
     
 if __name__ == "__main__":
@@ -60,5 +62,9 @@ if __name__ == "__main__":
             eprint("corrupt json: "+str(line))
             continue
         newrec=find_gnd(jline,args.searchserver)
-        if newrec or args.pipeline:
+        if newrec:
             print(json.dumps(newrec,indent=None))
+        elif not newrec and args.pipeline:
+            print(json.dumps(jline,indent=None))
+        else:
+            continue

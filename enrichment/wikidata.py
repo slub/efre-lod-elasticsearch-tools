@@ -64,7 +64,7 @@ if __name__ == "__main__":
             rec=json.loads(line)
             gnd=None
             record=None
-            if rec.get("sameAs"):
+            if rec and rec.get("sameAs"):
                 if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
                     for item in rec.get("sameAs"):
                         if "http://d-nb.info" in item and len(item.split("/"))>4:
