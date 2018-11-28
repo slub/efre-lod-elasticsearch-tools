@@ -39,21 +39,21 @@ if __name__ == "__main__":
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
     parser.add_argument('-type',type=str,help='ElasticSearch Search Index Type to use')
     parser.add_argument("-id",type=str,help="retrieve single document (optional)")
-    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-searchserver',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
     parser.add_argument('-stdin',action="store_true",help="get data from stdin")
     parser.add_argument('-pipeline',action="store_true",help="output every record (even if not enriched) to put this script into a pipeline")
     args=parser.parse_args()
-    if args.server:
-        slashsplit=args.server.split("/")
+    if args.searchserver:
+        slashsplit=args.searchserver.split("/")
         args.host=slashsplit[2].rsplit(":")[0]
-        if isint(args.server.split(":")[2].rsplit("/")[0]):
-            args.port=args.server.split(":")[2].split("/")[0]
+        if isint(args.searchserver.split(":")[2].rsplit("/")[0]):
+            args.port=args.searchserver.split(":")[2].split("/")[0]
         if len(slashsplit)>3:    
-            args.index=args.server.split("/")[3]
+            args.index=args.searchserver.split("/")[3] 
         if len(slashsplit)>4:
             args.type=slashsplit[4]
         if len(slashsplit)>5:
-            if "?pretty" in args.server:
+            if "?pretty" in args.searchserver:
                 args.pretty=True
                 args.id=slashsplit[5].rsplit("?")[0]
             else:
@@ -78,7 +78,7 @@ if __name__ == "__main__":
             if record or args.pipeline:
                 print(json.dumps(rec,indent=None))
     else:
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"match_phrase":{"sameAs":"http://d-nb.info"}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
             i=i+1
             gnd=None
             if rec.get("sameAs"):
