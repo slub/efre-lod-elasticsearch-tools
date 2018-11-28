@@ -9,25 +9,12 @@ from requests import get,head,put
 from time import sleep
 import os
 import shutil
-from httplib2 import Http
 import subprocess
 import luigi
 import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
-
-def put_dict(url, dictionary):
-    '''
-    Pass the whole dictionary as a json body to the url.
-    Make sure to use a new Http object each time for thread safety.
-    '''
-    http_obj = Http()
-    resp, content = http_obj.request(
-        uri=url,
-        method='PUT',
-        headers={'Content-Type': 'application/json'},
-        body=json.dumps(dictionary),
-    )
+from es2json import put_dict
 
 class LODTITTask(BaseTask):
     """
@@ -56,7 +43,7 @@ class LODTITDownload(LODTITTask):
         return LODTITSolrHarvesterMakeConfig()
     
     def run(self):
-        cmdstring="~/git/solr_harvester-master/solr_harvester.php --conf ./"+self.now+".conf"
+        cmdstring="~/git/bhering/solr_harvester/solr_harvester.php --conf ./"+self.now+".conf"
         output = shellout(cmdstring)
         return 0
 

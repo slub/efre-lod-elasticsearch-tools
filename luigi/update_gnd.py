@@ -8,11 +8,11 @@ import shutil
 from gzip import decompress
 import subprocess
 import argparse
-from httplib2 import Http
 
 import elasticsearch
 from multiprocessing import Pool,current_process
 from pyld import jsonld
+from es2json import eprint, put_dict
 import ijson.backends.yajl2_cffi as ijson
 
 
@@ -20,6 +20,8 @@ import luigi
 import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
+
+
 
 def init_mp(c,rf,url,pr,bn):
     global context
@@ -42,18 +44,6 @@ def init_mp(c,rf,url,pr,bn):
     else:
         record_field=None
 
-def put_dict(url, dictionary):
-    '''
-    Pass the whole dictionary as a json body to the url.
-    Make sure to use a new Http object each time for thread safety.
-    '''
-    http_obj = Http()
-    resp, content = http_obj.request(
-        uri=url,
-        method='PUT',
-        headers={'Content-Type': 'application/json'},
-        body=json.dumps(dictionary),
-    )
     
 def compact_object(jsonobject):
     dnb_split=True
@@ -118,7 +108,7 @@ def process(input,record_field,context_url,pathprefix,bnode,worker):
 
 class GNDTask(BaseTask):
     """
-    Just a base class for GND
+    Just a base class for GND 
     """
     TAG = 'gnd'
 
@@ -135,7 +125,7 @@ class GNDTask(BaseTask):
         "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
         "username":"opendata",
         "password":"opendata",
-        "host":"localhost",
+        "host":"127.0.0.1",
         "indices":{"record":"gnd-records",
                    "bnode":"gnd-bnodes"},
         "port":9200,
@@ -207,33 +197,22 @@ class GNDconcatChunks(GNDTask):
         return [ GNDcompactedJSONdata()]
     
     def run(self):
-        directory="chunks/"
-        records=open("records.ldj","w")
-        bnodes=open("bnodes.ldj","w")
-        for f in os.listdir(directory):
-            if "bnode" in f:
-                with open(directory + f,"r") as chunk:
+        with open("records.ldj","w") as records, open("bnodes.ldj","w") as bnodes:
+            for f in os.listdir("chunks/"):
+                with open("chunks/" + f,"r") as chunk:
                     for line in chunk:
                         jline=json.loads(line)
                         for date in ("dateOfBirth","dateOfDeath"):
-                            if isinstance(jline.get(date),list):
+                            if date in jline and isinstance(jline.get(date),list):
                                 for i,item in enumerate(jline[date]):
                                     if isinstance(item,str):
                                         jline[date][i]={"@value":item}
-                        bnodes.write(json.dumps(jline)+"\n")
-            else:
-                with open(directory + f,"r") as chunk:
-                    for line in chunk:
-                        jline=json.loads(line)
-                        for date in ("dateOfBirth","dateOfDeath"):
-                            if isinstance(jline.get(date),list):
-                                for i,item in enumerate(jline[date]):
-                                    if isinstance(item,str):
-                                        jline[date][i]={"@value":item}
-                                        
-                        records.write(json.dumps(jline)+"\n")
-        records.close()
-        bnodes.close()
+                            else:
+                                eprint(jline.get(date))
+                        if "bnode"in f:                
+                            bnodes.write(json.dumps(jline,indent=None)+"\n")
+                        else:
+                            records.write(json.dumps(jline,indent=None)+"\n")
         
     def output(self):
         return [luigi.LocalTarget("bnodes.ldj"),luigi.LocalTarget("records.ldj")]
@@ -250,8 +229,9 @@ class GNDUpdate(GNDTask):
         return GNDconcatChunks()
 
     def run(self):
-        cmd="esbulk -verbose -purge -server http://{host}:{port} -w {workers}""".format(**self.config)
+        cmd="esbulk -verbose -server http://{host}:{port} -w {workers}""".format(**self.config)
         for k,v in self.config.get("indices").items():
+            out=shellout("curl -XDELETE http://{host}:{port}/{index}".format(**self.config,index=v))
             put_dict("http://{host}/{index}".format(**self.config,index=v),{"mappings":{k:{"date_detection":False}}})
             out = shellout(cmd+""" -index {index} -type {type} -id id {type}s.ldj""".format(index=v,type=k))
             

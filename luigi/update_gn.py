@@ -1,14 +1,14 @@
 
-from requests import head,get
+from requests import head,get,delete
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
-
+from es2json import put_dict
 import luigi
 import os
 from dateutil import parser
 
 class GNTask(BaseTask):
-    TAG = 'gnd'
+    TAG = 'gn'
 
     config={
         "url":"http://download.geonames.org/export/dump/",
@@ -19,14 +19,24 @@ class GNTask(BaseTask):
         "workers":8
         }
 
+    ldj=0
+    txt=0
+    
     def closest(self):
         return daily(date=self.date)
-    ldj=0
+    
     
 class GNDownload(GNTask):
     def run(self):
-        cmdstring="wget {url}{file}.zip".format(**self.config)
+        cmdstring="wget {url}{file}.zip -O {file}.zip".format(**self.config)
         output = shellout(cmdstring)
+        cmd="unzip -o {file}.zip".format(**self.config)
+        output=shellout(cmd)
+        with open(self.config.get("file")+".txt") as f:
+            l=0
+            for i,line in enumerate(f):
+                pass
+            GNTask.txt=i
         return 0
 
     def complete(self):
@@ -42,25 +52,17 @@ class GNDownload(GNTask):
             return False
         if here<remote:
             return False
-        return True
-    
-    def output(self):
-        return luigi.LocalTarget(self.config.get("file")+".zip")
-
-class GNUnzip(GNTask):
-    def requires(self):
-        return [GNDownload()]
-    
-    def run(self):
-        cmd="unzip -o {file}.zip".format(**self.config)
-        output=shellout(cmd)
+        if self.txt>0:
+            return True
+        else:
+            return False
     
     def output(self):
         return luigi.LocalTarget(self.config.get("file")+".txt")
-    
-class GNtsv2json(GNTask):
+
+class GNtsv2json(GNTask):   # we inherit from GNDownload instead of the super-parent GNTask so we preserve the change of self.txt in the GNDownload class
     def requires(self):
-        return [GNUnzip()]
+        return [GNDownload()]
     
     def run(self):
         cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/tsv2json.py {file}.txt > {file}.ldj".format(**self.config)
@@ -68,43 +70,30 @@ class GNtsv2json(GNTask):
     
     def complete(self):
         try:
-            txt=0
             i=0
-            with open(self.config.get("file")+".txt") as f:
-                for txt,l in enumerate(f):
-                    pass
             with open(self.config.get("file")+".ldj") as f:
                 for i,l in enumerate(f):
                     pass
-            if txt==i:
-                self.ldj=i
+            if i==GNTask.txt:
+                GNTask.ldj=i
                 return True
         except FileNotFoundError:
                 return False
         return False
 
-class ldj2ES(GNTask):
+class GNIngest(GNTask):
     def requires(self):
         return [GNtsv2json()]
 
     def run(self):
+        r=delete("{server}/{index}".format(**self.config))
+        put_dict("{server}/{index}".format(**self.config),{"mappings":{"{type}".format(**self.config):{"properties":{"location":{"type":"geo_point"}}}}})
         cmd="esbulk -server {server} -index {index} -type {type} -w {workers} -id id -verbose {file}.ldj".format(**self.config)
         output=shellout(cmd)
-    # TODO: put this into the ES Index so we can search by coordinats and create some fancy stuff in kibana
-    ######{
-    ######"mappings": {
-        ######"record": {
-            ######"properties": {
-                ######"location": {
-                    ######"type": "geo_point"
-                ######}
-            ######}
-        ######}
-    ######}
-######}
+        
     def complete(self):     
         r = get("{server}/{index}/{type}/_search?size=0".format(**self.config))
         if r.ok:
-            if self.ldj==r.json().get("hits").get("total") and self.ldj>0:
+            if GNTask.ldj==r.json().get("hits").get("total") and GNTask.ldj>0:
                 return True
         return False

@@ -6,8 +6,8 @@ from pprint import pprint
 import elasticsearch
 import argparse
 import sys, os, time, atexit
-from signal import SIGTERM 
-
+from signal import SIGTERM      #needed for Daemon
+from httplib2 import Http       #needed for put_dict
 class Daemon:
     """
     A generic daemon class.
@@ -17,7 +17,7 @@ class Daemon:
     def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
         self.stdin = stdin
         self.stdout = stdout
-        self.stderr = stderr
+        self.stderr = stderr 
         self.pidfile = pidfile
 
     def daemonize(self):
@@ -145,7 +145,20 @@ class simplebar():
             self.count+=1
         sys.stderr.write(str(self.count)+"\n"+"\033[F")
         sys.stderr.flush()
-        
+
+def put_dict(url, dictionary):
+    '''
+    Pass the whole dictionary as a json body to the url.
+    Make sure to use a new Http object each time for thread safety.
+    '''
+    http_obj = Http()
+    resp, content = http_obj.request(
+        uri=url,
+        method='PUT',
+        headers={'Content-Type': 'application/json'},
+        body=json.dumps(dictionary),
+    )
+    
 def ArrayOrSingleValue(array):
     if array:
         length=len(array)
@@ -158,7 +171,7 @@ def ArrayOrSingleValue(array):
             return None
         
 def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)   
+    print(*args, file=sys.stderr, **kwargs)
     
     
 def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None):

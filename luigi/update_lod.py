@@ -9,7 +9,6 @@ from requests import get,head,put
 from time import sleep
 import os
 import shutil
-from httplib2 import Http
 from gzip import decompress
 import subprocess
 import argparse
@@ -18,24 +17,12 @@ import elasticsearch
 from multiprocessing import Pool,current_process
 from pyld import jsonld
 import ijson.backends.yajl2_cffi as ijson
+from es2json import put_dict 
 
 import luigi
 import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
-
-def put_dict(url, dictionary):
-    '''
-    Pass the whole dictionary as a json body to the url.
-    Make sure to use a new Http object each time for thread safety.
-    '''
-    http_obj = Http()
-    resp, content = http_obj.request(
-        uri=url,
-        method='PUT',
-        headers={'Content-Type': 'application/json'},
-        body=json.dumps(dictionary),
-    )
 
 class LODTask(BaseTask):
     """
