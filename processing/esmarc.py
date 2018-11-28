@@ -19,6 +19,7 @@ import re
 from es2json import esgenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
 
 es=None
+generate=False
 
 def uniq(lst):
     last = object()
@@ -231,14 +232,11 @@ def getmarcid(record,regex,entity): # in this function we try to get PPNs by fie
 
 def get_or_generate_id(record,entity):
     global es
-    generate=False
     #set generate to True if you're 1st time filling a infrastructure from scratch!
     # replace args.host with your adlookup service :P
     if generate:
         identifier = None
     else:
-        if not es:
-             es=elasticsearch.Elasticsearch([{'host':"194.95.145.44"}],port=9200)
         marcid=getmarcid(record,["980..a","001"],entity)
         if record.get("003") and marcid:
             ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
@@ -514,7 +512,46 @@ def get_subfield(jline,key,entity):
                     data.append(node)
         if data:
             return  ArrayOrSingleValue(data)
-
+        
+def fidmove_extra(jline,key,entity):
+    #e.g. split "551^4:orta" to 551 and orta
+    data=[]
+    if key in jline:
+        for array in jline[key]:
+            for k,v in array.items():
+                sset={}
+                for subfield in v:
+                    for subfield_code in subfield:
+                        sset[subfield_code]=subfield[subfield_code]
+                #eprint(sset.get("9"),subfield4)
+                node={}
+                eprint(sset)
+                if sset.get("0"):
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith("http"):
+                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,str):
+                            node["identifier"]=gnd2uri(sset.get("0"))
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem and elem.startswith("http"):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
+                if sset.get("a"):
+                    node["name"]=sset.get("a")
+                if sset.get("d"):
+                    node["startDate"]=sset.get("d")
+                if sset.get("c"):
+                    node["location"]=sset.get("c")
+                            
+                if node:
+                    data.append(node)
+        if data:
+            return  ArrayOrSingleValue(data)
+        
 def deathDate(jline,key,entity):
     return marc_dates(jline.get(key),"deathDate")
 
@@ -799,6 +836,7 @@ map_entities={
         "b":"orga",         #Organisationen
         "g":"geo",          #Geographika
         "u":"works",     #Werktiteldaten
+        "f":"conf"
 }
 
 def getentity(record):
@@ -828,7 +866,46 @@ def getdateModified(record,key,entity):
             elif i==12:
                 newdate+="Z"
         return newdate
-    
+
+
+_entities = {
+"resources":{   # mapping is 1:1 like works
+        "@type"             :"CreativeWork",
+        "@context"      :"http://schema.org",
+        "@id"           :get_or_generate_id,
+        "identifier"    :{getmarcid:["980..a","001"]},
+        "offers"        :{getav:["852..a","980..a"]},
+        "_isil"         :{getisil:["003","852..a","924..b"]},
+        "dateModified"   :{getdateModified:"005"},
+        "sameAs"        :{getmarc:["024..a","670..u"]},
+        "name"              :{getmarc:["130..a","130..p","245..a","245..b","856.*.y"]},
+        "alternativeHeadline":{getmarc:["245..c"]},
+        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "author"            :{get_subfield:"100"},
+        "contributor"       :{get_subfield:"700"},
+        "pub_name"          :{getmarc:["260..b","264..b"]},
+        "pub_place"         :{getmarc:["260..a","264..a"]},
+        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
+        "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
+        "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
+        "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
+        "genre"             :{getmarc:"655..a"},
+        "hasPart"           :{getmarc:"773..g"},
+        "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
+        "license"           :{getmarc:"540..a"},
+        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
+        "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "pageStart"         :{getmarc:"773..q"},
+        "issueNumber"       :{getmarc:"773..l"},
+        "volumeNumer"       :{getmarc:"773..v"},
+        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
+        "relatedTo"         :{relatedTo:"500..0"},
+        "about"             :{handle_rvk:"936"},
+        "description"       :{getmarc:"520..a"},
+        "mentions"          :{get_subfield:"689"},
+        "subjectOf"       :{fidmove_extra:"711"}
+    }
+}
 
 entities = {
    "resources":{   # mapping is 1:1 like works
@@ -969,7 +1046,23 @@ entities = {
         "contentLocation"   :{get_subfield_if_4:"551^4:punk"},
         "participant"       :{get_subfield_if_4:"551^4:bete"},
         "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
-        }
+        },
+    
+    "conf": {
+        "@type"         :"Event",
+        "@context"      :"http://schema.org",
+        "@id"           :get_or_generate_id,
+        "identifier"    :{getmarc:"001"},
+        "_isil"         :{getisil:"003"},
+        "dateModified"  :{getdateModified:"005"},
+        "sameAs"        :{getmarc:["024..a","670..u"]},
+        
+        "name"          :{getmarc:["111..a"]},
+        "alternateName" :{getmarc:["411..a"]},
+        "location"      :{get_subfield_if_4:"551^4:ortv"},
+        "startDate"     :{birthDate:"548"},
+        "endDate"       :{deathDate:"548"},
+    },
 }
 
 def traverse(dict_or_list, path):
@@ -1130,6 +1223,8 @@ if __name__ == "__main__":
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
     parser.add_argument('-w',type=int,default=8,help="how many processes to use")
+    parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
+    parser.add_argument('-generate_ids',action="store_true",help="switch on if you wan't to generate IDs instead of looking them up. usefull for first-time ingest or debug purposes")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -1145,15 +1240,18 @@ if __name__ == "__main__":
                 args.id=slashsplit[5].rsplit("?")[0]
             else:
                 args.id=slashsplit[5]
+    if args.server or ( args.host and args.port ):
+        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
     if args.pretty:
         tabbing=4
     else:
         tabbing=None
+    if args.generate_ids:
+        generate=True
     if args.help:
         parser.print_help(sys.stderr)
         exit()        
     elif args.host and args.index and args.type and args.id:
-        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
         source=get_source_include_str()
         json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
@@ -1166,7 +1264,8 @@ if __name__ == "__main__":
                        index=args.index,
                        type=args.type,
                        source=get_source_include_str(),
-                       headless=True
+                       headless=True,
+                       body=args.query
                         ): 
             record = process_line(ldj,args.host,args.port,args.index,args.type)
             if record:
@@ -1179,7 +1278,8 @@ if __name__ == "__main__":
                        port=args.port,
                        index=args.index,
                        type=args.type,
-                       source=get_source_include_str()
+                       source=get_source_include_str(),
+                       body=args.query
                         ):
             pool.apply_async(worker,args=(ldj,))
         pool.close()
