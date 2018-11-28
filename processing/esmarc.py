@@ -16,11 +16,7 @@ import mmap
 import requests
 import siphash
 import re
-from es2json import esgenerator
-from es2json import esfatgenerator
-from es2json import ArrayOrSingleValue
-from es2json import eprint
-from es2json import litter
+from es2json import esgenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
 
 es=None
 
@@ -32,13 +28,6 @@ def uniq(lst):
         yield item
         last = item
 
-def isint(num):
-    try: 
-        int(num)
-        return True
-    except:
-        return False
-    
 def getiso8601(date):
     p=re.compile(r'[\d|X].\.[\d|X].\.[\d|X]*') #test if D(D).M(M).Y(YYY)
     m=p.match(date)
@@ -249,7 +238,7 @@ def get_or_generate_id(record,entity):
         identifier = None
     else:
         if not es:
-             es=elasticsearch.Elasticsearch([{'host':"127.0.0.1"}],port=9200)
+             es=elasticsearch.Elasticsearch([{'host':"194.95.145.44"}],port=9200)
         marcid=getmarcid(record,["980..a","001"],entity)
         if record.get("003") and marcid:
             ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
@@ -631,7 +620,7 @@ def getGeoCoordinates(record,key,entity):
         coord=getgeo(getmarc(record,v,entity))
         if coord:
             ret["@type"]="GeoCoordinates"
-            ret[k]=coord
+            ret[k]=coord.replace("N","").replace("S","-").replace("E","").replace("W","-")
     if ret:
         return ret
 
