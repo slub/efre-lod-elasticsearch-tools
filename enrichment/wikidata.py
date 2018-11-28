@@ -75,17 +75,17 @@ if __name__ == "__main__":
                 record=get_wdid(gnd,rec)
                 if record:
                     rec=record
-            if record or args.pipeline:
+            if (record or args.pipeline) and rec:
                 print(json.dumps(rec,indent=None))
-    else:
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"match_phrase":{"sameAs":"http://d-nb.info"}}}):
+    else:                                                                                                   
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"bool":{"must":{"prefix":{"sameAs.keyword":"http://d-nb.info"}},"must_not":{"prefix":{"sameAs.keyword":"http://www.wikidata.org/"}}}}}):
             gnd=None
             if rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
+                if isinstance(rec.get("sameAs"),list):
                     for item in rec.get("sameAs"):
                         if "http://d-nb.info" in item and len(item.split("/"))>4:
                             gnd=item.split("/")[4]
-                elif isinstance(rec.get("sameAs"),str) and "http://d-nb.info" in rec.get("sameAs"):
+                elif isinstance(rec.get("sameAs"),str):
                     gnd=rec.get("sameAs").split("/")[4]
             if gnd:
                 record=get_wdid(gnd,rec)
