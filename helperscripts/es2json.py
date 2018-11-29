@@ -200,6 +200,23 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
         scroll_size = len(pages['hits']['hits'])
         yield pages.get('hits').get('hits')
         
+
+def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False):
+    if os.path.isfile(idfile):
+        if not source:
+            source=True
+        es=elasticsearch.Elasticsearch([{'host':host}],port=port)
+        with open(idfile,"r") as inp:
+            for ppn in inp:
+                _id=ppn.rstrip()
+                try:
+                    if headless:
+                        yield es.get_source(index=index,doc_type=type,_source_include=source_include,_source_exclude=source_exclude,_source=source,id=_id)
+                    else:
+                        yield es.get(index=index,doc_type=type,_source_include=source_include,_source_exclude=source_exclude,_source=source,id=_id)
+                except elasticsearch.exceptions.NotFoundError:
+                    continue
+    
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
     if not lst:
@@ -270,7 +287,7 @@ def isint(num):
     try: 
         int(num)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 def isfloat(num):

@@ -16,7 +16,7 @@ import mmap
 import requests
 import siphash
 import re
-from es2json import esgenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
+from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
 
 es=None
 generate=False
@@ -798,7 +798,7 @@ map_entities={
         "b":"orga",         #Organisationen
         "g":"geo",          #Geographika
         "u":"works",     #Werktiteldaten
-        "f":"conf"
+        "f":"events"
 }
 
 def getentity(record):
@@ -970,7 +970,7 @@ entities = {
         "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
         },
     
-    "conf": {
+    "events": {
         "@type"         :"Event",
         "@context"      :"http://schema.org",
         "@id"           :get_or_generate_id,
@@ -984,6 +984,7 @@ entities = {
         "location"      :{get_subfield_if_4:"551^4:ortv"},
         "startDate"     :{birthDate:"548"},
         "endDate"       :{deathDate:"548"},
+        "adressRegion"      :{getmarc:"043..c"}
     },
 }
 
@@ -1110,25 +1111,36 @@ def init_mp(h,p,pr):
     filepaths=[]
 
 def worker(ldj):
-    out={}
-    for entity in entities:
-            out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
-    for source_record in ldj:
-        record=source_record.pop("_source")
-        type=source_record.pop("_type")
-        index=source_record.pop("_index")
+    #out={}
+    #for entity in entities:
+    #    out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
+    if isinstance(ldj,list):    # list of records
+        for source_record in ldj:
+            record=source_record.pop("_source")
+            type=source_record.pop("_type")
+            index=source_record.pop("_index")
+            try:
+                target_record=process_line(record,host,port,index,type)
+                if target_record:
+                    for entity in target_record:
+                        with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
+                            print(json.dumps(target_record[entity],indent=None),file=out)
+            except Exception as e:
+                with open("errors.txt",'a') as f:
+                    traceback.print_exc(file=f)
+    elif isinstance(ldj,dict): # single record
+        record=ldj.pop("_source")
+        type=ldj.pop("_type")
+        index=ldj.pop("_index")
         try:
             target_record=process_line(record,host,port,index,type)
+            if target_record:
+                for entity in target_record:
+                    with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
+                        print(json.dumps(target_record[entity],indent=None),file=out)
         except Exception as e:
             with open("errors.txt",'a') as f:
                 traceback.print_exc(file=f)
-        if target_record:
-            for entity in target_record:
-                out[entity].write(json.dumps(target_record[entity],indent=None)+"\n")
-    for entity in entities:
-        out[entity].close()
-        
-        
         
         
 if __name__ == "__main__":
@@ -1145,6 +1157,7 @@ if __name__ == "__main__":
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
     parser.add_argument('-w',type=int,default=8,help="how many processes to use")
+    parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
     parser.add_argument('-generate_ids',action="store_true",help="switch on if you wan't to generate IDs instead of looking them up. usefull for first-time ingest or debug purposes")
     args=parser.parse_args()
@@ -1179,6 +1192,20 @@ if __name__ == "__main__":
         json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
         if json_record:
             print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
+    elif args.host and args.index and args.type and args.idfile:
+        setupoutput(args.prefix)
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        for ldj in esidfilegenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       source=get_source_include_str(),
+                       body=args.query,
+                       idfile=args.idfile
+                        ):
+            pool.apply_async(worker,args=(ldj,))
+        pool.close()
+        pool.join()
     elif args.host and args.index and args.type and args.debug:
         init_mp(args.host,args.port,None)
         for ldj in esgenerator(host=args.host,
@@ -1206,8 +1233,6 @@ if __name__ == "__main__":
             pool.apply_async(worker,args=(ldj,))
         pool.close()
         pool.join()
-
-        quit(0)
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         eprint("No host/port/index specified, trying stdin\n")
         init_mp("localhost","DEBUG","DEBUG")
