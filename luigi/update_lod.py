@@ -17,7 +17,7 @@ import elasticsearch
 from multiprocessing import Pool,current_process
 from pyld import jsonld
 import ijson.backends.yajl2_cffi as ijson
-from es2json import put_dict 
+from es2json import put_dict, esidfilegenerator
 
 import luigi
 import luigi.contrib.esindex
@@ -82,6 +82,9 @@ class LODTransform2ldj(LODTask):
     def run(self):
         cmdstring="marc2jsonl < {date}-norm.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py > {date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmdstring)
+        with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,open("{date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as inp:
+            for rec in inp:
+                print(json.loads(rec).get("001"),file=outp)
         return 0
     
     def output(self):
@@ -97,43 +100,41 @@ class LODFillRawdataIndex(LODTask):
         return LODTransform2ldj()
     
     def run(self):
-        put_dict("{host}/swb-aut-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
-        put_dict("{host}/swb-aut-{date}/_settings".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
-        
-        cmd="esbulk -verbose -server {host} -w {workers} -index swb-aut-{date} -type mrc -id 001 {date}-norm-aut.ldj""".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        #put_dict("{host}/swb-aut".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
+        #put_dict("{host}/swb-aut/_settings".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
+
+        cmd="esbulk -verbose -server {host} -w {workers} -index swb-aut -type mrc -id 001 {date}-norm-aut.ldj""".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
 
     def complete(self):
         fail=0
-        cmd="{host}/swb-aut-{date}/mrc/_search?size=0".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
-        i=0
-        r = get(cmd)
+        es_recordcount=0
+        file_recordcount=0
+        es_ids=set()
+        for record in esidfilegenerator(host="194.95.145.44",index="swb-aut",type="mrc",idfile="{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),source="False"):
+            es_ids.add(record.get("_id"))
+        es_recordcount=len(es_ids)
+        
         try:
             with open("{date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as fd:
                 ids=set()
                 for line in fd:
                     jline=json.loads(line)
                     ids.add(jline.get("001"))
-            i=len(ids)
+            file_recordcount=len(ids)
+            print(file_recordcount)
         except FileNotFoundError:
-            fail+=1
-            i=-100
-        if r.ok:
-            if i!=r.json().get("hits").get("total"):
-                fail+=1
-        else:
-            fail+=1
-        if fail==0:
-            return True
-        else:
             return False
+        
+        if es_recordcount==file_recordcount and es_recordcount>0:
+            return True
 
 class LODProcessFromRdi(LODTask):
     def requires(self):
         return LODFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut-{date}/mrc -prefix {date}-aut-data".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
