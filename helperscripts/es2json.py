@@ -3,8 +3,9 @@
 from datetime import datetime
 import json
 from pprint import pprint
-import elasticsearch
+from elasticsearch import Elasticsearch, exceptions
 import argparse
+import logging
 import sys, os, time, atexit
 from signal import SIGTERM      #needed for Daemon
 from httplib2 import Http       #needed for put_dict
@@ -172,12 +173,11 @@ def ArrayOrSingleValue(array):
         
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-    
-    
+        
 def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None):
     if not source:
         source=True
-    es=elasticsearch.Elasticsearch([{'host':host}],port=port)
+    es=Elasticsearch([{'host':host}],port=port)
     try:
         page = es.search(
             index = index,
@@ -188,7 +188,7 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
             _source=source,
             _source_exclude=source_exclude,
             _source_include=source_include)
-    except elasticsearch.exceptions.NotFoundError:
+    except exceptions.NotFoundError:
         sys.stderr.write("aborting.\n")
         exit(-1)
     sid = page['_scroll_id']
@@ -199,23 +199,30 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
         yield pages.get('hits').get('hits')
-        
-
-def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False):
+    
+def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000):
     if os.path.isfile(idfile):
         if not source:
             source=True
-        es=elasticsearch.Elasticsearch([{'host':host}],port=port)
+        tracer = logging.getLogger('elasticsearch')
+        tracer.setLevel(logging.WARNING)
+        tracer.addHandler(logging.FileHandler('errors.txt'))
+        es=Elasticsearch([{'host':host}],port=port)
+        ids=set()
         with open(idfile,"r") as inp:
             for ppn in inp:
                 _id=ppn.rstrip()
-                try:
-                    if headless:
-                        yield es.get_source(index=index,doc_type=type,_source_include=source_include,_source_exclude=source_exclude,_source=source,id=_id)
-                    else:
-                        yield es.get(index=index,doc_type=type,_source_include=source_include,_source_exclude=source_exclude,_source=source,id=_id)
-                except elasticsearch.exceptions.NotFoundError:
-                    continue
+                ids.add(_id)
+                if len(ids)>=chunksize:
+                    try:
+                        for doc in es.mget(index=index,doc_type=type,body={'ids':list(ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                            if headless:
+                                yield doc.get("_source")
+                            else:
+                                yield doc
+                        ids.clear()
+                    except exceptions.NotFoundError:
+                        continue   
     
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
@@ -245,7 +252,7 @@ def litter(lst, elm):
 def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False):
     if not source:
         source=True
-    es=elasticsearch.Elasticsearch([{'host':host}],port=port)
+    es=Elasticsearch([{'host':host}],port=port)
     try:
         if id:
             record=es.get(index=index,doc_type=type,id=id)
@@ -263,7 +270,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,sourc
             _source=source,
             _source_exclude=source_exclude,
             _source_include=source_include)
-    except elasticsearch.exceptions.NotFoundError:
+    except exceptions.NotFoundError:
         sys.stderr.write("not found: "+host+":"+str(port)+"/"+index+"/"+type+"/_search\n")
         exit(-1)
     sid = page['_scroll_id']
@@ -317,6 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("-headless",action="store_true",default=False,help="don't include Elasticsearch Metafields")
     parser.add_argument('-body',type=str,help='Searchbody')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-idfile',type=str,help="path to a file with newline-delimited IDs to process")
     parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
     args=parser.parse_args()
     if args.server:
@@ -337,11 +345,14 @@ if __name__ == "__main__":
         tabbing=4
     else:
         tabbing=None
-    if not args.id:
+    if args.idfile:
+        for json_record in esidfilegenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,idfile=args.idfile):
+            sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
+    elif not args.id:
         for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     else:
-        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
+        es=Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
         if not args.headless:
             json_record=es.get(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
