@@ -323,36 +323,61 @@ def getmarcvalues(record,regex,entity):
                                     if regex[-1] in final:
                                         yield final.get(regex[-1])
 
-def handle_rvk(jline,key,entity):
+def handle_about(jline,key,entity):
     ret=[]
-    data=getmarc(jline,key,None)
-    if isinstance(data,list):
-        for elem in data:
-            ret.append(handle_single_rvk(elem))
-        return ret
-    elif isinstance(data,dict):
-        return handle_single_rvk(data)
+    for k in key:
+        if k=="936" or k=="084":
+            data=getmarc(jline,k,None)
+            if isinstance(data,list):
+                for elem in data:
+                    ret.append(handle_single_rvk(elem))
+            elif isinstance(data,dict):
+                ret.append(handle_single_rvk(data))
+        elif k=="082":
+            data=getmarc(jline,k+"..a",None)
+            if isinstance(data,list):
+                for elem in data:
+                    ret.append(handle_single_ddc(elem))
+            elif isinstance(data,dict):
+                ret.append(handle_single_ddc(data))
+            elif isinstance(data,str):
+                ret.append(handle_single_ddc(data))
+        elif k=="655":
+            data=get_subfield(jline,k,entity)
+            if isinstance(data,list):
+                for elem in data:
+                    ret.append(elem)
+            elif isinstance(data,dict):
+                ret.append(data)
+                
+    return ret
             
+def handle_single_ddc(data):
+    ddc={"identifier":{  "@type"     :"PropertyValue",
+                                "propertyID":"DDC",
+                                "value"     :data},
+         "@id":"http://purl.org/NET/decimalised#c"+data[:3]}
+    return ddc
+
 def handle_single_rvk(data):
     sset={}
     record={}
-    if not "rv" in data:
-        return
-    for subfield in data.get("rv"):
-        for k,v in subfield.items():
-            sset[k]=v
-    if "0" in sset:
-        record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
-    if "a" in sset:
-        record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
-        record["identifier"]={  "@type"     :"PropertyValue",
+    if "rv" in data:
+        for subfield in data.get("rv"):
+            for k,v in subfield.items():
+                sset[k]=v
+        if "0" in sset:
+            record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
+        if "a" in sset:
+            record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
+            record["identifier"]={  "@type"     :"PropertyValue",
                                 "propertyID":"RVK",
                                 "value"     :sset.get("a")}
-    if "b" in sset:
-        record["name"]=sset.get("b")
-    if "k" in sset:
-        record["keywords"]=sset.get("k")
-    return record
+        if "b" in sset:
+            record["name"]=sset.get("b")
+        if "k" in sset:
+            record["keywords"]=sset.get("k")
+        return record
     
 def handlePPN(jline,key,entity):
     return {    "@type"     :"PropertyValue",
@@ -463,6 +488,17 @@ def get_subfield_if_4(jline,key,entity):
                     data.append(node)
         if data:
             return ArrayOrSingleValue(data)
+
+def get_subfields(jline,key,entity):
+    data=[]
+    if isinstance(key,list):
+        for k in key:
+           data=litter(data,get_subfield(jline,k,entity))
+        return ArrayOrSingleValue(data)
+    elif isinstance(key,string):
+        return get_subfield(jline,key,entity)
+    else:
+        return
 
 def get_subfield(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
@@ -831,39 +867,41 @@ def getdateModified(record,key,entity):
 
 entities = {
    "resources":{   # mapping is 1:1 like works
-        "@type"             :"CreativeWork",
-        "@context"      :"http://schema.org",
-        "@id"           :get_or_generate_id,
-        "identifier"    :{getmarcid:["980..a","001"]},
-        "offers"        :{getav:["852..a","980..a"]},
-        "_isil"         :{getisil:["003","852..a","924..b"]},
-        "dateModified"   :{getdateModified:"005"},
-        "sameAs"        :{getmarc:["024..a","670..u"]},
-        "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
-        "alternativeHeadline":{getmarc:["245..c"]},
-        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"            :{get_subfield:"100"},
-        "contributor"       :{get_subfield:"700"},
-        "pub_name"          :{getmarc:["260..b","264..b"]},
-        "pub_place"         :{getmarc:["260..a","264..a"]},
-        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
-        "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
-        "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
-        "genre"             :{getmarc:"655..a"},
-        "hasPart"           :{getmarc:"773..g"},
-        "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
-        "license"           :{getmarc:"540..a"},
-        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
-        "pageStart"         :{getmarc:"773..q"},
-        "issueNumber"       :{getmarc:"773..l"},
-        "volumeNumer"       :{getmarc:"773..v"},
-        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
-        "relatedTo"         :{relatedTo:"500..0"},
-        "about"             :{handle_rvk:"936"},
-        "description"       :{getmarc:"520..a"},
-        "mentions"          :{get_subfield:"689"},
+        "@type"                     :"CreativeWork",
+        "@context"                  :"http://schema.org",
+        "@id"                       :get_or_generate_id,
+        "identifier"                :{getmarcid:["980..a","001"]},
+        "offers"                    :{getav:["852..a","980..a"]},
+        "_isil"                     :{getisil:["003","852..a","924..b"]},
+        "dateModified"              :{getdateModified:"005"},
+        "sameAs"                    :{getmarc:["024..a","670..u"]},
+        "name"                      :{getmarc:["130..a","130..p","245..a","245..b"]},
+        "alternativeHeadline"       :{getmarc:["245..c"]},
+        "alternateName"             :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "author"                    :{get_subfields:["100","110"]},
+        "contributor"               :{get_subfields:["700","710"]},
+        "pub_name"                  :{getmarc:["260..b","264..b"]},
+        "pub_place"                 :{getmarc:["260..a","264..a"]},
+        "datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
+        "Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
+        "issn"                      :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
+        "isbn"                      :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
+        "genre"                     :{getmarc:"655..a"},
+        "hasPart"                   :{getmarc:"773..g"},
+        "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]},
+        "license"                   :{getmarc:"540..a"},
+        "inLanguage"                :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
+        "numberOfPages"             :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "pageStart"                 :{getmarc:"773..q"},
+        "issueNumber"               :{getmarc:"773..l"},
+        "volumeNumer"               :{getmarc:"773..v"},
+        "locationCreated"           :{get_subfield_if_4:"551^4:orth"},
+        "relatedTo"                 :{relatedTo:"500..0"},
+        "about"                     :{handle_about:["936","084","082","655"]},
+        "description"               :{getmarc:"520..a"},
+        "mentions"                  :{get_subfield:"689"},
+        #"keywords"                     :{get_subfield:"655"},
+        "disambiguatingDescription" :{getmarc:"856..y"}
         },
     "works":{   # mapping is 1:1 like resources
         "@type"             :"CreativeWork",
@@ -1009,11 +1047,14 @@ def traverse(dict_or_list, path):
 
 
 def get_source_include_str():
-    items=["079"]
+    items=set()
+    items.add("079")
     for k,v in traverse(entities,""):
+        #eprint(k,v)
         if isinstance(v,str) and isint(v[:3]) and v not in items:
-                items.append(v[:3])
+                items.add(v[:3])
     _source=",".join(items)
+    #eprint(_source)
     return _source
     
 def process_field(record,value,entity):
@@ -1114,33 +1155,23 @@ def worker(ldj):
     #out={}
     #for entity in entities:
     #    out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
-    if isinstance(ldj,list):    # list of records
-        for source_record in ldj:
-            record=source_record.pop("_source")
-            type=source_record.pop("_type")
-            index=source_record.pop("_index")
-            try:
-                target_record=process_line(record,host,port,index,type)
+    try:
+        if isinstance(ldj,list):    # list of records
+            for source_record in ldj:
+                target_record=process_line(source_record.pop("_source"),host,port,source_record.pop("_index"),source_record.pop("_type"))
                 if target_record:
                     for entity in target_record:
                         with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
                             print(json.dumps(target_record[entity],indent=None),file=out)
-            except Exception as e:
-                with open("errors.txt",'a') as f:
-                    traceback.print_exc(file=f)
-    elif isinstance(ldj,dict): # single record
-        record=ldj.pop("_source")
-        type=ldj.pop("_type")
-        index=ldj.pop("_index")
-        try:
-            target_record=process_line(record,host,port,index,type)
+        elif isinstance(ldj,dict): # single record
+            target_record=process_line(ldj.pop("_source"),host,port,ldj.pop("_index"),ldj.pop("_type"))
             if target_record:
                 for entity in target_record:
                     with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
                         print(json.dumps(target_record[entity],indent=None),file=out)
-        except Exception as e:
-            with open("errors.txt",'a') as f:
-                traceback.print_exc(file=f)
+    except Exception as e:
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
         
         
 if __name__ == "__main__":

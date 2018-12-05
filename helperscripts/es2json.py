@@ -222,22 +222,32 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
                                 yield doc
                         ids.clear()
                     except exceptions.NotFoundError:
-                        continue   
+                        continue
+        if len(ids)>0:
+            try:
+                for doc in es.mget(index=index,doc_type=type,body={'ids':list(ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                    if headless:
+                        yield doc.get("_source")
+                    else:
+                        yield doc
+                ids.clear()
+            except exceptions.NotFoundError:
+                pass
     
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
     if not lst:
         return elm
     else:
-        if isinstance(elm,str):
-            if elm not in lst:
-                if isinstance(lst,str):
+        if isinstance(elm,(str,dict)):
+            if isinstance(lst,list) and elm in lst:
+                return lst
+            else:
+                if isinstance(lst,(dict,str)):
                     return [lst,elm]
                 elif isinstance(lst,list):
                     lst.append(elm)
                     return lst
-            else:
-                return lst
         elif isinstance(elm,list):
             if isinstance(lst,str):
                 lst=[lst]
