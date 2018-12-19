@@ -28,7 +28,7 @@ class EFTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/opendata/20180608-EFDump-de-DE.jsonld.gz",
+        "url":"https://data.dnb.de/opendata/EntityFacts-de-DE.jsonld.gz",
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
