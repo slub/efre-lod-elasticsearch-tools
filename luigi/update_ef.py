@@ -105,7 +105,7 @@ class EFFillEsIndex(EFTask):
         return EFFixIDs()
 
     def run(self):
-        cmd="esbulk -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
+        cmd="esbulk -purge -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
         out = shellout(cmd)
         pass
 
