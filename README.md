@@ -217,7 +217,7 @@ This small pythonscripts converts the D-NB or SWB IDs in your elasticSearch bibl
 ## Usage
 
 ```
-./gnd2swb.py
+./sameAs2id.py
 	-h, --help            show this help message and exit
 	-host HOST            hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.
 	-port PORT            Port of the ElasticSearch-node to use, default is 9200.
