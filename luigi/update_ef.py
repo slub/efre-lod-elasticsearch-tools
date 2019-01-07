@@ -28,7 +28,7 @@ class EFTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/opendata/20180608-EFDump-de-DE.jsonld.gz",
+        "url":"https://data.dnb.de/opendata/EntityFacts-de-DE.jsonld.gz",
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
@@ -105,7 +105,7 @@ class EFFillEsIndex(EFTask):
         return EFFixIDs()
 
     def run(self):
-        cmd="esbulk -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
+        cmd="esbulk -purge -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
         out = shellout(cmd)
         pass
 
