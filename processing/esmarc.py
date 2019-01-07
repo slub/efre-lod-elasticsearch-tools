@@ -20,6 +20,7 @@ from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingl
 
 es=None
 generate=False
+lookup_es=None
 
 def uniq(lst):
     last = object()
@@ -242,7 +243,7 @@ def get_or_generate_id(record,entity):
             ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
             if ppn:
                 try:
-                    search=es.search(index=entity,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":ppn}}},_source=False)
+                    search=lookup_es.search(index=entity,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":ppn}}},_source=False)
                     if search.get("hits").get("total")>0:
                         newlist = sorted(search.get("hits").get("hits"), key=lambda k: k['_score'],reverse=True) 
                         identifier=newlist[0].get("_id")
@@ -333,11 +334,15 @@ def handle_about(jline,key,entity):
                     ret.append(handle_single_rvk(elem))
             elif isinstance(data,dict):
                 ret.append(handle_single_rvk(data))
-        elif k=="082":
+        elif k=="082" or k=="083":
             data=getmarc(jline,k+"..a",None)
             if isinstance(data,list):
                 for elem in data:
-                    ret.append(handle_single_ddc(elem))
+                    if isinstance(elem,str):
+                        ret.append(handle_single_ddc(elem))
+                    elif isinstance(elem,list):
+                        for final_ddc in elem:
+                            ret.append(handle_single_ddc(final_ddc))
             elif isinstance(data,dict):
                 ret.append(handle_single_ddc(data))
             elif isinstance(data,str):
@@ -346,11 +351,17 @@ def handle_about(jline,key,entity):
             data=get_subfield(jline,k,entity)
             if isinstance(data,list):
                 for elem in data:
-                    ret.append(elem)
+                    if elem.get("identifier"):
+                        elem["value"]=elem.pop("identifier")
+                    ret.append({"identifier":elem})
             elif isinstance(data,dict):
-                ret.append(data)
-                
-    return ret
+                if data.get("identifier"):
+                    data["value"]=data.pop("identifier")
+                ret.append({"identifier":data})
+    if len(ret)>0:
+        return ret
+    else:
+        return None
             
 def handle_single_ddc(data):
     ddc={"identifier":{  "@type"     :"PropertyValue",
@@ -528,6 +539,8 @@ def get_subfield(jline,key,entity):
                                     node["identifier"]=litter(node["identifier"],elem)
                 if sset.get("a"):
                     node["name"]=sset.get("a")
+                if sset.get("n"):
+                    node["position"]=sset["n"]
                 for typ in ["D","d"]:
                     if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
                         node["@type"]="http://schema.org/"
@@ -742,7 +755,8 @@ def check(ldj,entity):
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
             ldj["sameAs"]=uri2url(ldj.get("_isil"),ldj.get("identifier"))
-    ldj["identifier"]=ldj.get("@id").split("/")[4]
+    if isinstance(ldj.get("@id"),str):
+        ldj["identifier"]=ldj.get("@id").split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
@@ -875,7 +889,9 @@ entities = {
         "_isil"                     :{getisil:["003","852..a","924..b"]},
         "dateModified"              :{getdateModified:"005"},
         "sameAs"                    :{getmarc:["024..a","670..u"]},
-        "name"                      :{getmarc:["130..a","130..p","245..a","245..b"]},
+        "name"                      :{getmarc:["245..a","245..b"]},
+        "nameShort"                 :{getmarc:"245..a"},
+        "nameSub"                   :{getmarc:"245..b"},
         "alternativeHeadline"       :{getmarc:["245..c"]},
         "alternateName"             :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"                    :{get_subfields:["100","110"]},
@@ -885,7 +901,7 @@ entities = {
         "datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
         "Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
         "issn"                      :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"                      :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
+        "isbn"                      :{getmarc:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "genre"                     :{getmarc:"655..a"},
         "hasPart"                   :{getmarc:"773..g"},
         "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]},
@@ -897,11 +913,10 @@ entities = {
         "volumeNumer"               :{getmarc:"773..v"},
         "locationCreated"           :{get_subfield_if_4:"551^4:orth"},
         "relatedTo"                 :{relatedTo:"500..0"},
-        "about"                     :{handle_about:["936","084","082","655"]},
+        "about"                     :{handle_about:["936","084","083","082","655"]},
         "description"               :{getmarc:"520..a"},
         "mentions"                  :{get_subfield:"689"},
-        #"keywords"                     :{get_subfield:"655"},
-        "disambiguatingDescription" :{getmarc:"856..y"}
+        "relatedEvent"              :{get_subfield:"711"}
         },
     "works":{   # mapping is 1:1 like resources
         "@type"             :"CreativeWork",
@@ -911,7 +926,7 @@ entities = {
         "_isil"         :{getisil:"003"},
         "dateModified"   :{getdateModified:"005"},
         "sameAs"        :{getmarc:["024..a","670..u"]},
-        "name"              :{getmarc:["130..a","130..p","245..a","245..b"]},
+        "name"              :{getmarc:["130..a","130..p"]},
         "alternativeHeadline"      :{getmarc:["245..c"]},
         "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "author"            :{get_subfield:"100"},
@@ -921,7 +936,7 @@ entities = {
         "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
         "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
         "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"              :{getmarc:["022..a","022..z","776..z","780..z","785..z"]},
+        "isbn"              :{getmarc:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "genre"             :{getmarc:"655..a"},
         "hasPart"           :{getmarc:"773..g"},
         "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
@@ -954,6 +969,7 @@ entities = {
         "birthDate"     :{birthDate:"548"},
         "deathDate"     :{deathDate:"548"},
         "workLocation"  :{get_subfield_if_4:"551^4:ortw"},
+        "about"                     :{handle_about:["936","084","083","082","655"]},
     },
     "orga": {
         "@type"             :"Organization",
@@ -972,6 +988,7 @@ entities = {
         "location"          :{get_subfield_if_4:"551^4:orta"},
         "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
         "areaServed"        :{get_subfield_if_4:"551^4:geow"},
+        "about"                     :{handle_about:["936","084","083","082","655"]},
         },
     "geo": {
         "@type"             :"Place",
@@ -986,7 +1003,8 @@ entities = {
         "alternateName"     :{getmarc:"451..a"},
         "description"       :{get_subfield:"551"},
         "geo"               :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
-        "adressRegion"      :{getmarc:"043..c"}
+        "adressRegion"      :{getmarc:"043..c"},
+        "about"             :{handle_about:["936","084","083","082","655"]},
         },
     "tags":{                   #generisches Mapping für Schlagwörter
         "@type"             :"Thing",
@@ -1006,6 +1024,7 @@ entities = {
         "contentLocation"   :{get_subfield_if_4:"551^4:punk"},
         "participant"       :{get_subfield_if_4:"551^4:bete"},
         "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
+        "about"             :{handle_about:["936","084","083","082","655"]},
         },
     
     "events": {
@@ -1022,7 +1041,8 @@ entities = {
         "location"      :{get_subfield_if_4:"551^4:ortv"},
         "startDate"     :{birthDate:"548"},
         "endDate"       :{deathDate:"548"},
-        "adressRegion"      :{getmarc:"043..c"}
+        "adressRegion"  :{getmarc:"043..c"},
+        "about"         :{handle_about:["936","084","083","082","655"]},
     },
 }
 
@@ -1078,41 +1098,26 @@ def process_line(jline,host,port,index,type):
     entity=getentity(jline)
     if entity:
         mapline={}
-        mapline["@type"]=[]
-        mapline["@type"].append(URIRef(u'http://schema.org/'+entity))
+        mapline["@type"]=[URIRef(u'http://schema.org/'+entity)]
         mapline["@context"]=[URIRef(u'http://schema.org')]
         for key,val in entities[entity].items():
             value=process_field(jline,val,entity)
             if value:
-                if "related" in key:
-                    if isinstance(value,dict) and "_key" in value:
-                        dictkey=value.pop("_key")
-                        mapline[dictkey]=value
-                    elif isinstance(value,list):
-                        for elem in value:
-                            if isinstance(elem,dict) and "_key" in elem:
-                                relation=elem.pop("_key")
-                                dictkey=relation
-                                if dictkey not in mapline:
-                                    mapline[dictkey]=[elem]
-                                elif isinstance(mapline[dictkey],list):
-                                    mapline[dictkey].append(elem)
-                                elif isinstance(mapline[dictkey],dict):
-                                    old=mapline.pop(dictkey)
-                                    mapline[dictkey]=[elem]
-                                    mapline[dictkey]=litter(mapline[dictkey],elem)
-                            elif isinstance(elem,dict):
-                                if key not in mapline:
-                                    mapline[key]=[elem]
-                                else:
-                                    mapline[key].append(elem)
+                if "related" in key and  isinstance(value,dict) and "_key" in value:
+                    dictkey=value.pop("_key")
+                    mapline[dictkey]=litter(mapline[dictkey],value)
+                elif "related" in key and isinstance(value,list):
+                    for elem in value:
+                        if "_key" in elem:
+                            relation=elem.pop("_key")
+                            dictkey=relation
+                            mapline[dictkey]=litter(mapline[dictkey],elem)
                 else:
                     mapline[key]=value
-        if mapline:
-            mapline=check(mapline,entity)
-            if host and port and index and type:
-                mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
-            return {entity:mapline}
+        mapline=check(mapline,entity)
+        if host and port and index and type:
+            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
+        return {entity:mapline}
     
 def output(entity,mapline,outstream):
     if outstream:
@@ -1191,6 +1196,7 @@ if __name__ == "__main__":
     parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
     parser.add_argument('-generate_ids',action="store_true",help="switch on if you wan't to generate IDs instead of looking them up. usefull for first-time ingest or debug purposes")
+    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -1214,6 +1220,20 @@ if __name__ == "__main__":
         tabbing=None
     if args.generate_ids:
         generate=True
+    if not args.lookup_host and not args.generate_ids and args.server:
+        lookup_host=args.host
+        lookup_port=args.port
+    if args.lookup_host and not args.generate_ids:
+        lookup_slashsplit=args.lookup_host.split("/")
+        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
+        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
+            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
+    else:
+        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
+        args.generate_ids=False
+    if not args.generate_ids:
+        eprint(lookup_host,lookup_port)
+        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
     if args.help:
         parser.print_help(sys.stderr)
         exit()        
