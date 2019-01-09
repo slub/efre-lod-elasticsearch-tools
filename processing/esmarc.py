@@ -1105,13 +1105,13 @@ def process_line(jline,host,port,index,type):
             if value:
                 if "related" in key and  isinstance(value,dict) and "_key" in value:
                     dictkey=value.pop("_key")
-                    mapline[dictkey]=litter(mapline[dictkey],value)
+                    mapline[dictkey]=litter(mapline.get(dictkey),value)
                 elif "related" in key and isinstance(value,list):
                     for elem in value:
                         if "_key" in elem:
                             relation=elem.pop("_key")
                             dictkey=relation
-                            mapline[dictkey]=litter(mapline[dictkey],elem)
+                            mapline[dictkey]=litter(mapline.get(dictkey),elem)
                 else:
                     mapline[key]=value
         mapline=check(mapline,entity)
@@ -1198,6 +1198,9 @@ if __name__ == "__main__":
     parser.add_argument('-generate_ids',action="store_true",help="switch on if you wan't to generate IDs instead of looking them up. usefull for first-time ingest or debug purposes")
     parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
     args=parser.parse_args()
+    if args.help:
+        parser.print_help(sys.stderr)
+        exit()        
     if args.server:
         slashsplit=args.server.split("/")
         args.host=slashsplit[2].rsplit(":")[0]
@@ -1220,10 +1223,10 @@ if __name__ == "__main__":
         tabbing=None
     if args.generate_ids:
         generate=True
-    if not args.lookup_host and not args.generate_ids and args.server:
+    elif not args.lookup_host and not args.generate_ids and args.server:
         lookup_host=args.host
         lookup_port=args.port
-    if args.lookup_host and not args.generate_ids:
+    elif args.lookup_host and not args.generate_ids:
         lookup_slashsplit=args.lookup_host.split("/")
         lookup_host=lookup_slashsplit[2].rsplit(":")[0]
         if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
@@ -1232,12 +1235,8 @@ if __name__ == "__main__":
         eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
         args.generate_ids=False
     if not args.generate_ids:
-        eprint(lookup_host,lookup_port)
         lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
-    if args.help:
-        parser.print_help(sys.stderr)
-        exit()        
-    elif args.host and args.index and args.type and args.id:
+    if args.host and args.index and args.type and args.id:
         json_record=None
         source=get_source_include_str()
         json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
