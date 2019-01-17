@@ -272,6 +272,26 @@ def getisil(record,regex,entity):
             if item in isil2sameAs:
                 return item
 
+def getisbn(record,regex,entity):
+    isbns=getmarc(record,regex,entity)
+    if isinstance(isbns,str):
+        isbns=[isbns]
+    if isinstance(isbns,list):
+        for i,isbn in enumerate(isbns):
+            if "-" in isbn:
+                isbns[i]=isbn.replace("-","")
+            if " " in isbn:
+                for part in isbn.rsplit(" "):
+                    if isint(part):
+                        isbns[i]=part
+    
+    if isbns:
+        retarray=[]
+        for isbn in isbns:
+            if len(isbn)==10 or len(isbn)==13:
+                retarray.append(isbn)
+        return retarray
+
 def getmarc(record,regex,entity):
     if "+" in regex:
         marcfield=regex[:3]
@@ -901,7 +921,7 @@ entities = {
         "datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
         "Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
         "issn"                      :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"                      :{getmarc:["020..a","022..a","022..z","776..z","780..z","785..z"]},
+        "isbn"                      :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "genre"                     :{getmarc:"655..a"},
         "hasPart"                   :{getmarc:"773..g"},
         "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]},
