@@ -21,6 +21,7 @@ from es2json import simplebar
 es=None
 
 map_id={"additionalType":"",
+        "about":["tags"],
         "areaServed":["geo"],
         "fromLocation":["geo"],
         "location":["geo"],
@@ -29,8 +30,8 @@ map_id={"additionalType":"",
         "participant":["persons"],
         "relatedTo":["persons","orga","tags"],
         "about":["tags","persons","orga"],
-        "author":["persons"],
-        "contributor":["persons"],
+        "author":["persons","orga"],
+        "contributor":["persons","orga"],
         "mentions":["tags","orga","persons","geo"],
         "colleague":["persons"],
         "knows":["persons"],
