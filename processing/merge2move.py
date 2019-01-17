@@ -2,6 +2,7 @@
 import argparse
 from es2json import esgenerator
 from es2json import esfatgenerator
+from es2json import esidfilegenerator
 from es2json import ArrayOrSingleValue
 from es2json import eprint
 from es2json import litter
@@ -13,51 +14,92 @@ import sys
 
 es=None
 
+
 mapping={"author":{         "fields":["relatedTo","hasOccupation","about","workLocation"],
-                            "index":"persons"},
-         "contributor":{    "fields":["relatedTo","hasOccupation","about","workLocation"],
-                            "index":"persons"},
+                            "index":["persons"]},
+         "contributor":{    "fields":["relatedTo","hasOccupation","about","workLocation","geo","adressRegion"],
+                            "index":["persons","orga","fidmove-orga"]},
          "workLocation":{   "fields":["geo","adressRegion"],
-                            "index":"geo"},
+                            "index":["geo"]},
          "mentions":{       "fields":["geo","adressRegion"],
-                            "index":"geo"}
+                            "index":["geo"]},
+         "relatedEvent":{   "fields":["adressRegion","location","geo"],
+                            "index":["fidmove-events"]}
          }
 
+
+geo={"location":{       "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]}
+         }
+
+
+def isAlive(node):
+    if "deathDate" or "deathPlace" in node:
+        return False
+    else:
+        return True
+
 def enrich_record(node,entity,host,port):
-    change=False
-    if entity:
-        if node.get("@id"):
-            r=get("http://"+host+":"+port+"/"+mapping[entity]["index"]+"/schemaorg/"+node.get("@id").split("/")[5])
-            if r.ok:
-                for key in mapping[entity]["fields"]:
-                    if key in r.json().get("_source") and key not in node:
-                        node[key]=r.json().get("_source").get(key)
-        elif node.get("sameAs") and isinstance(node.get("sameAs"),str):
-            search=es.search(index=mapping[entity]["index"],doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":node.get("sameAs")}}},_source=True)
-            if search.get("hits").get("total")>0:
-                response=search.get("hits").get("hits")[0].get("_source")
-                for key in mapping[entity]["fields"]:
-                    if response.get(key):
-                        node[key]=response[key]
-        elif node.get("sameAs") and isinstance(node.get("sameAs"),list):
-            for sameAs in node.get("sameAs"):
-                search=es.search(index=mapping[entity]["index"],doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":sameAs}}},_source=True)
-                if search.get("hits").get("total")>0:
-                    response=search.get("hits").get("hits")[0].get("_source")
-                    for key in mapping[entity]["fields"]:
-                        if response.get(key):
-                            node[key]=response[key]
-                    break
-        else:
-            pass
+    toDel=[]
     for field in mapping:
         if isinstance(node.get(field),dict):
-            node[field]=enrich_record(node.get(field),field,host,port)
+            ret=enrich_record(node.get(field),field,host,port)
+            if ret:
+                node[field]=ret
         elif isinstance(node.get(field),list):
             for n,fld in enumerate(node.get(field)):
-                node[field][n]=enrich_record(fld,field,host,port)
+                ret=enrich_record(fld,field,host,port)
+                if ret:
+                    node[field][n]=ret
+                else:
+                    del node[field][n]
         else:
             continue
+    for item in toDel:
+        node.pop(item)
+    if entity:
+        if node.get("@id"):
+            for index in mapping[entity].get("index"):
+                url="http://"+host+":"+port+"/"+index+"/schemaorg/"+node.get("@id").split("/")[5]
+                r=get(url)
+                #if entity=="relatedEvent":
+                    #print(r,url)
+                if ( r.ok and entity!="person" ) or ( r.ok and entity=="person" and isAlive(r.json().get("_source")) ):
+                    for key in mapping[entity]["fields"]:
+                        if ( key in r.json().get("_source") and not node.get(key)) or ( key in r.json().get("_source") and len(r.json().get("_source"))>len(node.get(key)) ):
+                            #if node.get(key):
+                            #    print(len(r.json().get("_source").get(key)),len(node.get(key)))
+                            node[key]=r.json().get("_source").get(key)
+                elif r.ok and not isAlive(r.json().get("_source")):
+                    return None
+        elif node.get("sameAs") and isinstance(node.get("sameAs"),str):
+            search=es.search(index=",".join(mapping[entity]["index"]),doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":node.get("sameAs")}}},_source=True)
+            if search.get("hits").get("total")>0:
+                    for response in search.get("hits").get("hits"):
+                        data=response.get("_source")
+                        if isAlive(data) or entity!="person":
+                            for key in mapping[entity]["fields"]:
+                                if data.get(key):
+                                    node[key]=data.get(key)
+                            break
+                        elif not isAlive(data) and entity=="person":
+                            break
+                
+        elif node.get("sameAs") and isinstance(node.get("sameAs"),list):
+            for sameAs in node.get("sameAs"):
+                search=es.search(index=",".join(mapping[entity]["index"]),doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":sameAs}}},_source=True)
+                if search.get("hits").get("total")>0:
+                    for response in search.get("hits").get("hits"):
+                        data=response.get("_source")
+                        if isAlive(data) or entity!="person":
+                            for key in mapping[entity]["fields"]:
+                                if data.get(key):
+                                    node[key]=data.get(key)
+                            break
+                        elif not isAlive(data) and entity=="person":
+                            break
+        else:
+            pass
     return node
 
 if __name__ == "__main__":
@@ -73,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
+    parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     args=parser.parse_args()
     
     if args.server:
@@ -101,17 +144,28 @@ if __name__ == "__main__":
     
     if args.stdin:
         for line in sys.stdin:
-            length=len(line.rstrip())
             newrecord=enrich_record(json.loads(line),None,args.host,str(args.port))
-            dumpstring=json.dumps(newrecord,indent=None)
+            if newrecord.get("author") or newrecord.get("contributor"):
+                print(json.dumps(enrich_record(newrecord,None,args.host,str(args.port)),indent=tabbing))
+    elif args.idfile:
+        for record in esidfilegenerator(host=args.host,port=9200,index=args.index,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True,idfile=args.idfile):
+            #recstrlen=len(json.dumps(record,indent=None))
+            #print(json.dumps(record,indent=tabbing),"\n")
+            length=len(json.dumps(record,indent=None))
+            newrecord=enrich_record(record,None,args.host,str(args.port))
+            dumpstring=str(json.dumps(newrecord,indent=None))
             if len(dumpstring) > length:
-                print(dumpstring)
+            #if newrecord.get("author") or newrecord.get("contributor"):
+                print(json.dumps(newrecord,indent=tabbing))
+    
     else:
-        for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True):
-            #length=len(json.dumps(record,indent=None))
-            #newrecord=enrich_record(record,None,args.host,str(args.port))
+        for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body={"query":{"range":{"datePublished":{"gte":1990,"lte":2020,"boost":2.0}}}},source=True,source_exclude=None,source_include=None,headless=True):
+            #recstrlen=len(json.dumps(record,indent=None))
+            #print(json.dumps(record,indent=tabbing),"\n")
+            length=len(json.dumps(record,indent=None))
+            newrecord=enrich_record(record,None,args.host,str(args.port))
             #dumpstring=str(json.dumps(newrecord,indent=None))
             #if len(dumpstring) > length:
-            print(json.dumps(enrich_record(record,None,args.host,str(args.port)),indent=tabbing))
-                                        
-                
+            if newrecord and ( newrecord.get("author") or newrecord.get("contributor") ):
+                print(json.dumps(newrecord,indent=tabbing))
+            
