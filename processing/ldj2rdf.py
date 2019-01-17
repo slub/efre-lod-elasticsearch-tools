@@ -6,6 +6,7 @@ import urllib
 import sys
 import os
 import requests
+import traceback
 from time import time
 from rdflib import ConjunctiveGraph,Graph, URIRef, Namespace, Literal
 from rdflib.store import Store
@@ -58,60 +59,76 @@ def init(l,c,m,i):
     lock = l
     
 def get_bulkrdf(doc):
-    global text
-    text=""
-    for n,elem in enumerate(doc):
-        if isinstance(elem,dict):
-            toRemove=[]
-            for key in elem:
-                if key.startswith("_") and key!="_source":
-                    toRemove.append(key)
-            for key in toRemove:
-                doc[n].pop(key)
-            toRemove.clear()
-            doc[n]=elem.pop("_source")
-        if "sameAs" in elem:
-            if isinstance(elem.get("sameAs"),list):
-                for m,elen in elem.get("sameAs"):
-                    if not elen.startswith("http"):
-                        del doc[n]["sameAs"][m]
-            elif isinstance(elem.get("sameAs"),str):
-                if not elem.get("sameAs").startswith("http"):
-                    doc[n].pop("sameAs")
-    for n,elem in enumerate(doc):
-        if isinstance(elem,dict):
-            toRemoveVal=["http://www.biographien.ac.at"]
-            for item in toRemoveVal:
-                if "sameAs" in elem:
-                    if isinstance(elem["sameAs"],dict):
-                        toremove=[]
-                        for k,v in elem["sameAs"].items():
-                            if item in v:
-                                toremove.append(k)
-                        for item in toremove:
-                            doc[n]["sameAs"].pop(item)
-            if (not text or elem.get("@context")==text ) and elem.get("@context"):
-                text=doc[n].pop("@context")
-    if doc:
-        g=ConjunctiveGraph()
-        if text not in con:
-            if mp:
-                lock.acquire()
-            get_context(con,text)
-            if mp:
-                lock.release()
-        if not args.debug:
-            with open(name,"a") as fd:
+    try:
+        global text
+        text=""
+        for n,elem in enumerate(doc):
+            if isinstance(elem,dict):
+                toRemove=[]
+                for key in elem:
+                    if key.startswith("_") and key!="_source":
+                        toRemove.append(key)
+                for key in toRemove:
+                    doc[n].pop(key)
+                toRemove.clear()
+                doc[n]=elem.pop("_source")
+            if "sameAs" in elem:
+                if isinstance(elem.get("sameAs"),list):
+                    for m,elen in elem.get("sameAs"):
+                        if not elen.startswith("http"):
+                            del doc[n]["sameAs"][m]
+                elif isinstance(elem.get("sameAs"),str):
+                    if not elem.get("sameAs").startswith("http"):
+                        doc[n].pop("sameAs")
+        for n,elem in enumerate(doc):
+            if isinstance(elem,dict):
+                toRemoveVal=["http://www.biographien.ac.at"]
+                for item in toRemoveVal:
+                    if "sameAs" in elem:
+                        if isinstance(elem["sameAs"],dict):
+                            toremove=[]
+                            for k,v in elem["sameAs"].items():
+                                if item in v:
+                                    toremove.append(k)
+                            for item in toremove:
+                                doc[n]["sameAs"].pop(item)
+                if (not text or elem.get("@context")==text ) and elem.get("@context"):
+                    text=doc[n].pop("@context")
+                if isinstance(elem.get("about"),list):
+                    for m,rvkl in enumerate(elem.get("about")):
+                        if isinstance(rvkl.get("identifier"),dict) and rvkl.get("identifier").get("propertyID") and rvkl.get("identifier").get("propertyID")=="RVK":
+                            doc[n]["about"][m]["@id"]=doc[n]["about"][m]["@id"].replace(" ","+")
+                    #    elif isinstance(rvkl.get("identifier"),list):
+                    #        for l,ids in enumerate(rvkl.get("identifier")):
+                    #            if ids.get("propertyID") and ids.get("propertyID")=="RVK":
+                    #                doc[n]["about"][m]
+                elif isinstance(elem.get("about"),dict):
+                    if elem.get("about").get("identifier") and elem.get("about").get("identifier").get("propertyID") and elem.get("about").get("identifier").get("propertyID")=="RVK":
+                        doc[n]["about"]["@id"]=doc[n]["about"]["@id"].replace(" ","+")
+                            
+        if doc:
+            g=ConjunctiveGraph()
+            if text not in con:
+                if mp:
+                    lock.acquire()
+                get_context(con,text)
+                if mp:
+                    lock.release()
+            if not args.debug:
+                with open(name,"a") as fd:
+                    g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+                    fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+                    fd.write("\n")
+                    fd.flush()
+            else:
                 g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-                fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-                fd.write("\n")
-                fd.flush()
-        else:
-            g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-            sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-        return
+                sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            return
+    except Exception as e:
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
     
 def get_rdf(doc):
     text=""
