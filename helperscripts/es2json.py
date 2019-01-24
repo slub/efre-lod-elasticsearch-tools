@@ -174,7 +174,7 @@ def ArrayOrSingleValue(array):
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
         
-def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None):
+def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,timeout=10):
     if not source:
         source=True
     es=Elasticsearch([{'host':host}],port=port)
@@ -187,7 +187,8 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
             body = body,
             _source=source,
             _source_exclude=source_exclude,
-            _source_include=source_include)
+            _source_include=source_include,
+            request_timeout=timeout)
     except exceptions.NotFoundError:
         sys.stderr.write("aborting.\n")
         exit(-1)
@@ -200,14 +201,14 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
         scroll_size = len(pages['hits']['hits'])
         yield pages.get('hits').get('hits')
     
-def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000):
+def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000,timeout=10):
     if os.path.isfile(idfile):
         if not source:
             source=True
         tracer = logging.getLogger('elasticsearch')
         tracer.setLevel(logging.WARNING)
         tracer.addHandler(logging.FileHandler('errors.txt'))
-        es=Elasticsearch([{'host':host}],port=port)
+        es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
         ids=set()
         with open(idfile,"r") as inp:
             for ppn in inp:
@@ -233,6 +234,53 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
                 ids.clear()
             except exceptions.NotFoundError:
                 pass
+
+def esidfileconsumegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000,timeout=10):
+    if os.path.isfile(idfile):
+        ids=list()
+        notfound_ids=set()
+        with open(idfile,"r") as inp:
+            for ppn in inp:
+                _id=ppn.rstrip()
+                ids.append(_id)
+        if not source:
+            source=True
+        tracer = logging.getLogger('elasticsearch')
+        tracer.setLevel(logging.WARNING)
+        tracer.addHandler(logging.FileHandler('errors.txt'))
+        es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
+        success=False
+        _ids=set()
+        for _id in ids:
+            _ids.add(ids.pop())
+            if len(_ids)>=chunksize:
+                try:
+                    for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                        if headless:
+                            yield doc.get("_source")
+                        else:
+                            yield doc
+                    _ids.clear()
+                except exceptions.NotFoundError:
+                    notfound_ids.add(_ids)
+        if len(_ids)>0:
+            try:
+                for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                    if headless:
+                        yield doc.get("_source")
+                    else:
+                        yield doc
+                _ids.clear()
+                ids.clear()
+            except exceptions.NotFoundError:
+                pass
+        if ids or notfound_ids:
+            ids+=notfound_ids
+            with open(idfile,"w") as outp:
+                for _id in ids:
+                    print(_id,file=outp)
+        else:
+            os.remove(idfile)
     
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
@@ -259,10 +307,10 @@ def litter(lst, elm):
         else:
             return lst
 
-def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False):
+def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False,timeout=10):
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port)
+    es=Elasticsearch([{'host':host}],port=port,timeout=timeout)
     try:
         if id:
             record=es.get(index=index,doc_type=type,id=id)
@@ -335,6 +383,7 @@ if __name__ == "__main__":
     parser.add_argument('-body',type=str,help='Searchbody')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
     parser.add_argument('-idfile',type=str,help="path to a file with newline-delimited IDs to process")
+    parser.add_argument('-idfile_consume',type=str,help="path to a file with newline-delimited IDs to process")
     parser.add_argument('-pretty',action="store_true",default=False,help="prettyprint")
     args=parser.parse_args()
     if args.server:
@@ -357,6 +406,9 @@ if __name__ == "__main__":
         tabbing=None
     if args.idfile:
         for json_record in esidfilegenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,idfile=args.idfile):
+            sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
+    elif args.idfile_consume:
+        for json_record in esidfileconsumegenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,idfile=args.idfile_consume):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     elif not args.id:
         for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include):
