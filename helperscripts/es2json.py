@@ -200,7 +200,10 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
         yield pages.get('hits').get('hits')
-    
+
+#   returns records which have a certain ID from an ID-File from an elasticsearch-index
+#   IDs in the ID-File shall be non-quoted, newline-seperated
+#
 def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000,timeout=10):
     if os.path.isfile(idfile):
         if not source:
@@ -235,6 +238,10 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
             except exceptions.NotFoundError:
                 pass
 
+#   returns records which have a certain ID from an ID-File from an elasticsearch-index
+#   IDs in the ID-File shall be non-quoted, newline-seperated
+#   "consumes" the file, which means if it runs clean, the file will be deleted. if some errors occure, only the IDs which arent downloaded get preserved   
+#
 def esidfileconsumegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000,timeout=10):
     if os.path.isfile(idfile):
         ids=list()
@@ -251,20 +258,17 @@ def esidfileconsumegenerator(host=None,port=9200,index=None,type=None,body=None,
         es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
         success=False
         _ids=set()
-        for _id in ids:
-            _ids.add(ids.pop())
-            if len(_ids)>=chunksize:
-                try:
+        try:
+            for _id in ids:
+                _ids.add(ids.pop())
+                if len(_ids)>=chunksize:
                     for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
                         if headless:
                             yield doc.get("_source")
                         else:
                             yield doc
                     _ids.clear()
-                except exceptions.NotFoundError:
-                    notfound_ids.add(_ids)
-        if len(_ids)>0:
-            try:
+            if len(_ids)>0:
                 for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
                     if headless:
                         yield doc.get("_source")
@@ -272,15 +276,15 @@ def esidfileconsumegenerator(host=None,port=9200,index=None,type=None,body=None,
                         yield doc
                 _ids.clear()
                 ids.clear()
-            except exceptions.NotFoundError:
-                pass
-        if ids or notfound_ids:
+        except exceptions.NotFoundError:
+            notfound_ids.add(_ids)
+        else:
+            os.remove(idfile)
+        finally:
             ids+=notfound_ids
             with open(idfile,"w") as outp:
                 for _id in ids:
                     print(_id,file=outp)
-        else:
-            os.remove(idfile)
     
     ### avoid dublettes and nested lists when adding elements into lists
 def litter(lst, elm):
