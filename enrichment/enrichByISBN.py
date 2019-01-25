@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 import requests
-from es2json import esgenerator,isint,litter,eprint
+from es2json import esgenerator,isint,litter,eprint,esidfilegenerator
 from rdflib import Graph
 
 def enrichrecord(record,hit):
@@ -22,15 +22,15 @@ def enrichrecord(record,hit):
 def get_gndbyISBN(record,search_host,search_port,isbn10,isbn13):
     changed = False
     if isbn13 and isbn10:
-        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"bool":{"must":[{"match":{"http://purl.org/ontology/bibo/isbn13.@value.keyword":str(isbn13)}},{"match":{"http://purl.org/ontology/bibo/isbn10.@value.keyword":str(isbn10)}}]}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False):
+        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"bool":{"must":[{"match":{"http://purl.org/ontology/bibo/isbn13.@value.keyword":str(isbn13)}},{"match":{"http://purl.org/ontology/bibo/isbn10.@value.keyword":str(isbn10)}}]}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False,timeout=60):
             record=enrichrecord(record,hit)
             changed=True
-    if isbn13:
-        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"bool":{"must":{"match":{"http://purl.org/ontology/bibo/isbn13.@value.keyword":str(isbn13)}}}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False):
+    if isbn13 and changed==False:
+        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"match":{"http://purl.org/ontology/bibo/isbn13.@value.keyword":str(isbn13)}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False,timeout=60):
             record=enrichrecord(record,hit)
             changed=True
-    if isbn10:
-        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"bool":{"must":{"match":{"http://purl.org/ontology/bibo/isbn10.@value.keyword":str(isbn10)}}}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False):
+    elif isbn10 and changed==False:
+        for hit in esgenerator(host=search_host,port=search_port,index="dnb-titel",id=args.id,type="resources",body={"query":{"match":{"http://purl.org/ontology/bibo/isbn10.@value.keyword":str(isbn10)}}},source=["http://purl.org/dc/terms/subject","http://www.w3.org/2002/07/owl#sameAs"],source_exclude=None,source_include=None,headless=False,timeout=60):
             record=enrichrecord(record,hit)
             changed=True
     if changed:
@@ -47,6 +47,7 @@ if __name__ == "__main__":
     parser.add_argument('-pipeline',action="store_true",help="output every record (even if not enriched) to put this script into a pipeline")
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
     parser.add_argument('-searchserver',type=str,help="search instance to use. default is -server e.g. http://127.0.0.1:9200")
+    parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     args=parser.parse_args()
     if args.server:
         slashsplit=args.server.split("/")
@@ -74,6 +75,7 @@ if __name__ == "__main__":
         for line in sys.stdin:
             isbn10=None
             isbn13=None
+            record=None
             rec=json.loads(line)
             if rec.get("isbn"):
                 if isinstance(rec.get("isbn"),list):
@@ -93,8 +95,38 @@ if __name__ == "__main__":
                     rec=record
             if record or args.pipeline:
                 print(json.dumps(rec,indent=None))
+    elif args.idfile:
+        for rec in esidfilegenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       idfile=args.idfile,
+                       headless=True,
+                       timeout=600
+                        ):
+            isbn10=None
+            isbn13=None
+            record=None
+            if rec and rec.get("isbn"):
+                if isinstance(rec.get("isbn"),list):
+                    for item in rec.get("isbn"):
+                        if len(item)==10:
+                            isbn10=item
+                        elif len(item)==13:
+                            isbn13=item
+                elif isinstance(rec.get("isbn"),str):
+                    if len(rec.get("isbn"))==10:
+                        isbn10=rec.get("isbn")
+                    elif len(rec.get("isbn"))==13:
+                        isbn13=rec.get("isbn")
+            if isbn10 or isbn13:
+                record=get_gndbyISBN(rec,search_host,search_port,isbn10,isbn13)
+                if record:
+                    rec=record
+            if record or args.pipeline:
+                print(json.dumps(rec,indent=None))
     else:                                                                                                   
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"exists": {"field":"isbn"}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query": {"bool": {"filter": {"exists": {"field": "relatedEvent"}},"must":{"exists":{"field": "isbn"}}}}}):
             isbn10=None
             isbn13=None
             if rec.get("isbn"):
