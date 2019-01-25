@@ -79,7 +79,6 @@ if __name__ == "__main__":
                 print(json.dumps(rec,indent=None))
     else:
         for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
-            i=i+1
             gnd=None
             if rec.get("sameAs"):
                 if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
