@@ -54,11 +54,11 @@ class LODDownload(LODTask):
             output = shellout(cmdstring)
         return 0
 
-    def output(self):
-        ret=[]
+    def complete(self):
         for n,date in enumerate(self.config.get("dates")):
-            ret.append(luigi.LocalTarget("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)))
-        return ret
+            if not os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)):
+                return False
+        return True
 
 class LODExtract(LODTask):
     
@@ -111,7 +111,7 @@ class LODFillRawdataIndex(LODTask):
         es_recordcount=0
         file_recordcount=0
         es_ids=set()
-        for record in esidfilegenerator(host="194.95.145.44",index="swb-aut",type="mrc",idfile="{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),source="False"):
+        for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="swb-aut",type="mrc",idfile="{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),source="False"):
             es_ids.add(record.get("_id"))
         es_recordcount=len(es_ids)
         
@@ -128,6 +128,7 @@ class LODFillRawdataIndex(LODTask):
         
         if es_recordcount==file_recordcount and es_recordcount>0:
             return True
+        return False
 
 class LODProcessFromRdi(LODTask):
     def requires(self):

@@ -57,15 +57,13 @@ class LODTITDownload(LODTITTask):
         return luigi.LocalTarget(datetime.today().strftime("%Y%m%d"))
     
     def complete(self):
-        return True
         if os.path.exists("{date}".format(date=self.date)):
             try:
                 os.listdir("{date}".format(date=self.date))
                 return True
             except:
                 return False
-        else:
-            return False
+        return False
         
 
 class LODTITTransform2ldj(LODTITTask):
@@ -131,8 +129,14 @@ class LODTITFillRawdataIndex(LODTITTask):
             if es_recordcount==file_recordcount and es_recordcount>0:
                 return True
         except FileNotFoundError:
-            return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
-
+            if os.path.exists("{date}".format(date=self.date)):
+                try:
+                    os.listdir("{date}".format(date=self.date))
+                    return False
+                except:
+                    return True
+            return False
+        return False
 class LODTITProcessFromRdi(LODTITTask):
     
     def requires(self):
@@ -166,12 +170,12 @@ class LODTITUpdate(LODTITTask):
             for f in os.listdir(path+"/"+index):
                 cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -pipeline -stdin -searchserver {host} <  {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
                 output=shellout(cmd)
-        for f in os.listdir(path+"/resources"):
-            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
-            cmd+="~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ".format(**self.config,fd=path+"/resources/"+f)
-            cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -searchserver {host} -stdin  | ".format(**self.config,fd=path+"/resources/"+f)
-            cmd+="esbulk -verbose -server {rawdata_host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove")
-            output=shellout(cmd)
+        #for f in os.listdir(path+"/resources"):
+        #    cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
+        #    cmd+="~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ".format(**self.config,fd=path+"/resources/"+f)
+        #    cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -searchserver {host} -stdin  | ".format(**self.config,fd=path+"/resources/"+f)
+        #    cmd+="esbulk -verbose -server {rawdata_host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove")
+        #    output=shellout(cmd)
         put_dict("{host}/date/actual/2".format(**self.config),{"date":str(self.now)})
             
     def complete(self):
