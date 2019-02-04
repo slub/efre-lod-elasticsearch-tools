@@ -161,8 +161,8 @@ class LODUpdate(LODTask):
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):                                        ### doing several enrichment things before indexing the data
                 cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && " #with -pipeline, all the data get's thru, not only enriched docs
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                #cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host}  | ".format(**self.config)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host}  | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
                 if index=="geo":

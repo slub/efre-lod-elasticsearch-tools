@@ -143,7 +143,7 @@ class LODTITProcessFromRdi(LODTITTask):
         return LODTITFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {rawdata_host}/finc-main/mrc -idfile {date}-ppns.txt -prefix {date}-data -lookup_host {host}".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {rawdata_host}/finc-main/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
@@ -168,7 +168,7 @@ class LODTITUpdate(LODTITTask):
         path="{date}-data".format(date=self.date)
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -pipeline -stdin -searchserver {host} <  {fd} | esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
+                cmd="esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier {fd}".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
                 output=shellout(cmd)
         #for f in os.listdir(path+"/resources"):
         #    cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
