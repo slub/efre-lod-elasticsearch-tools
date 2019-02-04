@@ -20,7 +20,9 @@ from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingl
 
 es=None
 generate=False
-lookup_es=None
+base_id=""
+base_id_delimiter="="
+#lookup_es=None
 
 def uniq(lst):
     last = object()
@@ -223,6 +225,8 @@ def uri2url(isil,num):
         return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
 
 def id2uri(string,entity):
+    if string.startswith(base_id):
+        string=string.split(base_id_delimiter)[-1]
     return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def getmarcid(record,regex,entity): # in this function we try to get PPNs by fields defined in regex. regex should always be a list and the most "important" field on the left. if we found a ppn in a field, we'll return it
@@ -230,6 +234,11 @@ def getmarcid(record,regex,entity): # in this function we try to get PPNs by fie
         ret=getmarc(record,reg,entity)
         if ret:
             return ret
+
+def getid(record,regex,entity):
+    _id=getmarc(record,regex,entity)
+    if _id:
+        return id2uri(_id,entity)
 
 def get_or_generate_id(record,entity):
     global es
@@ -432,15 +441,19 @@ def relatedTo(jline,key,entity):
                     node["_key"]=marc2relation[sset.get("9")]
                     if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith("http"):
-                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            node["@id"]=id2uri(sset.get("0"),"persons")
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
                         elif isinstance(uri,str):
-                            node["identifier"]=gnd2uri(sset.get("0"))
+                            node["identifier"]=sset.get("0")
                         elif isinstance(uri,list):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith("http"):
+                                if elem.startswith(base_id):
+                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
+                                elif elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -464,15 +477,19 @@ def relatedTo(jline,key,entity):
                         #eprint(elem,node)
                     if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith("http"):
-                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            node["@id"]=id2uri(sset.get("0"),"persons")
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
                         elif isinstance(uri,str):
-                            node["identifier"]=gnd2uri(sset.get("0"))
+                            node["identifier"]=uri
                         elif isinstance(uri,list):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith("http"):
+                                if elem.startswith(base_id):
+                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
+                                elif elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -501,19 +518,28 @@ def get_subfield_if_4(jline,key,entity):
                     node={}
                     if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith("http"):
-                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            if "ort" in key:
+                                node["@id"]=id2uri(sset.get("0"),"geo")
+                            elif "adue" in key:
+                                node["@id"]=id2uri(sset.get("0"),"orga")
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
                         elif isinstance(uri,str):
-                            node["identifier"]=gnd2uri(sset.get("0"))
+                            node["identifier"]=uri
                         elif isinstance(uri,list):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if isinstance(elem,str):
-                                    if elem.startswith("http"):
-                                        node["sameAs"]=litter(node["sameAs"],elem)
-                                    else:
-                                        node["identifier"]=litter(node["identifier"],elem)
+                                if elem.startswith(base_id):
+                                    if "ort" in key:
+                                        node["@id"]=id2uri(elem.split("=")[-1],"geo")
+                                    elif "adue" in key:
+                                        node["@id"]=id2uri(elem.split("=")[-1],"orga")
+                                elif elem.startswith("http") and not elem.startswith(base_id):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
@@ -531,7 +557,19 @@ def get_subfields(jline,key,entity):
     else:
         return
 
+
+#whenever you call get_subfield add the MARC21 field to the if/elif/else switch/case thingy with the correct MARC21 field->entity mapping
 def get_subfield(jline,key,entity):
+    if key=="711":
+        entityType="events"
+    elif key=="100" or key=="700":
+        entityType="persons"
+    elif key=="110" or key=="710":
+        entityType="orga"
+    elif key=="689" or key=="550" or key=="655":
+        entityType="tags"
+    elif key=="551":
+        entityType="geo"
     #e.g. split "551^4:orta" to 551 and orta
     data=[]
     if key in jline:
@@ -545,20 +583,28 @@ def get_subfield(jline,key,entity):
                 node={}
                 if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith("http"):
-                            node["sameAs"]=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            node["@id"]=id2uri(uri,entityType)
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
                         elif isinstance(uri,str):
-                            node["identifier"]=gnd2uri(sset.get("0"))
+                            node["identifier"]=uri
                         elif isinstance(uri,list):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem and elem.startswith("http"):
+                                if isinstance(elem,str) and elem.startswith(base_id):
+                                    node["@id"]=id2uri(elem,entityType)
+                                elif isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
-                                else:
+                                elif elem:
                                     node["identifier"]=litter(node["identifier"],elem)
-                if sset.get("a"):
+                if isinstance(sset.get("a"),str) and len(sset.get("a"))>1:
                     node["name"]=sset.get("a")
+                elif isinstance(sset.get("a"),list):
+                    for elem in sset.get("a"):
+                        if len(elem)>1:
+                            node["name"]=litter(node.get("name"),elem)
                 if sset.get("n"):
                     node["position"]=sset["n"]
                 for typ in ["D","d"]:
@@ -696,7 +742,7 @@ def getav(record,key,entity):
     retOffers=list()
     offers=getmarc(record,key[0],entity)
     ppn=getmarc(record,key[1],entity)
-    if isinstance(offers,str) and offers in isil2sameAs:
+    if ppn and isinstance(offers,str) and offers in isil2sameAs:
         retOffers.append({
            "@type": "Offer",
            "offeredBy": {
@@ -707,7 +753,7 @@ def getav(record,key,entity):
             },
            "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offers+":ppn:"+ppn
        })
-    elif isinstance(offers,list):
+    elif ppn and isinstance(offers,list):
         for offer in offers:
             if offer in isil2sameAs:
                 retOffers.append({
@@ -903,7 +949,7 @@ entities = {
    "resources":{   # mapping is 1:1 like works
         "@type"                     :"CreativeWork",
         "@context"                  :"http://schema.org",
-        "@id"                       :get_or_generate_id,
+        "@id"                       :{getid:"001"},
         "identifier"                :{getmarcid:["980..a","001"]},
         "offers"                    :{getav:["852..a","980..a"]},
         "_isil"                     :{getisil:["003","852..a","924..b"]},
@@ -941,7 +987,7 @@ entities = {
     "works":{   # mapping is 1:1 like resources
         "@type"             :"CreativeWork",
         "@context"      :"http://schema.org",
-        "@id"           :get_or_generate_id,
+        "@id"           :{getid:"001"},
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getisil:"003"},
         "dateModified"   :{getdateModified:"005"},
@@ -972,7 +1018,7 @@ entities = {
     "persons": {
         "@type"         :"Person",
         "@context"      :"http://schema.org",
-        "@id"           :get_or_generate_id,
+        "@id"           :{getid:"001"},
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getisil:"003"},
         "dateModified"   :{getdateModified:"005"},
@@ -994,8 +1040,7 @@ entities = {
     "orga": {
         "@type"             :"Organization",
         "@context"          :"http://schema.org",
-        "@id"               :get_or_generate_id,
-        "identifier"        :{getmarc:"001"},
+        "@id"               :{getid:"001"},
         "_isil"             :{getisil:"003"},
         "dateModified"       :{getdateModified:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
@@ -1013,7 +1058,7 @@ entities = {
     "geo": {
         "@type"             :"Place",
         "@context"          :"http://schema.org",
-        "@id"               :get_or_generate_id,
+        "@id"               :{getid:"001"},
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getisil:"003"},
         "dateModified"       :{getdateModified:"005"},
@@ -1029,7 +1074,7 @@ entities = {
     "tags":{                   #generisches Mapping für Schlagwörter
         "@type"             :"Thing",
         "@context"          :"http://schema.org",
-        "@id"               :get_or_generate_id,
+        "@id"               :{getid:"001"},
         "identifier"        :{getmarc:"001"},
         "_isil"             :{getisil:"003"},
         "dateModified"       :{getdateModified:"005"},
@@ -1050,7 +1095,7 @@ entities = {
     "events": {
         "@type"         :"Event",
         "@context"      :"http://schema.org",
-        "@id"           :get_or_generate_id,
+        "@id"           :{getid:"001"},
         "identifier"    :{getmarc:"001"},
         "_isil"         :{getisil:"003"},
         "dateModified"  :{getdateModified:"005"},
@@ -1215,8 +1260,8 @@ if __name__ == "__main__":
     parser.add_argument('-w',type=int,default=8,help="how many processes to use")
     parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
-    parser.add_argument('-generate_ids',action="store_true",help="switch on if you wan't to generate IDs instead of looking them up. usefull for first-time ingest or debug purposes")
-    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
+    parser.add_argument('-base_id',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for @id. e.g. http://d-nb.info/gnd/xxx")
+#    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
     args=parser.parse_args()
     if args.help:
         parser.print_help(sys.stderr)
@@ -1237,25 +1282,22 @@ if __name__ == "__main__":
                 args.id=slashsplit[5]
     if args.server or ( args.host and args.port ):
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
+    if args.base_id:
+        base_id=args.base_id
     if args.pretty:
         tabbing=4
     else:
         tabbing=None
-    if args.generate_ids:
-        generate=True
-    elif not args.lookup_host and not args.generate_ids and args.server:
-        lookup_host=args.host
-        lookup_port=args.port
-    elif args.lookup_host and not args.generate_ids:
-        lookup_slashsplit=args.lookup_host.split("/")
-        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
-        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
-            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
-    else:
-        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
-        args.generate_ids=False
-    if not args.generate_ids:
-        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
+#    elif args.lookup_host:
+#        lookup_slashsplit=args.lookup_host.split("/")
+#        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
+#        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
+#            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
+#    else:
+#        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
+#        args.generate_ids=False
+#    if not args.generate_ids:
+#        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
     if args.host and args.index and args.type and args.id:
         json_record=None
         source=get_source_include_str()
