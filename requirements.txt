@@ -13,4 +13,5 @@ gluish>=0.2.13
 ijson>=2.3
 PyLD>=1.0.3                 
 cffi>=1.5.2                 
+flask>=1.0.2
 
