@@ -14,23 +14,23 @@ import sys
 
 es=None
 
+mapping=None
 
-mapping={"author":{         "fields":["relatedTo","hasOccupation","about","workLocation"],
-                            "index":["persons"]},
-         "contributor":{    "fields":["relatedTo","hasOccupation","about","workLocation","geo","adressRegion"],
-                            "index":["persons","orga","fidmove-orga"]},
-         "workLocation":{   "fields":["geo","adressRegion"],
+mapping={"author":{         "fields":["hasOccupation","about","workLocation"],
+                            "index":["persons","fidmove-enriched-aut"]},
+         "contributor":{    "fields":["hasOccupation","about","workLocation","geo","adressRegion"],
+                            "index":["persons","orga","fidmove-enriched-aut"]},
+         "workLocation":{   "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "location":{   "fields":["geo","adressRegion","sameAs"],
                             "index":["geo"]},
          "mentions":{       "fields":["geo","adressRegion"],
                             "index":["geo"]},
          "relatedEvent":{   "fields":["adressRegion","location","geo"],
-                            "index":["fidmove-events"]}
+                            "index":["fidmove-enriched-aut"]}
          }
 
 
-geo={"location":{       "fields":["geo","adressRegion","sameAs"],
-                            "index":["geo"]}
-         }
 
 
 def isAlive(node):
@@ -60,7 +60,8 @@ def enrich_record(node,entity,host,port):
     if entity:
         if node.get("@id"):
             for index in mapping[entity].get("index"):
-                url="http://"+host+":"+port+"/"+index+"/schemaorg/"+node.get("@id").split("/")[5]
+                #print(node.get("@id"))
+                url="http://"+host+":"+port+"/"+index+"/schemaorg/"+node.get("@id").split("/")[-1]
                 r=get(url)
                 #if entity=="relatedEvent":
                     #print(r,url)
@@ -159,13 +160,15 @@ if __name__ == "__main__":
                 print(json.dumps(newrecord,indent=tabbing))
     
     else:
-        for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body={"query":{"range":{"datePublished":{"gte":1990,"lte":2020,"boost":2.0}}}},source=True,source_exclude=None,source_include=None,headless=True):
+        for record in esgenerator(host=args.host,port=9200,index=args.index,id=args.id,type=args.type,body={"query":{"bool":{"must":{"range":{"datePublished":{"gt":1990,"lt":2020,"boost":2}}},"should":[{"exists":{"field":"author"}},{"exists":{"field":"contributor"}}]}}}
+                                                                                                    ,source=True,source_exclude=None,source_include=None,headless=True):
             #recstrlen=len(json.dumps(record,indent=None))
             #print(json.dumps(record,indent=tabbing),"\n")
-            length=len(json.dumps(record,indent=None))
+            #length=len(json.dumps(record,indent=None))
             newrecord=enrich_record(record,None,args.host,str(args.port))
-            #dumpstring=str(json.dumps(newrecord,indent=None))
+            #print(length,len(json.dumps(newrecord,indent=None)))
+            dumpstring=str(json.dumps(newrecord,indent=None))
             #if len(dumpstring) > length:
             if newrecord and ( newrecord.get("author") or newrecord.get("contributor") ):
-                print(json.dumps(newrecord,indent=tabbing))
+                print(dumpstring)
             

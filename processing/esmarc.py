@@ -19,10 +19,127 @@ import re
 from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
 
 es=None
+entities=None
 generate=False
 base_id=""
 base_id_delimiter="="
 #lookup_es=None
+
+
+
+
+def main():
+    #argstuff
+    parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
+    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.')
+    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
+    parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
+    parser.add_argument('-id',type=str,help='map single document, given by id')
+    parser.add_argument('-help',action="store_true",help="print this help")
+    parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
+    parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
+    parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
+    parser.add_argument('-w',type=int,default=8,help="how many processes to use")
+    parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
+    parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
+    parser.add_argument('-base_id',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for @id. e.g. http://d-nb.info/gnd/xxx")
+#    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
+    args=parser.parse_args()
+    if args.help:
+        parser.print_help(sys.stderr)
+        exit()        
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.type=slashsplit[4]
+        if len(slashsplit)>5:
+            if "?pretty" in args.server:
+                args.pretty=True
+                args.id=slashsplit[5].rsplit("?")[0]
+            else:
+                args.id=slashsplit[5]
+    if args.server or ( args.host and args.port ):
+        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
+    if args.base_id:
+        base_id=args.base_id
+    if args.pretty:
+        tabbing=4
+    else:
+        tabbing=None
+#    elif args.lookup_host:
+#        lookup_slashsplit=args.lookup_host.split("/")
+#        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
+#        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
+#            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
+#    else:
+#        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
+#        args.generate_ids=False
+#    if not args.generate_ids:
+#        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
+    if args.host and args.index and args.type and args.id:
+        json_record=None
+        source=get_source_include_str()
+        json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
+        if json_record:
+            print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
+    elif args.host and args.index and args.type and args.idfile:
+        setupoutput(args.prefix)
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        for ldj in esidfilegenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       source=get_source_include_str(),
+                       body=args.query,
+                       idfile=args.idfile
+                        ):
+            pool.apply_async(worker,args=(ldj,))
+        pool.close()
+        pool.join()
+    elif args.host and args.index and args.type and args.debug:
+        init_mp(args.host,args.port,None)
+        for ldj in esgenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       source=get_source_include_str(),
+                       headless=True,
+                       body=args.query
+                        ): 
+            record = process_line(ldj,args.host,args.port,args.index,args.type)
+            if record:
+                for k in record:
+                    print(json.dumps(record[k],indent=None))
+    elif args.host and args.index and args.type : #if inf not set, than try elasticsearch
+        setupoutput(args.prefix)
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        for ldj in esfatgenerator(host=args.host,
+                       port=args.port,
+                       index=args.index,
+                       type=args.type,
+                       source=get_source_include_str(),
+                       body=args.query
+                        ):
+            pool.apply_async(worker,args=(ldj,))
+        pool.close()
+        pool.join()
+    else: #oh noes, no elasticsearch input-setup. then we'll use stdin
+        eprint("No host/port/index specified, trying stdin\n")
+        init_mp("localhost","DEBUG","DEBUG")
+        with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
+            for line in input_stream:
+                ret=process_line(json.loads(line),"localhost",9200,"data","mrc")
+                if isinstance(ret,dict):
+                    for k,v in ret.items():
+                        print(json.dumps(v,indent=tabbing))
+    
+
 
 def uniq(lst):
     last = object()
@@ -581,6 +698,24 @@ def get_subfield(jline,key,entity):
                         sset[subfield_code]=subfield[subfield_code]
                 #eprint(sset.get("9"),subfield4)
                 node={}
+                for typ in ["D","d"]:
+                    if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
+                        node["@type"]="http://schema.org/"
+                        if sset.get(typ)=="p":
+                            node["@type"]+="Person"
+                            entityType="persons"
+                        elif sset.get(typ)=="b":
+                            node["@type"]+="Organization"
+                            entityType="orga"
+                        elif sset.get(typ)=="f":
+                            node["@type"]+="Event"
+                            entityType="events"
+                        elif sset.get(typ)=="u":
+                            node["@type"]+="CreativeWork"
+                        elif sset.get(typ)=="g":
+                            node["@type"]+="Place"
+                        else:
+                            node.pop("@type")
                 if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
                         if isinstance(uri,str) and uri.startswith(base_id):
@@ -605,7 +740,7 @@ def get_subfield(jline,key,entity):
                     for elem in sset.get("a"):
                         if len(elem)>1:
                             node["name"]=litter(node.get("name"),elem)
-                if sset.get("n"):
+                if sset.get("n") and entityType=="events":
                     node["position"]=sset["n"]
                 for typ in ["D","d"]:
                     if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
@@ -945,6 +1080,148 @@ def getdateModified(record,key,entity):
                 newdate+="Z"
         return newdate
 
+
+def traverse(dict_or_list, path):
+    iterator=None
+    if isinstance(dict_or_list, dict):
+        iterator = dict_or_list.items()
+    elif isinstance(dict_or_list, list):
+        iterator = enumerate(dict_or_list)
+    elif isinstance(dict_or_list,str):
+        strarr=[]
+        strarr.append(dict_or_list)
+        iterator=enumerate(strarr)
+    else:
+        return
+    if iterator:
+        for k, v in iterator:
+            yield path + str([k]), v
+            if isinstance(v, (dict, list)):
+                for k, v in traverse(v, path + str([k])):
+                    yield k, v
+
+
+def get_source_include_str():
+    items=set()
+    items.add("079")
+    for k,v in traverse(entities,""):
+        #eprint(k,v)
+        if isinstance(v,str) and isint(v[:3]) and v not in items:
+                items.add(v[:3])
+    _source=",".join(items)
+    #eprint(_source)
+    return _source
+    
+def process_field(record,value,entity):
+    ret=[]
+    if isinstance(value,dict):
+        for function,parameter in value.items():
+            ret.append(function(record,parameter,entity))
+    elif isinstance(value,str):
+        return value
+    elif isinstance(value,list):
+        for elem in value:
+            ret.append(ArrayOrSingleValue(process_field(record,elem,entity)))
+    elif callable(value):
+        return ArrayOrSingleValue(value(record,entity))
+    if ret:
+        return ArrayOrSingleValue(ret)
+
+
+#processing a single line of json without whitespace 
+def process_line(jline,host,port,index,type):
+    entity=getentity(jline)
+    if entity:
+        mapline={}
+        mapline["@type"]=[URIRef(u'http://schema.org/'+entity)]
+        mapline["@context"]=[URIRef(u'http://schema.org')]
+        for key,val in entities[entity].items():
+            value=process_field(jline,val,entity)
+            if value:
+                if "related" in key and  isinstance(value,dict) and "_key" in value:
+                    dictkey=value.pop("_key")
+                    mapline[dictkey]=litter(mapline.get(dictkey),value)
+                elif "related" in key and isinstance(value,list):
+                    for elem in value:
+                        if "_key" in elem:
+                            relation=elem.pop("_key")
+                            dictkey=relation
+                            mapline[dictkey]=litter(mapline.get(dictkey),elem)
+                else:
+                    mapline[key]=value
+        mapline=check(mapline,entity)
+        if host and port and index and type:
+            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
+        return {entity:mapline}
+    
+def output(entity,mapline,outstream):
+    if outstream:
+        outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
+    else:
+        sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
+        sys.stdout.flush()
+
+
+def setupoutput(prefix):
+    if prefix:
+        if not os.path.isdir(prefix):
+            os.mkdir(prefix)
+        if not prefix[-1]=="/":
+            prefix+="/"
+    else:
+        prefix=""
+    for entity in entities:
+        if not os.path.isdir(prefix+entity):
+            os.mkdir(prefix+entity)
+
+def init_mp(h,p,pr):
+    global host
+    global port
+    global outstream
+    global filepaths
+    global prefix
+    if not pr:
+        prefix = ""
+    elif pr[-1]!="/":
+        prefix=pr+"/"
+    else:
+        prefix=pr
+    port = p
+    host = h
+    outstream={}
+    filepaths=[]
+
+def worker(ldj):
+    #out={}
+    #for entity in entities:
+    #    out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
+    try:
+        if isinstance(ldj,list):    # list of records
+            for source_record in ldj:
+                target_record=process_line(source_record.pop("_source"),host,port,source_record.pop("_index"),source_record.pop("_type"))
+                if target_record:
+                    for entity in target_record:
+                        with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
+                            print(json.dumps(target_record[entity],indent=None),file=out)
+        elif isinstance(ldj,dict): # single record
+            target_record=process_line(ldj.pop("_source"),host,port,ldj.pop("_index"),ldj.pop("_type"))
+            if target_record:
+                for entity in target_record:
+                    with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
+                        print(json.dumps(target_record[entity],indent=None),file=out)
+    except Exception as e:
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
+        
+        
+#
+# Mapping:
+# a dict() (json) like table with function pointers
+#
+#
+#
+#
+
 entities = {
    "resources":{   # mapping is 1:1 like works
         "@type"                     :"CreativeWork",
@@ -1111,249 +1388,7 @@ entities = {
     },
 }
 
-def traverse(dict_or_list, path):
-    iterator=None
-    if isinstance(dict_or_list, dict):
-        iterator = dict_or_list.items()
-    elif isinstance(dict_or_list, list):
-        iterator = enumerate(dict_or_list)
-    elif isinstance(dict_or_list,str):
-        strarr=[]
-        strarr.append(dict_or_list)
-        iterator=enumerate(strarr)
-    else:
-        return
-    if iterator:
-        for k, v in iterator:
-            yield path + str([k]), v
-            if isinstance(v, (dict, list)):
-                for k, v in traverse(v, path + str([k])):
-                    yield k, v
 
-
-def get_source_include_str():
-    items=set()
-    items.add("079")
-    for k,v in traverse(entities,""):
-        #eprint(k,v)
-        if isinstance(v,str) and isint(v[:3]) and v not in items:
-                items.add(v[:3])
-    _source=",".join(items)
-    #eprint(_source)
-    return _source
-    
-def process_field(record,value,entity):
-    ret=[]
-    if isinstance(value,dict):
-        for function,parameter in value.items():
-            ret.append(function(record,parameter,entity))
-    elif isinstance(value,str):
-        return value
-    elif isinstance(value,list):
-        for elem in value:
-            ret.append(ArrayOrSingleValue(process_field(record,elem,entity)))
-    elif callable(value):
-        return ArrayOrSingleValue(value(record,entity))
-    if ret:
-        return ArrayOrSingleValue(ret)
-
-
-#processing a single line of json without whitespace 
-def process_line(jline,host,port,index,type):
-    entity=getentity(jline)
-    if entity:
-        mapline={}
-        mapline["@type"]=[URIRef(u'http://schema.org/'+entity)]
-        mapline["@context"]=[URIRef(u'http://schema.org')]
-        for key,val in entities[entity].items():
-            value=process_field(jline,val,entity)
-            if value:
-                if "related" in key and  isinstance(value,dict) and "_key" in value:
-                    dictkey=value.pop("_key")
-                    mapline[dictkey]=litter(mapline.get(dictkey),value)
-                elif "related" in key and isinstance(value,list):
-                    for elem in value:
-                        if "_key" in elem:
-                            relation=elem.pop("_key")
-                            dictkey=relation
-                            mapline[dictkey]=litter(mapline.get(dictkey),elem)
-                else:
-                    mapline[key]=value
-        mapline=check(mapline,entity)
-        if host and port and index and type:
-            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
-        return {entity:mapline}
-    
-def output(entity,mapline,outstream):
-    if outstream:
-        outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
-    else:
-        sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
-        sys.stdout.flush()
-
-
-def setupoutput(prefix):
-    if prefix:
-        if not os.path.isdir(prefix):
-            os.mkdir(prefix)
-        if not prefix[-1]=="/":
-            prefix+="/"
-    else:
-        prefix=""
-    for entity in entities:
-        if not os.path.isdir(prefix+entity):
-            os.mkdir(prefix+entity)
-
-def init_mp(h,p,pr):
-    global host
-    global port
-    global outstream
-    global filepaths
-    global prefix
-    if not pr:
-        prefix = ""
-    elif pr[-1]!="/":
-        prefix=pr+"/"
-    else:
-        prefix=pr
-    port = p
-    host = h
-    outstream={}
-    filepaths=[]
-
-def worker(ldj):
-    #out={}
-    #for entity in entities:
-    #    out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
-    try:
-        if isinstance(ldj,list):    # list of records
-            for source_record in ldj:
-                target_record=process_line(source_record.pop("_source"),host,port,source_record.pop("_index"),source_record.pop("_type"))
-                if target_record:
-                    for entity in target_record:
-                        with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
-                            print(json.dumps(target_record[entity],indent=None),file=out)
-        elif isinstance(ldj,dict): # single record
-            target_record=process_line(ldj.pop("_source"),host,port,ldj.pop("_index"),ldj.pop("_type"))
-            if target_record:
-                for entity in target_record:
-                    with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
-                        print(json.dumps(target_record[entity],indent=None),file=out)
-    except Exception as e:
-        with open("errors.txt",'a') as f:
-            traceback.print_exc(file=f)
-        
-        
 if __name__ == "__main__":
-    #argstuff
-    parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
-    parser.add_argument('-host',type=str,help='hostname or IP-Address of the ElasticSearch-node to use. If None we try to read ldj from stdin.')
-    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
-    parser.add_argument('-type',type=str,help='ElasticSearch Type to use')
-    parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
-    parser.add_argument('-id',type=str,help='map single document, given by id')
-    parser.add_argument('-help',action="store_true",help="print this help")
-    parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
-    parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
-    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
-    parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
-    parser.add_argument('-w',type=int,default=8,help="how many processes to use")
-    parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
-    parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
-    parser.add_argument('-base_id',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for @id. e.g. http://d-nb.info/gnd/xxx")
-#    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
-    args=parser.parse_args()
-    if args.help:
-        parser.print_help(sys.stderr)
-        exit()        
-    if args.server:
-        slashsplit=args.server.split("/")
-        args.host=slashsplit[2].rsplit(":")[0]
-        if isint(args.server.split(":")[2].rsplit("/")[0]):
-            args.port=args.server.split(":")[2].split("/")[0]
-        args.index=args.server.split("/")[3]
-        if len(slashsplit)>4:
-            args.type=slashsplit[4]
-        if len(slashsplit)>5:
-            if "?pretty" in args.server:
-                args.pretty=True
-                args.id=slashsplit[5].rsplit("?")[0]
-            else:
-                args.id=slashsplit[5]
-    if args.server or ( args.host and args.port ):
-        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
-    if args.base_id:
-        base_id=args.base_id
-    if args.pretty:
-        tabbing=4
-    else:
-        tabbing=None
-#    elif args.lookup_host:
-#        lookup_slashsplit=args.lookup_host.split("/")
-#        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
-#        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
-#            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
-#    else:
-#        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
-#        args.generate_ids=False
-#    if not args.generate_ids:
-#        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
-    if args.host and args.index and args.type and args.id:
-        json_record=None
-        source=get_source_include_str()
-        json_record=es.get_source(index=args.index,doc_type=args.type,id=args.id,_source=source)
-        if json_record:
-            print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
-    elif args.host and args.index and args.type and args.idfile:
-        setupoutput(args.prefix)
-        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
-        for ldj in esidfilegenerator(host=args.host,
-                       port=args.port,
-                       index=args.index,
-                       type=args.type,
-                       source=get_source_include_str(),
-                       body=args.query,
-                       idfile=args.idfile
-                        ):
-            pool.apply_async(worker,args=(ldj,))
-        pool.close()
-        pool.join()
-    elif args.host and args.index and args.type and args.debug:
-        init_mp(args.host,args.port,None)
-        for ldj in esgenerator(host=args.host,
-                       port=args.port,
-                       index=args.index,
-                       type=args.type,
-                       source=get_source_include_str(),
-                       headless=True,
-                       body=args.query
-                        ): 
-            record = process_line(ldj,args.host,args.port,args.index,args.type)
-            if record:
-                for k in record:
-                    print(json.dumps(record[k],indent=None))
-    elif args.host and args.index and args.type : #if inf not set, than try elasticsearch
-        setupoutput(args.prefix)
-        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
-        for ldj in esfatgenerator(host=args.host,
-                       port=args.port,
-                       index=args.index,
-                       type=args.type,
-                       source=get_source_include_str(),
-                       body=args.query
-                        ):
-            pool.apply_async(worker,args=(ldj,))
-        pool.close()
-        pool.join()
-    else: #oh noes, no elasticsearch input-setup. then we'll use stdin
-        eprint("No host/port/index specified, trying stdin\n")
-        init_mp("localhost","DEBUG","DEBUG")
-        with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
-            for line in input_stream:
-                ret=process_line(json.loads(line),"localhost",9200,"data","mrc")
-                if isinstance(ret,dict):
-                    for k,v in ret.items():
-                        print(json.dumps(v,indent=tabbing))
-                        
-    #cleanup
-    
+    main()
+
