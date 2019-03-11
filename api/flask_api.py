@@ -63,10 +63,13 @@ from flask_restplus import Resource
 from flask_restplus import Api
 from rdflib import ConjunctiveGraph,Graph
 from elasticsearch import Elasticsearch
+from werkzeug.contrib.fixers import ProxyFix
 
 host="194.95.145.44"
 
 app=Flask(__name__)
+
+#app.wsgi_app = ProxyFix(app.wsgi_app)
 
 api = Api(app, title="EFRE LOD for SLUB", default='Elasticsearch Wrapper API',default_label='search and access operations',default_mediatype="application/json",contact="Bernhard Hering",contact_email="bernhard.hering@slub-dresden.de")
 
@@ -361,7 +364,45 @@ class AutSearch(Resource):
                 retarray.append(hit.get("_source"))
         return output(retarray,args.get("format"),ending,request)
     
+@api.route('/<any({aut}):authorityprovider>/<any({ent}):entityindex>/<string:id>'.format(aut=str(list(authorities.keys())),ent=str(indices)),methods=['GET'])
+@api.param('authorityprovider','The name of the authority-provider to access. Allowed Values: {}.'.format(str(list(authorities.keys()))))
+@api.param('entityindex','The name of the entity-index to access. Allowed Values: {}.'.format(str(indices)))
+@api.param('id','The ID-String of the authority-identifier to access. Possible Values (examples): 208922695, 118695940, 20474817, Q1585819')
+class AutEntSearch(Resource):
+    parser = reqparse.RequestParser()
+    parser.add_argument('q',type=str,help="Lucene Query String Search Parameter",location="args")
+    parser.add_argument('format',type=str,help="set the Content-Type over this Query-Parameter. Allowed: nt, rdf, ttl, nq, jsonl, json",location="args")
+    parser.add_argument('size_arg',type=int,help="Configure the maxmimum amount of hits to be returned",location="args",default=100)
+    parser.add_argument('from_arg',type=int,help="Configure the offset from the frist result you want to fetch",location="args",default=0)
+    parser.add_argument('filter',type=str,help="filter the search by a defined value in a path. e.g. path_to_property:value",location="args")
     
+    @api.response(200,'Success')
+    @api.response(404,'Record(s) not found')
+    @api.expect(parser)
+    @api.doc('get record by authority-id and entity-id')
+    def get(self,authorityprovider,entityindex,id):
+        """
+        search for an given ID of a given authority-provider on a given entity-index
+        """
+        retarray=[]
+        args=self.parser.parse_args()
+        name=""
+        ending=""
+        if "." in id:
+            dot_fields=id.split(".")
+            name=dot_fields[0]
+            ending=dot_fields[1]
+        else:
+            name=id
+            ending=""
+        if not authorityprovider in authorities or entityindex not in indices:
+            abort(404)
+        search={"_source":{"excludes":excludes},"query":{"query_string" : {"query":"sameAs.keyword:\""+authorities.get(authorityprovider)+name+"\""}}}    
+        res=es.search(index=entityindex,body=search,size=args.get("size_arg"),from_=args.get("from_arg"))
+        if "hits" in res and "hits" in res["hits"]:
+            for hit in res["hits"]["hits"]:
+                retarray.append(hit.get("_source"))
+        return output(retarray,args.get("format"),ending,request) 
 
 if __name__ == '__main__':        
     app.run(host="localhost",port=80,debug=True)
