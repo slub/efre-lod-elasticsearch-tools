@@ -1374,7 +1374,7 @@ entities = {
         
         "additionalType"    :{get_subfield_if_4:"550^4:obin"},
         "parentOrganization":{get_subfield_if_4:"551^4:adue"},
-        "location"          :{get_subfield_if_4:"551^4:orta"},
+        "location"          :{get_subfield_if_4:"551^4:orta"}, 
         "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
         "areaServed"        :{get_subfield_if_4:"551^4:geow"},
         "about"                     :{handle_about:["936","084","083","082","655"]},
