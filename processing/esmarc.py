@@ -344,7 +344,10 @@ def uri2url(isil,num):
 def id2uri(string,entity):
     if string.startswith(base_id):
         string=string.split(base_id_delimiter)[-1]
-    return "http://data.slub-dresden.de/"+entity+"/"+string
+    if entity=="resources":
+        return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
+    else:
+        return "http://data.slub-dresden.de/"+entity+"/"+string
     
 def getmarcid(record,regex,entity): # in this function we try to get PPNs by fields defined in regex. regex should always be a list and the most "important" field on the left. if we found a ppn in a field, we'll return it
     for reg in regex:           
@@ -669,7 +672,7 @@ def get_subfields(jline,key,entity):
         for k in key:
            data=litter(data,get_subfield(jline,k,entity))
         return ArrayOrSingleValue(data)
-    elif isinstance(key,string):
+    elif isinstance(key,str):
         return get_subfield(jline,key,entity)
     else:
         return
@@ -687,7 +690,8 @@ def get_subfield(jline,key,entity):
         entityType="tags"
     elif key=="551":
         entityType="geo"
-    #e.g. split "551^4:orta" to 551 and orta
+    elif key=="830":
+        entityType="resources"
     data=[]
     if key in jline:
         for array in jline[key]:
@@ -716,10 +720,15 @@ def get_subfield(jline,key,entity):
                             node["@type"]+="Place"
                         else:
                             node.pop("@type")
+                if entityType=="resources" and sset.get("w") and not sset.get("0"):
+                    sset["0"]=sset.get("w")
                 if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith(base_id):
+                        #eprint(uri)
+                        if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
                             node["@id"]=id2uri(uri,entityType)
+                        elif isinstance(uri,str) and uri.startswith(base_id) and entityType=="resources":
+                            node["sameAs"]=id2uri(uri,entityType)
                         elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
                             node["sameAs"]=uri
                         elif isinstance(uri,str):
@@ -740,6 +749,9 @@ def get_subfield(jline,key,entity):
                     for elem in sset.get("a"):
                         if len(elem)>1:
                             node["name"]=litter(node.get("name"),elem)
+                            
+                if sset.get("v") and entityType=="resources":
+                    node["position"]=sset["v"]
                 if sset.get("n") and entityType=="events":
                     node["position"]=sset["n"]
                 for typ in ["D","d"]:
@@ -873,9 +885,42 @@ def getGeoCoordinates(record,key,entity):
     if ret:
         return ret
 
+def getav_katalogbeta(record,key,entity):#key should be a string: 001
+    retOffers=list()
+    finc_id=getmarc(record,key[1],entity)
+    branchCode=getmarc(record,key[0],entity)
+    #eprint(branchCode,finc_id)
+    if finc_id and isinstance(branchCode,str) and branchCode=="DE-14":
+        retOffers.append({
+           "@type": "Offer",
+           "offeredBy": {
+                "@id": "http://data.slub-dresden.de/orga/195657810",
+                "@type": "Library",
+                "name": isil2sameAs.get(branchCode),
+                "branchCode": "DE-14"
+            },
+           "availability": "https://katalogbeta.slub-dresden.de/id/"+finc_id
+       })
+    elif finc_id and isinstance(branchCode,list):
+        for bc in branchCode:
+            if bc=="DE-14":
+                retOffers.append({
+           "@type": "Offer",
+           "offeredBy": {
+                "@id": "http://data.slub-dresden.de/orga/195657810",
+                "@type": "Library",
+                "name": isil2sameAs.get(bc),
+                "branchCode": "DE-14"
+            },
+           "availability": "https://katalogbeta.slub-dresden.de/id/"+finc_id
+       })
+    if len(retOffers)>0:
+        return retOffers
+        
+
 def getav(record,key,entity):
     retOffers=list()
-    offers=getmarc(record,key[0],entity)
+    offers=getmarc(record,[0],entity)
     ppn=getmarc(record,key[1],entity)
     if ppn and isinstance(offers,str) and offers in isil2sameAs:
         retOffers.append({
@@ -1228,7 +1273,8 @@ entities = {
         "@context"                  :"http://schema.org",
         "@id"                       :{getid:"001"},
         "identifier"                :{getmarcid:["980..a","001"]},
-        "offers"                    :{getav:["852..a","980..a"]},
+#       "offers"                    :{getav:["852..a","980..a"]}, for SLUB and UBL via broken UBL DAIA-API
+        "offers"                    :{getav_katalogbeta:["852..a","001"]}, #for SLUB via katalogbeta
         "_isil"                     :{getisil:["003","852..a","924..b"]},
         "dateModified"              :{getdateModified:"005"},
         "sameAs"                    :{getmarc:["024..a","670..u"]},
@@ -1247,7 +1293,8 @@ entities = {
         "isbn"                      :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "genre"                     :{getmarc:"655..a"},
         "hasPart"                   :{getmarc:"773..g"},
-        "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]},
+        "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]}, 
+        "partOfSeries"              :{get_subfield:"830"},
         "license"                   :{getmarc:"540..a"},
         "inLanguage"                :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
         "numberOfPages"             :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
@@ -1322,7 +1369,7 @@ entities = {
         "dateModified"       :{getdateModified:"005"},
         "sameAs"            :{getmarc:["024..a","670..u"]},
         
-        "name"              :{getmarc:"110..a"},
+        "name"              :{getmarc:"110..a+b"},
         "alternateName"     :{getmarc:"410..a+b"},
         
         "additionalType"    :{get_subfield_if_4:"550^4:obin"},
