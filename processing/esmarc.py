@@ -20,8 +20,8 @@ from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingl
 
 es=None
 entities=None
-generate=False
-base_id=""
+base_id=None
+target_id=None
 base_id_delimiter="="
 #lookup_es=None
 
@@ -44,7 +44,8 @@ def main():
     parser.add_argument('-w',type=int,default=8,help="how many processes to use")
     parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
-    parser.add_argument('-base_id',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for @id. e.g. http://d-nb.info/gnd/xxx")
+    parser.add_argument('-base_id_src',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for sameAs. e.g. http://d-nb.info/gnd/xxx")
+    parser.add_argument('-target_id',type=str,default="http://data.slub-dresden.de/",help="set up which target_id to use for @id. e.g. http://data.finc.info")
 #    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
     args=parser.parse_args()
     if args.help:
@@ -66,8 +67,10 @@ def main():
                 args.id=slashsplit[5]
     if args.server or ( args.host and args.port ):
         es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
-    if args.base_id:
-        base_id=args.base_id
+    global base_id
+    global target_id
+    base_id=args.base_id_src
+    target_id=args.target_id
     if args.pretty:
         tabbing=4
     else:
@@ -342,12 +345,13 @@ def uri2url(isil,num):
         return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
 
 def id2uri(string,entity):
+    global target_id
     if string.startswith(base_id):
         string=string.split(base_id_delimiter)[-1]
-    if entity=="resources":
-        return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
-    else:
-        return "http://data.slub-dresden.de/"+entity+"/"+string
+    #if entity=="resources":
+    #    return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
+    #else:
+    return str(target_id+entity+"/"+string)
     
 def getmarcid(record,regex,entity): # in this function we try to get PPNs by fields defined in regex. regex should always be a list and the most "important" field on the left. if we found a ppn in a field, we'll return it
     for reg in regex:           
@@ -728,7 +732,7 @@ def get_subfield(jline,key,entity):
                         if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
                             node["@id"]=id2uri(uri,entityType)
                         elif isinstance(uri,str) and uri.startswith(base_id) and entityType=="resources":
-                            node["sameAs"]=id2uri(uri,entityType)
+                            node["sameAs"]=base_id+id2uri(uri,entityType).split("/")[-1]
                         elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
                             node["sameAs"]=uri
                         elif isinstance(uri,str):
@@ -1001,8 +1005,6 @@ def check(ldj,entity):
             ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
         else:
             ldj["sameAs"]=uri2url(ldj.get("_isil"),ldj.get("identifier"))
-    if isinstance(ldj.get("@id"),str):
-        ldj["identifier"]=ldj.get("@id").split("/")[4]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
@@ -1276,6 +1278,7 @@ entities = {
 #       "offers"                    :{getav:["852..a","980..a"]}, for SLUB and UBL via broken UBL DAIA-API
         "offers"                    :{getav_katalogbeta:["852..a","001"]}, #for SLUB via katalogbeta
         "_isil"                     :{getisil:["003","852..a","924..b"]},
+        "_sourceID"                 :{getmarc:"980..b"},
         "dateModified"              :{getdateModified:"005"},
         "sameAs"                    :{getmarc:["024..a","670..u"]},
         "name"                      :{getmarc:["245..a","245..b"]},
