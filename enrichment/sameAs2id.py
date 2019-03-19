@@ -46,7 +46,8 @@ map_id={"additionalType":"",
         "parent":["persons"],
         "sibling":["persons"],
         "workLocation":["geo","orga"],
-        "description":["tags"]
+        "description":["tags"],
+        "partOfSeries":["resources"]
 } 
 def handlesameAs(record,field,host,port):
     if record and field and host and port and map_id.get(field):
