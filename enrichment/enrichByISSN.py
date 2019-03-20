@@ -39,7 +39,7 @@ def get_gndbyISSN(record,search_host,search_port,issn):
         return record
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='enrich titledata by DNB-Titledata over ISBN!')
+    parser=argparse.ArgumentParser(description='enrich titledata by DNB-Titledata over ISSN!')
     parser.add_argument('-host',type=str,default="127.0.0.1",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
