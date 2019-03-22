@@ -28,7 +28,7 @@ class EFTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/opendata/EntityFacts-de-DE.jsonld.gz",
+        "url":"https://data.dnb.de/opendata/authorities_entityfacts_20190305.jsonld.gz",
         "username":"opendata",
         "password":"opendata",
         "file":"ef-dump.ldj",
@@ -130,11 +130,3 @@ class EFFillEsIndex(EFTask):
         else:
             return False
         return False
-
-
-class EFUpdate(EFTask, luigi.WrapperTask):
-    def requires(self):
-        return [EFFillEsIndex()]
-    
-    def run(self):
-        pass
