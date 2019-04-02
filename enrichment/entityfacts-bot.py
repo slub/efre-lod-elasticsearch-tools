@@ -22,9 +22,11 @@ def entityfacts(record,gnd,ef_instances):
             if data.get("_source"):
                 data=data.get("_source")
             sameAsses=[] # ba-dum-ts
-            for sameAs in data.get("sameAs"):
-                if not sameAs.get("@id").startswith("http://d-nb.info"):
-                    sameAsses.append(sameAs.get("@id"))
+            if data.get("sameAs") and isinstance(data["sameAs"],list):
+                for sameAs in data.get("sameAs"):
+                    if sameAs.get("@id"):
+                        if not sameAs.get("@id").startswith("http://d-nb.info"):
+                            sameAsses.append(sameAs.get("@id"))
             #print(sameAsses,url)
             if sameAsses:
                 record["sameAs"]=litter(record.get("sameAs"),sameAsses)

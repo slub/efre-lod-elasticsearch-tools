@@ -67,7 +67,7 @@ def handlesameAs(record,field,host,port):
                 hits+=search.get("hits").get("hits")
         newlist = sorted(hits, key=lambda k: k['_score'],reverse=True) 
         if newlist:
-            return str("http://data.slub-dresden.de/"+newlist[0].get("_index")+"/"+newlist[0].get("_type")+"/"+newlist[0].get("_id"))
+            return str("http://data.slub-dresden.de/"+newlist[0].get("_index")+"/"+newlist[0].get("_id"))
     return None
 
            
