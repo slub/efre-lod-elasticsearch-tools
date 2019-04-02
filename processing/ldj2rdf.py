@@ -59,6 +59,7 @@ def init(l,c,m,i):
     lock = l
     
 def get_bulkrdf(doc):
+    context_included=False
     try:
         global text
         text=""
@@ -92,8 +93,10 @@ def get_bulkrdf(doc):
                                     toremove.append(k)
                             for item in toremove:
                                 doc[n]["sameAs"].pop(item)
-                if (not text or elem.get("@context")==text ) and elem.get("@context"):
+                if (not text or elem.get("@context")==text ) and elem.get("@context") and isinstance(elem.get("@context"),str):
                     text=doc[n].pop("@context")
+                else:
+                    context_included=True
                 if isinstance(elem.get("about"),list):
                     for m,rvkl in enumerate(elem.get("about")):
                         if isinstance(rvkl.get("identifier"),dict) and rvkl.get("identifier").get("propertyID") and rvkl.get("identifier").get("propertyID")=="RVK":
@@ -111,17 +114,24 @@ def get_bulkrdf(doc):
             if text not in con:
                 if mp:
                     lock.acquire()
-                get_context(con,text)
+                if not context_included:
+                    get_context(con,text)
                 if mp:
                     lock.release()
             if not args.debug:
                 with open(name,"a") as fd:
-                    g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+                    if context_included:
+                        g.parse(data=json.dumps(doc), format='json-ld')
+                    else:
+                        g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
                     fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
                     fd.write("\n")
                     fd.flush()
             else:
-                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+                if context_included:
+                    g.parse(data=json.dumps(doc), format='json-ld')
+                else:
+                    g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
                 sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
                 sys.stdout.write("\n")
                 sys.stdout.flush()
@@ -132,6 +142,7 @@ def get_bulkrdf(doc):
     
 def get_rdf(doc):
     text=""
+    context_included=False
     if isinstance(doc,dict):
             toRemove=[]
             for key in doc:
@@ -140,11 +151,13 @@ def get_rdf(doc):
             for key in toRemove:
                 doc.pop(key)
             toRemove.clear()
-    if (not text or doc.get("@context")==text ) and doc.get("@context"):
+    if (not text or doc.get("@context")==text ) and doc.get("@context") and isinstance(doc.get("@context"),str):
         text=doc.pop("@context")
+    elif isinstance(doc.get("@context"),dict):
+        context_included=True
     if doc:
         g=ConjunctiveGraph()
-        if text not in con:
+        if text not in con and not context_included:
             if mp:
                 lock.acquire()
             get_context()
@@ -152,12 +165,18 @@ def get_rdf(doc):
                 lock.release()
         if not args.debug:
             with open(name,"a") as fd:
-                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+                if context_included:
+                    g.parse(data=json.dumps(doc), format='json-ld')
+                else:
+                    g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
                 fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
                 fd.write("\n")
                 fd.flush()
         else:
-            g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+            if context_included:
+                g.parse(data=json.dumps(doc), format='json-ld')
+            else:
+                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
             sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
             sys.stdout.write("\n")
             sys.stdout.flush()
@@ -198,16 +217,28 @@ if __name__ == "__main__":
         exit()        
         
     elif args.inp:
-        with open(args.inp,"r") as inp:
+        if not args.debug:
+            with open(args.inp,"r") as inp:
+                m = Manager()
+                l = m.Lock()
+                c = m.dict()
+                i = m.dict({"host":"",
+                            "type":"",
+                            "index":""})
+                pool = Pool(processes=cpu_count()*2,initializer=init,initargs=(l,c,True,i,))
+                for line in inp:
+                    pool.apply_async(get_rdf,args=(json.loads(line),))
+        else:
             m = Manager()
             l = m.Lock()
             c = m.dict()
             i = m.dict({"host":"",
                         "type":"",
                         "index":""})
-            pool = Pool(processes=cpu_count()*2,initializer=init,initargs=(l,c,True,i,))
-            for line in inp:
-                pool.apply_async(get_rdf,args=(json.loads(line),))
+            init(l,c,m,i)
+            with open(args.inp,"r") as inp:
+                for line in inp:
+                    get_rdf(json.loads(line))
     elif args.scroll:
         if not args.debug:
             m = Manager()
