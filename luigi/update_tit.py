@@ -38,7 +38,7 @@ class LODTITSolrHarvesterMakeConfig(LODTITTask):
         r=get("{host}/date/actual/2".format(**self.config))
         lu=r.json().get("_source").get("date")
         with open(self.now+".conf","w") as fd:
-            print("---\nsolr_endpoint: '{host}'\nsolr_parameters:\n    fq: last_indexed:[{last} TO {now}]\nrows_size: 999\nchunk_size: 10000\nfullrecord_field: 'fullrecord'\nfullrecord_format: 'marc'\nreplace_method: 'decimal'\noutput_directory: './'\noutput_prefix: 'finc_'\noutput_format: 'marc'".format(last=lu,now=self.now,host=self.config.get("url")),file=fd)
+            print("---\nsolr_endpoint: '{host}'\nsolr_parameters:\n    fq: last_indexed:[{last} TO {now}]\nrows_size: 1000\nchunk_size: 10000\nfullrecord_field: 'fullrecord'\nfullrecord_format: 'marc'\nreplace_method: 'decimal'\noutput_directory: './'\noutput_prefix: 'finc_'\noutput_format: 'marc'\noutput_validation: True".format(last=lu,now=self.now,host=self.config.get("url")),file=fd)
     
     def output(self):
         return luigi.LocalTarget(self.now+".conf")
@@ -48,7 +48,8 @@ class LODTITDownload(LODTITTask):
         return LODTITSolrHarvesterMakeConfig()
     
     def run(self):
-        cmdstring="~/git/bhering/solr_harvester/solr_harvester.php --conf ./"+self.now+".conf"
+        cmdstring="~/solr-harvester.py/solr-harvester.py -conf ./"+self.now+".conf"
+        #cmdstring="~/git/bhering/solr_harvester/solr_harvester.php --conf ./"+self.now+".conf"
         output = shellout(cmdstring)
         return 0
 
@@ -65,19 +66,30 @@ class LODTITDownload(LODTITTask):
                 return False
         return False
         
+class LODTITDownloadSolrHarvester(LODTITTask):
+    def run(self):
+        r=get("{host}/date/actual/2".format(**self.config))
+        lu=r.json().get("_source").get("date")
+        cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py > {date}.mrc".format(last=lu,now=self.now,host=self.config.get("url"),date=self.date)
+        print(cmdstring)
+        output = shellout(cmdstring)
+    
+    def output(self):
+        return luigi.LocalTarget(self.date+".mrc")
 
 class LODTITTransform2ldj(LODTITTask):
     
     def requires(self):
-        return LODTITDownload()
-
+        #return LODTITDownload()
+        return LODTITDownloadSolrHarvester()
     def run(self):
-        cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
+        cmdstring="cat {date}.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
+        #cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
         output=shellout(cmdstring)
         with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as outp, open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
             for rec in inp:
                 print(json.loads(rec).get("001"),file=outp)
-        shutil.rmtree(str(self.date))
+        #shutil.rmtree(str(self.date))
         return 0
     
     def output(self):
@@ -137,6 +149,7 @@ class LODTITFillRawdataIndex(LODTITTask):
                     return True
             return False
         return False
+    
 class LODTITProcessFromRdi(LODTITTask):
     
     def requires(self):

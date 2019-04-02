@@ -51,7 +51,10 @@ class LODDownload(LODTask):
     def run(self):
         for n,dat in enumerate(self.config.get("dates")):
             cmdstring="wget --user {username} --password {password} {url}TA-MARC-norm-{date}.tar.gz".format(**self.config,date=dat)
-            output = shellout(cmdstring)
+            try:
+                output = shellout(cmdstring)
+            except Exception as e:
+                continue
         return 0
 
     def complete(self):
