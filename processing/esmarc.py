@@ -775,7 +775,8 @@ def get_subfield(jline,key,entity):
                             node.pop("@type")
                             
                 if node:
-                    data.append(node)
+                    data=litter(data,node)
+                    #data.append(node)
         if data:
             return  ArrayOrSingleValue(data)
         
@@ -984,7 +985,7 @@ def removeEmpty(obj):
         return obj
 
 
-#make data more RDF
+#make data more RDF-like and do some post-mapping cleanups and data-transformations
 def check(ldj,entity):
     ldj=removeNone(removeEmpty(ldj))
     for k,v in ldj.items():
@@ -999,12 +1000,21 @@ def check(ldj,entity):
     #print(ldj.get("_isil"))
     if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
         if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
-            ldj["sameAs"]=[ldj.pop("sameAs")]
-            ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
-        elif "sameAs" in ldj and isinstance(ldj.get("sameAs"),list):
-            ldj["sameAs"].append(uri2url(ldj["_isil"],ldj.pop("identifier")))
+            ldj["sameAs"]=[ldj["sameAs"]]
+            if entity!="resources":
+                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
+            elif ldj.get("_ppn"):
+                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
+        elif "sameAs" in ldj and isinstance(ldj["sameAs"],list):
+            if entity!="resources":
+                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
+            elif ldj.get("_ppn"):
+                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
         else:
-            ldj["sameAs"]=uri2url(ldj.get("_isil"),ldj.get("identifier"))
+            if entity!="resources":
+                ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["identifier"])]
+            elif ldj.get("_ppn"):
+                ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["_ppn"])]
     if 'numberOfPages' in ldj:
         numstring=ldj.pop('numberOfPages')
         try:
@@ -1077,6 +1087,19 @@ def check(ldj,entity):
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
             
+    return single_or_multi(ldj,entity)
+
+def single_or_multi(ldj,entity):
+    for k in entities[entity]:
+        for key,value in ldj.items():
+            if key in k:
+                if "single" in k:
+                    continue #what to do if there's an array here?
+                elif "multi" in k:
+                    if not isinstance(value,list):
+                        ldj[key]=[value]
+                else:
+                    continue
     return ldj
 
 def cleanup_sameAs(sameAs):
@@ -1182,7 +1205,8 @@ def process_line(jline,host,port,index,type):
         mapline={}
         mapline["@type"]=[URIRef(u'http://schema.org/'+entity)]
         mapline["@context"]=[URIRef(u'http://schema.org')]
-        for key,val in entities[entity].items():
+        for sortkey,val in entities[entity].items():
+            key=sortkey.split(":")[1]
             value=process_field(jline,val,entity)
             if value:
                 if "related" in key and  isinstance(value,dict) and "_key" in value:
@@ -1197,8 +1221,8 @@ def process_line(jline,host,port,index,type):
                 else:
                     mapline[key]=value
         mapline=check(mapline,entity)
-        if host and port and index and type:
-            mapline["url"]="http://"+host+":"+str(port)+"/"+index+"/"+type+"/"+getmarc(jline,"001",None)+"?pretty"
+        if index:
+            mapline["isBasedOn"]=target_id+"source/"+index+"/"+getmarc(jline,"001",None)
         return {entity:mapline}
     
 def output(entity,mapline,outstream):
@@ -1271,170 +1295,172 @@ def worker(ldj):
 
 entities = {
    "resources":{   # mapping is 1:1 like works
-        "@type"                     :"CreativeWork",
-        "@context"                  :"http://schema.org",
-        "@id"                       :{getid:"001"},
-        "identifier"                :{getmarcid:["980..a","001"]},
-#       "offers"                    :{getav:["852..a","980..a"]}, for SLUB and UBL via broken UBL DAIA-API
-        "offers"                    :{getav_katalogbeta:["852..a","001"]}, #for SLUB via katalogbeta
-        "_isil"                     :{getisil:["003","852..a","924..b"]},
-        "_sourceID"                 :{getmarc:"980..b"},
-        "dateModified"              :{getdateModified:"005"},
-        "sameAs"                    :{getmarc:["024..a","670..u"]},
-        "name"                      :{getmarc:["245..a","245..b"]},
-        "nameShort"                 :{getmarc:"245..a"},
-        "nameSub"                   :{getmarc:"245..b"},
-        "alternativeHeadline"       :{getmarc:["245..c"]},
-        "alternateName"             :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"                    :{get_subfields:["100","110"]},
-        "contributor"               :{get_subfields:["700","710"]},
-        "pub_name"                  :{getmarc:["260..b","264..b"]},
-        "pub_place"                 :{getmarc:["260..a","264..a"]},
-        "datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
-        "Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
-        "issn"                      :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"                      :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
-        "genre"                     :{getmarc:"655..a"},
-        "hasPart"                   :{getmarc:"773..g"},
-        "isPartOf"                  :{getmarc:["773..t","773..s","773..a"]}, 
-        "partOfSeries"              :{get_subfield:"830"},
-        "license"                   :{getmarc:"540..a"},
-        "inLanguage"                :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "numberOfPages"             :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
-        "pageStart"                 :{getmarc:"773..q"},
-        "issueNumber"               :{getmarc:"773..l"},
-        "volumeNumer"               :{getmarc:"773..v"},
-        "locationCreated"           :{get_subfield_if_4:"551^4:orth"},
-        "relatedTo"                 :{relatedTo:"500..0"},
-        "about"                     :{handle_about:["936","084","083","082","655"]},
-        "description"               :{getmarc:"520..a"},
-        "mentions"                  :{get_subfield:"689"},
-        "relatedEvent"              :{get_subfield:"711"}
+        "single:@type"                     :"CreativeWork",
+        "single:@context"                  :"http://schema.org",
+        "single:@id"                       :{getid:"001"},
+        "single:identifier"                :{getmarc:["001"]},
+#       "single:offers"                    :{getav:["852..a","980..a"]}, for SLUB and UBL via broken UBL DAIA-API
+        "single:offers"                    :{getav_katalogbeta:["852..a","001"]}, #for SLUB via katalogbeta
+        "single:_isil"                     :{getisil:["003","852..a","924..b"]},
+        "single:_ppn"                      :{getmarc:"980..a"},
+        "single:_sourceID"                 :{getmarc:"980..b"},
+        "single:dateModified"              :{getdateModified:"005"},
+        "multi:sameAs"                     :{getmarc:["024..a","670..u"]},
+        "single:name"                      :{getmarc:["245..a","245..b"]},
+        "single:nameShort"                 :{getmarc:"245..a"},
+        "single:nameSub"                   :{getmarc:"245..b"},
+        "single:alternativeHeadline"       :{getmarc:["245..c"]},
+        "multi:alternateName"              :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "multi:author"                     :{get_subfields:["100","110"]},
+        "multi:contributor"                :{get_subfields:["700","710"]},
+        "single:pub_name"                  :{getmarc:["260..b","264..b"]},
+        "single:pub_place"                 :{getmarc:["260..a","264..a"]},
+        "single:datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
+        "single:Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
+        "multi:issn"                       :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
+        "multi:isbn"                       :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
+        "multi:genre"                      :{getmarc:"655..a"},
+        "multi:hasPart"                    :{getmarc:"773..g"},
+        "multi:isPartOf"                   :{getmarc:["773..t","773..s","773..a"]}, 
+        "multi:partOfSeries"               :{get_subfield:"830"},
+        "single:license"                   :{getmarc:"540..a"},
+        "multi:inLanguage"                 :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
+        "single:numberOfPages"             :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "single:pageStart"                 :{getmarc:"773..q"},
+        "single:issueNumber"               :{getmarc:"773..l"},
+        "single:volumeNumer"               :{getmarc:"773..v"},
+        "multi:locationCreated"            :{get_subfield_if_4:"551^4:orth"},
+        "multi:relatedTo"                  :{relatedTo:"500..0"},
+        "multi:about"                      :{handle_about:["936","084","083","082","655"]},
+        "single:description"               :{getmarc:"520..a"},
+        "multi:mentions"                   :{get_subfield:"689"},
+        "multi:relatedEvent"               :{get_subfield:"711"}
         },
     "works":{   # mapping is 1:1 like resources
-        "@type"             :"CreativeWork",
-        "@context"      :"http://schema.org",
-        "@id"           :{getid:"001"},
-        "identifier"    :{getmarc:"001"},
-        "_isil"         :{getisil:"003"},
-        "dateModified"   :{getdateModified:"005"},
-        "sameAs"        :{getmarc:["024..a","670..u"]},
-        "name"              :{getmarc:["130..a","130..p"]},
-        "alternativeHeadline"      :{getmarc:["245..c"]},
-        "alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "author"            :{get_subfield:"100"},
-        "contributor"       :{get_subfield:"700"},
-        "pub_name"          :{getmarc:["260..b","264..b"]},
-        "pub_place"         :{getmarc:["260..a","264..a"]},
-        "datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
-        "Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
-        "issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
-        "isbn"              :{getmarc:["020..a","022..a","022..z","776..z","780..z","785..z"]},
-        "genre"             :{getmarc:"655..a"},
-        "hasPart"           :{getmarc:"773..g"},
-        "isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
-        "license"           :{getmarc:"540..a"},
-        "inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
-        "pageStart"         :{getmarc:"773..q"},
-        "issueNumber"       :{getmarc:"773..l"},
-        "volumeNumer"       :{getmarc:"773..v"},
-        "locationCreated"   :{get_subfield_if_4:"551^4:orth"},
-        "relatedTo"         :{relatedTo:"500..0"}
+        "single:@type"             :"CreativeWork",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "single:name"              :{getmarc:["130..a","130..p"]},
+        "single:alternativeHeadline"      :{getmarc:["245..c"]},
+        "multi:alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "multi:author"            :{get_subfield:"100"},
+        "multi:contributor"       :{get_subfield:"700"},
+        "single:pub_name"          :{getmarc:["260..b","264..b"]},
+        "single:pub_place"         :{getmarc:["260..a","264..a"]},
+        "single:datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
+        "single:Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
+        "multi:issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
+        "multi:isbn"              :{getmarc:["020..a","022..a","022..z","776..z","780..z","785..z"]},
+        "single:genre"             :{getmarc:"655..a"},
+        "single:hasPart"           :{getmarc:"773..g"},
+        "single:isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
+        "single:license"           :{getmarc:"540..a"},
+        "multi:inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
+        "single:numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "single:pageStart"         :{getmarc:"773..q"},
+        "single:issueNumber"       :{getmarc:"773..l"},
+        "single:volumeNumer"       :{getmarc:"773..v"},
+        "single:locationCreated"   :{get_subfield_if_4:"551^4:orth"},
+        "single:relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
-        "@type"         :"Person",
-        "@context"      :"http://schema.org",
-        "@id"           :{getid:"001"},
-        "identifier"    :{getmarc:"001"},
-        "_isil"         :{getisil:"003"},
-        "dateModified"   :{getdateModified:"005"},
-        "sameAs"        :{getmarc:["024..a","670..u"]},
+        "single:@type"             :"Person",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
         
-        "name"          :{getmarc:"100..a"},
-        "gender"        :{handlesex:"375..a"},
-        "alternateName" :{getmarc:["400..a","400..c"]},
-        "relatedTo"     :{relatedTo:"500..0"},
-        "hasOccupation" :{get_subfield:"550"},
-        "birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
-        "deathPlace"    :{get_subfield_if_4:"551^4:orts"},
-        "honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
-        "birthDate"     :{birthDate:"548"},
-        "deathDate"     :{deathDate:"548"},
-        "workLocation"  :{get_subfield_if_4:"551^4:ortw"},
-        "about"                     :{handle_about:["936","084","083","082","655"]},
+        "single:name"          :{getmarc:"100..a"},
+        "single:gender"        :{handlesex:"375..a"},
+        "multi:alternateName" :{getmarc:["400..a","400..c"]},
+        "single:relatedTo"     :{relatedTo:"500..0"},
+        "single:hasOccupation" :{get_subfield:"550"},
+        "single:birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
+        "single:deathPlace"    :{get_subfield_if_4:"551^4:orts"},
+        "single:honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
+        "single:birthDate"     :{birthDate:"548"},
+        "single:deathDate"     :{deathDate:"548"},
+        "single:workLocation"  :{get_subfield_if_4:"551^4:ortw"},
+        "single:about"                     :{handle_about:["936","084","083","082","655"]},
     },
     "orga": {
-        "@type"             :"Organization",
-        "@context"          :"http://schema.org",
-        "@id"               :{getid:"001"},
-        "_isil"             :{getisil:"003"},
-        "dateModified"       :{getdateModified:"005"},
-        "sameAs"            :{getmarc:["024..a","670..u"]},
+        "single:@type"             :"Organization",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
         
-        "name"              :{getmarc:"110..a+b"},
-        "alternateName"     :{getmarc:"410..a+b"},
+        "single:name"              :{getmarc:"110..a+b"},
+        "multi:alternateName"     :{getmarc:"410..a+b"},
         
-        "additionalType"    :{get_subfield_if_4:"550^4:obin"},
-        "parentOrganization":{get_subfield_if_4:"551^4:adue"},
-        "location"          :{get_subfield_if_4:"551^4:orta"}, 
-        "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
-        "areaServed"        :{get_subfield_if_4:"551^4:geow"},
-        "about"                     :{handle_about:["936","084","083","082","655"]},
+        "single:additionalType"    :{get_subfield_if_4:"550^4:obin"},
+        "single:parentOrganization":{get_subfield_if_4:"551^4:adue"},
+        "single:location"          :{get_subfield_if_4:"551^4:orta"}, 
+        "single:fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
+        "single:areaServed"        :{get_subfield_if_4:"551^4:geow"},
+        "multi:about"                     :{handle_about:["936","084","083","082","655"]},
         },
     "geo": {
-        "@type"             :"Place",
-        "@context"          :"http://schema.org",
-        "@id"               :{getid:"001"},
-        "identifier"        :{getmarc:"001"},
-        "_isil"             :{getisil:"003"},
-        "dateModified"       :{getdateModified:"005"},
-        "sameAs"            :{getmarc:["024..a","670..u"]},
+        "single:@type"             :"Place",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
         
-        "name"              :{getmarc:"151..a"},
-        "alternateName"     :{getmarc:"451..a"},
-        "description"       :{get_subfield:"551"},
-        "geo"               :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
-        "adressRegion"      :{getmarc:"043..c"},
-        "about"             :{handle_about:["936","084","083","082","655"]},
+        "single:name"              :{getmarc:"151..a"},
+        "multi:alternateName"     :{getmarc:"451..a"},
+        "single:description"       :{get_subfield:"551"},
+        "single:geo"               :{getGeoCoordinates:{"longitude":["034..d","034..e"],"latitude":["034..f","034..g"]}},
+        "single:adressRegion"      :{getmarc:"043..c"},
+        "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
-    "tags":{                   #generisches Mapping für Schlagwörter
-        "@type"             :"Thing",
-        "@context"          :"http://schema.org",
-        "@id"               :{getid:"001"},
-        "identifier"        :{getmarc:"001"},
-        "_isil"             :{getisil:"003"},
-        "dateModified"       :{getdateModified:"005"},
-        "sameAs"            :{getmarc:["024..a","670..u"]},
-        "name"              :{getmarc:"150..a"},
-        "alternateName"     :{getmarc:"450..a+x"},
-        "description"       :{getmarc:"679..a"},
-        "additionalType"    :{get_subfield:"550"},
-        "location"          :{get_subfield_if_4:"551^4:orta"},
-        "fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
-        "areaServed"        :{get_subfield_if_4:"551^4:geow"},
-        "contentLocation"   :{get_subfield_if_4:"551^4:punk"},
-        "participant"       :{get_subfield_if_4:"551^4:bete"},
-        "relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
-        "about"             :{handle_about:["936","084","083","082","655"]},
+    "tags":{         
+        "single:@type"             :"Thing",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "single:name"              :{getmarc:"150..a"},
+        "multi:alternateName"     :{getmarc:"450..a+x"},
+        "single:description"       :{getmarc:"679..a"},
+        "single:additionalType"    :{get_subfield:"550"},
+        "single:location"          :{get_subfield_if_4:"551^4:orta"},
+        "single:fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
+        "single:areaServed"        :{get_subfield_if_4:"551^4:geow"},
+        "single:contentLocation"   :{get_subfield_if_4:"551^4:punk"},
+        "single:participant"       :{get_subfield_if_4:"551^4:bete"},
+        "single:relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
+        "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
     
     "events": {
-        "@type"         :"Event",
-        "@context"      :"http://schema.org",
-        "@id"           :{getid:"001"},
-        "identifier"    :{getmarc:"001"},
-        "_isil"         :{getisil:"003"},
-        "dateModified"  :{getdateModified:"005"},
-        "sameAs"        :{getmarc:["024..a","670..u"]},
+        "single:@type"         :"Event",
+        "single:@context"      :"http://schema.org",
+        "single:@id"           :{getid:"001"},
+        "single:identifier"    :{getmarc:"001"},
+        "single:_isil"         :{getisil:"003"},
+        "single:dateModified"   :{getdateModified:"005"},
+        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
         
-        "name"          :{getmarc:["111..a"]},
-        "alternateName" :{getmarc:["411..a"]},
-        "location"      :{get_subfield_if_4:"551^4:ortv"},
-        "startDate"     :{birthDate:"548"},
-        "endDate"       :{deathDate:"548"},
-        "adressRegion"  :{getmarc:"043..c"},
-        "about"         :{handle_about:["936","084","083","082","655"]},
+        "single:name"          :{getmarc:["111..a"]},
+        "multi:alternateName" :{getmarc:["411..a"]},
+        "single:location"      :{get_subfield_if_4:"551^4:ortv"},
+        "single:startDate"     :{birthDate:"548"},
+        "single:endDate"       :{deathDate:"548"},
+        "single:adressRegion"  :{getmarc:"043..c"},
+        "multi:about"         :{handle_about:["936","084","083","082","655"]},
     },
 }
 
