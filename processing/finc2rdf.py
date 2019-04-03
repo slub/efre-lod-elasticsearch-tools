@@ -153,7 +153,10 @@ context={ "dct:identifier":"http://purl.org/dc/terms/dct:identifier",
           "dct:isPartOf":"http://purl.org/dc/terms/isPartOf",
           "dct:bibliographicCitation":"http://purl.org/dc/terms/bibliographicCitation",
           "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
-          "offeredBy":"http://schema.org/offeredBy"
+          "offeredBy":"http://schema.org/offeredBy",
+          "Offer":"http://schema.org/Offer",
+          "Library":"http://schema.org/Library"
+
           }
 
 mapping={ "@id":{getAtID:"id"},
