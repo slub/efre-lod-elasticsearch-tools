@@ -228,6 +228,7 @@ def process_line(record):
 def main():
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
     parser.add_argument('-gen_cmd',action="store_true",help='generate bash command')
+    parser.add_argument('-server',type=str,help="which server to use for harvest, only used for cmd prompt definition")
     args=parser.parse_args()
     if args.gen_cmd:
         fl=""
@@ -239,7 +240,7 @@ def main():
                     for elem in w:
                         fl+=elem+","
         fl=fl[:-1]
-        print("solrdump -verbose -server https://index.ubl-proxy.slub-dresden.de/solr/biblio/ -q institution:DE-15 -fl {} | {}".format(fl,sys.argv[0]))
+        print("solrdump -verbose -server {} -q institution:DE-15 -fl {} | {}".format(args.server,fl,sys.argv[0]))
         quit()
     for line in sys.stdin:
         target_record=process_line(json.loads(line))
