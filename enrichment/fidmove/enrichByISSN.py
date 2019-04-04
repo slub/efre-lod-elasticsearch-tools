@@ -19,12 +19,12 @@ def enrichrecord(record,hit,search_host,search_port):
                         if place.ok:
                             placeId=place.json()
                             #print(json.dumps(placeId))
-                            if not "publisher" in record:
-                                record["publisher"]={}
-                            record["publisher"]["location"]={}
+                            if not "editor" in record:
+                                record["editor"]={}
+                            record["editor"]["location"]={}
                             for fields in ["name","@id","sameAs","geo","adressRegion"]:
-                                record["publisher"]["location"][fields]=placeId[0].get(fields)
-                                record["publisher"]["location"][fields]=placeId[0].get(fields)
+                                record["editor"]["location"][fields]=placeId[0].get(fields)
+                                record["editor"]["location"][fields]=placeId[0].get(fields)
                             print(json.dumps(record))
     return record
     
