@@ -138,6 +138,7 @@ context={ "dct:identifier":"http://purl.org/dc/terms/dct:identifier",
           "umbel:isLike":"http://umbel.org/umbel/isLike",
           "dcterms:title":"http://purl.org/dc/terms/title",
           "rdau:P60493":"http://rdaregistry.info/Elements/u/P60493",
+          "rdau:P60327":"http://rdaregistry.info/Elements/u/P60327",
           "bibo:shortTitle":"http://purl.org/ontology/bibo/shortTitle",
           "dcterms:alternative":"http://purl.org/dc/elements/1.1/alternative",
           "dcterms:creator":"http://purl.org/dc/elements/1.1/creator",
@@ -166,9 +167,9 @@ mapping={ "@id":{getAtID:"id"},
           "umbel:isLike":{getProperty:"url"},
           "dcterms:title":{getTitle:"title"},
           "rdau:P60493":{getTitle:["title_part","title_sub"]},
+          "rdau:P60327":{getProperty:"author"},
           "bibo:shortTitle":{getTitle:"title_short"},
           "dcterms:alternative":{getTitle:"title_alt"},
-          "dcterms:creator":{getProperty:"author"},
           "dcterms:contributor":{getProperty:"author2"},
           "dcterms:creator":{getGND:"author_id"},
           "rdau:P60333":{getProperty:"imprint"},
@@ -184,7 +185,7 @@ mapping={ "@id":{getAtID:"id"},
           "rdf:type":{getFormatRdfType:"format_de15"},
           "dct:medium":{getFormatDctMedium:"format_de15"},
           "openAccessContent":{getoAC:"facet_avail"},
-           "offeredBy": {getOfferedBy:"record_id"},
+          "offeredBy": {getOfferedBy:"record_id"},
           }
 
 def process_field(record,source_field):
@@ -220,7 +221,11 @@ def process_line(record):
             mapline[key]=value
     mapline=removeNone(mapline)
     if mapline:
-        mapline["@context"]=context
+        map_context={}
+        for k in mapline:
+            if k in context:
+                map_context[k]=context[k]
+        mapline["@context"]=map_context
         return mapline
     else:
         return None
@@ -231,16 +236,15 @@ def main():
     parser.add_argument('-server',type=str,help="which server to use for harvest, only used for cmd prompt definition")
     args=parser.parse_args()
     if args.gen_cmd:
-        fl=""
+        fl=set()
         for k,v in mapping.items():
             for c,w in v.items():
                 if isinstance(w,str):
-                    fl+=w+","
+                    fl.add(w)
                 elif isinstance(w,list):
                     for elem in w:
-                        fl+=elem+","
-        fl=fl[:-1]
-        print("solrdump -verbose -server {} -q institution:DE-15 -fl {} | {}".format(args.server,fl,sys.argv[0]))
+                        fl.add(elem)
+        print("solrdump -verbose -server {} -q institution:DE-15 -fl {}".format(args.server,','.join(fl)))
         quit()
     for line in sys.stdin:
         target_record=process_line(json.loads(line))
