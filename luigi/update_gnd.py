@@ -114,18 +114,18 @@ class GNDTask(BaseTask):
 
     config={
     #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "urls":["https://data.dnb.de/opendata/Tbgesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tfgesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tggesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tngesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tpgesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tsgesamt2018_10gnd.jsonld.gz",
-               "https://data.dnb.de/opendata/Tugesamt2018_10gnd.jsonld.gz"
+        "urls":["https://data.dnb.de/opendata/authorities-geografikum_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-koerperschaft_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-kongress_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-name_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-person_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-sachbegriff_lds_20190213.jsonld.gz",
+               "https://data.dnb.de/opendata/authorities-werk_lds_20190213.jsonld.gz"
                ],
         "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
         "username":"opendata",
         "password":"opendata",
-        "host":"127.0.0.1",
+        "host":"localhost",
         "indices":{"record":"gnd-records",
                    "bnode":"gnd-bnodes"},
         "port":9200,
@@ -140,7 +140,7 @@ class GNDDownload(GNDTask):
 
     def run(self):
         for url in self.config.get("urls"):
-            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
+            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
             output = shellout(cmdstring)
         return 0
 
