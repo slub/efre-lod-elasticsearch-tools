@@ -20,11 +20,8 @@ def enrichrecord(record,host,port):
                 elif isinstance(wLnode,list):
                     record["location"]=wLnode[0]
                     print(json.dumps(record))
-                    
-    #print(json.dumps(record))
-
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='enrich titledata by DNB-Titledata over ISBN!')
+    parser=argparse.ArgumentParser(description='enrich titledata over Thesis!')
     parser.add_argument('-host',type=str,default="127.0.0.1",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
     parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
@@ -58,58 +55,6 @@ if __name__ == "__main__":
     else:
         search_host=args.host
         search_port=args.port
-    if args.stdin:
-        for line in sys.stdin:
-            isbn10=None
-            isbn13=None
-            record=None
-            rec=json.loads(line)
-            if rec.get("isbn"):
-                if isinstance(rec.get("isbn"),list):
-                    for item in rec.get("isbn"):
-                        if len(item)==10:
-                            isbn10=item
-                        elif len(item)==13:
-                            isbn13=item
-                elif isinstance(rec.get("isbn"),str):
-                    if len(rec.get("isbn"))==10:
-                        isbn10=rec.get("isbn")
-                    elif len(rec.get("isbn"))==13:
-                        isbn13=rec.get("isbn")
-            if isbn10 or isbn13:
-                record=get_gndbyISBN(rec,search_host,search_port,isbn10,isbn13)
-                if record:
-                    rec=record
-            if record or args.pipeline:
-                print(json.dumps(rec,indent=None))
-    elif args.idfile:
-        for rec in esidfilegenerator(host=args.host,
-                       port=args.port,
-                       index=args.index,
-                       type=args.type,
-                       idfile=args.idfile,
-                       headless=True,
-                       timeout=600
-                        ):
-            isbn10=None
-            isbn13=None
-            record=None
-            if rec and rec.get("isbn"):
-                if isinstance(rec.get("isbn"),list):
-                    for item in rec.get("isbn"):
-                        if len(item)==10:
-                            isbn10=item
-                        elif len(item)==13:
-                            isbn13=item
-                elif isinstance(rec.get("isbn"),str):
-                    if len(rec.get("isbn"))==10:
-                        isbn10=rec.get("isbn")
-                    elif len(rec.get("isbn"))==13:
-                        isbn13=rec.get("isbn")
-            if isbn10 or isbn13:
-                record=get_gndbyISBN(rec,search_host,search_port,isbn10,isbn13)
-                if record:
-                    rec=record
     for rec in esgenerator(host=args.host,port=args.port,index=args.index,id=args.id,type=args.type,headless=True,body={"query": {"exists":{"field": "Thesis"}}}):
             enrichrecord(rec,args.host,args.port)
             
