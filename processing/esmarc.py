@@ -2,21 +2,17 @@
 # -*- coding: utf-8 -*-
 from rdflib import URIRef
 import traceback
-from uuid import uuid4
-from multiprocessing import Pool, Manager,current_process,Process,cpu_count
+from multiprocessing import Pool, current_process
 import elasticsearch
 import json
 #import urllib.request
-import codecs
 import argparse
 import sys
 import io
 import os.path
-import mmap
-import requests
-import siphash
 import re
 from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
+from swb_fix import marc2relation
 
 es=None
 entities=None
@@ -59,7 +55,7 @@ def main():
         args.index=args.server.split("/")[3]
         if len(slashsplit)>4:
             args.type=slashsplit[4]
-        if len(slashsplit)>5:
+        elif len(slashsplit)>5:
             if "?pretty" in args.server:
                 args.pretty=True
                 args.id=slashsplit[5].rsplit("?")[0]
@@ -75,16 +71,7 @@ def main():
         tabbing=4
     else:
         tabbing=None
-#    elif args.lookup_host:
-#        lookup_slashsplit=args.lookup_host.split("/")
-#        lookup_host=lookup_slashsplit[2].rsplit(":")[0]
-#        if isint(args.lookup_host.split(":")[2].rsplit("/")[0]):
-#            lookup_port=args.lookup_host.split(":")[2].split("/")[0]
-#    else:
-#        eprint("Please use -host and -port or -server or -lookup_host for searching ids. Or us -generate_ids if you want to produce fresh data")
-#        args.generate_ids=False
-#    if not args.generate_ids:
-#        lookup_es=elasticsearch.Elasticsearch([{"host":lookup_host}],port=lookup_port)
+        
     if args.host and args.index and args.type and args.id:
         json_record=None
         source=get_source_include_str()
@@ -201,354 +188,8 @@ def handlesex(record,key,entity):
         return None
 
 
-isil2sameAs = {
-    "DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
-    "DE-588":"http://d-nb.info/gnd/",
-    "DE-601":"http://gso.gbv.de/PPN?PPN=",
-    "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
-    "(DE-588)":"http://d-nb.info/gnd/",
-    "(DE-601)":"http://gso.gbv.de/PPN?PPN=",
-    "DE-15":"Univeristätsbibliothek Leipzig",
-    "DE-14":"Sächsische Landesbibliothek – Staats- und Universitätsbibliothek Dresden",
-}
-
-marc2relation = {
-    "VD-16 Mitverf": "contributor",
-    "v:Mitverf": "contributor",
-    "v:Co-Autor": "contributor",
-    "v:Doktorvater": "contributor",
-    "v:Illustrator": "contributor",
-    "v:Übersetzer": "contributor",
-    "v:Biograf": "contributor",
-    "v:Förderer": "contributor",
-    "v:Berater": "contributor",
-    "v:hrsg": "contributor",
-    "v:Mitautor": "contributor",
-    "v:Partner": "contributor",
-    
-    "v:Tocher": "children",            #several typos in SWB dataset
-    "tochter": "children",
-    "Z:Tochter":"children",
-    "Sohn": "children",
-    "v:Nachkomme": "children",
-    "v:zweites Kind": "children",
-    
-    "v:Gattin": "spouse",
-    "v:Gatte": "spouse",
-    "v:Gemahl": "spouse",
-    "Ehe": "spouse",
-    "Frau": "spouse",
-    "Mann": "spouse",
-    
-    "v:Jüngster Bruder": "sibling",
-    "Bruder": "sibling",
-    "v:Zwilling": "sibling",
-    "Schwester": "sibling",
-    "v:Halbschwester": "sibling",
-    "v:Halbbruder": "sibling",
-    "Vater": "parent",
-    "Z:Vater":"parent",
-    "v:Stiefvater": "parent",
-    "Mutter": "parent",
-    
-    "Nachfolger": "follows",
-    "Vorgänger": "follows",
-    
-    "v:Vorfahr": "relatedTo",
-        
-    "v:Schüler": "relatedTo",        
-    "Lehrer": "relatedTo",        
-    "v:frühere Ehefrau": "relatedTo",
-    "v:Schwager": "relatedTo",        
-    "v:Ur": "relatedTo",          
-    "v:Muse": "relatedTo",
-    "v:Nachfahre": "relatedTo",         
-    "v:Groß": "relatedTo",    
-    "v:Langjähriger Geliebter": "relatedTo",    
-    "v:Lebensgefährt": "relatedTo",    
-    "v:Nichte": "relatedTo",
-    "v:Stiefnichte": "relatedTo",
-    "v:Neffe": "relatedTo",
-    "v:Onkel": "relatedTo",
-    "v:Tante": "relatedTo",
-    "v:Verlobt": "relatedTo",
-    "v:Vorfahren": "relatedTo",
-    "v:Vetter": "relatedTo",
-    "v:Tauf": "relatedTo",
-    "v:Pate": "relatedTo",
-    "v:Schwägerin": "relatedTo",
-    "v:Schwiegervater": "relatedTo",
-    "v:Schwiegermutter": "relatedTo",
-    "v:Schwiegertochter": "relatedTo",
-    "v:Schwiegersohn": "relatedTo",
-    "v:Enkel": "relatedTo",
-    "v:Mätresse": "relatedTo",
-    "Freund": "knows",
-    "v:Großvater": "relatedTo",
-    "v:Cousin": "relatedTo",
-    "v:Lebenspartner": "relatedTo",
-    "v:Berater und Freund": "relatedTo",
-    "v:Geliebte": "relatedTo",
-    "v:Modell und Lebensgefährtin":"relatedTo",
-    "v:Liebesbeziehung":"relatedTo",
-    
-    "v:publizistische Zusammenarbeit und gemeinsame öffentliche Auftritte": "colleague",
-    "v:Sekretär": "colleague", 
-    "v:Privatsekretär": "colleague", 
-    "v:Kolleg": "colleague", 
-    "v:Mitarbeiter": "colleague", 
-    "v:Kommilitone": "colleague", 
-    "v:Zusammenarbeit mit": "colleague", 
-    "v:gemeinsames Atelier": "colleague", 
-    "v:Geschäftspartner": "colleague" , 
-    "v:musik. Partnerin": "colleague" ,
-    "v:Künstler. Partner": "colleague" ,  
-    "assistent": "colleague",
-    
-    #see also http://www.dnb.de/SharedDocs/Downloads/DE/DNB/standardisierung/inhaltserschliessung/gndCodes.pdf?__blob=publicationFile
-    "4:adel":"honorificPrefix",
-    "4:adre":"recipent",
-    "4:adue":"parentOrganization",
-    "4:affi":"affiliation",
-    #"4:akad":"honorificPrefix",
-    "4:akti":"hasProfession",
-    "4:bezf":"relatedTo",
-    "4:bezb":"colleague",
-    "4:beza":"knows",
-    "4:bete": "contributor",
-    "4:rela":"knows",
-    "4:affi":"knows",
-    "4:aut1":"author",
-}
-
-def gnd2uri(string):
-    try:
-        if isinstance(string,list):
-            for n,uri in enumerate(string):
-                string[n]=gnd2uri(uri)
-            return string
-        if string and "(DE-" in string:
-            if isinstance(string,list):
-                ret=[]
-                for st in string:
-                    ret.append(gnd2uri(st))
-                return ret
-            elif isinstance(string,str):
-                return uri2url(string.split(')')[0][1:],string.split(')')[1])
-    except:
-        return 
-
-def uri2url(isil,num):
-    if isil and num and isil in isil2sameAs:
-        return str(isil2sameAs.get(isil)+num)
-    else:
-        return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
-
-def id2uri(string,entity):
-    global target_id
-    if string.startswith(base_id):
-        string=string.split(base_id_delimiter)[-1]
-    #if entity=="resources":
-    #    return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
-    #else:
-    return str(target_id+entity+"/"+string)
-    
-def getmarcid(record,regex,entity): # in this function we try to get PPNs by fields defined in regex. regex should always be a list and the most "important" field on the left. if we found a ppn in a field, we'll return it
-    for reg in regex:           
-        ret=getmarc(record,reg,entity)
-        if ret:
-            return ret
-
-def getid(record,regex,entity):
-    _id=getmarc(record,regex,entity)
-    if _id:
-        return id2uri(_id,entity)
-
-def get_or_generate_id(record,entity):
-    global es
-    #set generate to True if you're 1st time filling a infrastructure from scratch!
-    # replace args.host with your adlookup service :P
-    if generate:
-        identifier = None
-    else:
-        marcid=getmarcid(record,["980..a","001"],entity)
-        if record.get("003") and marcid:
-            ppn=gnd2uri("("+str(getisil(record,"003",entity))+")"+str(marcid))
-            if ppn:
-                try:
-                    search=lookup_es.search(index=entity,doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":ppn}}},_source=False)
-                    if search.get("hits").get("total")>0:
-                        newlist = sorted(search.get("hits").get("hits"), key=lambda k: k['_score'],reverse=True) 
-                        identifier=newlist[0].get("_id")
-                    else:
-                        identifier=None
-                except Exception as e:
-                    with open("errors.txt",'a') as f:
-                        traceback.print_exc(file=f)
-                    identifier=None
-            else:
-                identifier=None
-        else:
-            identifier=None
-        
-    if identifier:
-        return id2uri(identifier,entity)
-    else:
-        return id2uri(siphash.SipHash_2_4(b'slub-dresden.de/').update(uuid4().bytes).hexdigest().decode('utf-8').upper(),entity)
-
-def getisil(record,regex,entity):
-    isil=getmarc(record,regex,entity)
-    if isinstance(isil,str) and isil in isil2sameAs:
-        return isil
-    elif isinstance(isil,list):
-        for item in isil:
-            if item in isil2sameAs:
-                return item
-
-def getisbn(record,regex,entity):
-    isbns=getmarc(record,regex,entity)
-    if isinstance(isbns,str):
-        isbns=[isbns]
-    if isinstance(isbns,list):
-        for i,isbn in enumerate(isbns):
-            if "-" in isbn:
-                isbns[i]=isbn.replace("-","")
-            if " " in isbn:
-                for part in isbn.rsplit(" "):
-                    if isint(part):
-                        isbns[i]=part
-    
-    if isbns:
-        retarray=[]
-        for isbn in isbns:
-            if len(isbn)==10 or len(isbn)==13:
-                retarray.append(isbn)
-        return retarray
-
-def getmarc(record,regex,entity):
-    if "+" in regex:
-        marcfield=regex[:3]
-        if marcfield in record:
-            subfields=regex.split(".")[-1].split("+")
-            data=None
-            for array in record.get(marcfield):
-                for k,v in array.items():
-                    sset={}
-                    for subfield in v:
-                        for subfield_code in subfield:
-                            sset[subfield_code]=subfield[subfield_code]
-                    fullstr=""
-                    for sf in subfields:
-                        if sf in sset:
-                            if fullstr:
-                                fullstr+=". "
-                            if isinstance(sset[sf],str):
-                                fullstr+=sset[sf]
-                            elif isinstance(sset[sf],list):
-                                fullstr+=". ".join(sset[sf])
-                    if fullstr:
-                        data=litter(data,fullstr)
-            if data:
-                return ArrayOrSingleValue(data)
-    else:
-        ret=[]
-        if isinstance(regex,str):
-            regex=[regex]
-        for string in regex:
-            if string[:3] in record:
-                ret=litter(ret,ArrayOrSingleValue(list(getmarcvalues(record,string,entity))))
-        if ret:
-            if isinstance(ret,list):    #simple deduplizierung via uniq() 
-                ret = list(uniq(ret))
-            return ArrayOrSingleValue(ret)
-
-def getmarcvalues(record,regex,entity):
-        if len(regex)==3 and regex in record:
-            yield record.get(regex)
-        #eprint(regex+":\n"+str(record)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange record encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
-        else:
-            record=record.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
-            if isinstance(record,list):  
-                for elem in record:
-                    if isinstance(elem,dict):
-                        for k in elem:
-                            if isinstance(elem[k],list):
-                                for final in elem[k]:
-                                    if regex[-1] in final:
-                                        yield final.get(regex[-1])
-
-def handle_about(jline,key,entity):
-    ret=[]
-    for k in key:
-        if k=="936" or k=="084":
-            data=getmarc(jline,k,None)
-            if isinstance(data,list):
-                for elem in data:
-                    ret.append(handle_single_rvk(elem))
-            elif isinstance(data,dict):
-                ret.append(handle_single_rvk(data))
-        elif k=="082" or k=="083":
-            data=getmarc(jline,k+"..a",None)
-            if isinstance(data,list):
-                for elem in data:
-                    if isinstance(elem,str):
-                        ret.append(handle_single_ddc(elem))
-                    elif isinstance(elem,list):
-                        for final_ddc in elem:
-                            ret.append(handle_single_ddc(final_ddc))
-            elif isinstance(data,dict):
-                ret.append(handle_single_ddc(data))
-            elif isinstance(data,str):
-                ret.append(handle_single_ddc(data))
-        elif k=="655":
-            data=get_subfield(jline,k,entity)
-            if isinstance(data,list):
-                for elem in data:
-                    if elem.get("identifier"):
-                        elem["value"]=elem.pop("identifier")
-                    ret.append({"identifier":elem})
-            elif isinstance(data,dict):
-                if data.get("identifier"):
-                    data["value"]=data.pop("identifier")
-                ret.append({"identifier":data})
-    if len(ret)>0:
-        return ret
-    else:
-        return None
-            
-def handle_single_ddc(data):
-    ddc={"identifier":{  "@type"     :"PropertyValue",
-                                "propertyID":"DDC",
-                                "value"     :data},
-         "@id":"http://purl.org/NET/decimalised#c"+data[:3]}
-    return ddc
-
-def handle_single_rvk(data):
-    sset={}
-    record={}
-    if "rv" in data:
-        for subfield in data.get("rv"):
-            for k,v in subfield.items():
-                sset[k]=v
-        if "0" in sset:
-            record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
-        if "a" in sset:
-            record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
-            record["identifier"]={  "@type"     :"PropertyValue",
-                                "propertyID":"RVK",
-                                "value"     :sset.get("a")}
-        if "b" in sset:
-            record["name"]=sset.get("b")
-        if "k" in sset:
-            record["keywords"]=sset.get("k")
-        return record
-    
-def handlePPN(jline,key,entity):
-    return {    "@type"     :"PropertyValue",
-                "propertyID":"Pica Product Number",
-                "value"     :jline.get(key)}
-
 def relatedTo(jline,key,entity):
+
     #e.g. split "551^4:orta" to 551 and orta
     marcfield=key[:3]
     data=[]
@@ -624,6 +265,228 @@ def relatedTo(jline,key,entity):
                     
         if data:
             return ArrayOrSingleValue(data)
+
+isil2sameAs = {
+    "DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "DE-588":"http://d-nb.info/gnd/",
+    "DE-601":"http://gso.gbv.de/PPN?PPN=",
+    "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "(DE-588)":"http://d-nb.info/gnd/",
+    "(DE-601)":"http://gso.gbv.de/PPN?PPN=",
+    "DE-15":"Univeristätsbibliothek Leipzig",
+    "DE-14":"Sächsische Landesbibliothek – Staats- und Universitätsbibliothek Dresden",
+}
+
+
+def gnd2uri(string):
+    try:
+        if isinstance(string,list):
+            for n,uri in enumerate(string):
+                string[n]=gnd2uri(uri)
+            return string
+        if string and "(DE-" in string:
+            if isinstance(string,list):
+                ret=[]
+                for st in string:
+                    ret.append(gnd2uri(st))
+                return ret
+            elif isinstance(string,str):
+                return uri2url(string.split(')')[0][1:],string.split(')')[1])
+    except:
+        return 
+
+def uri2url(isil,num):
+    if isil and num and isil in isil2sameAs:
+        return str(isil2sameAs.get(isil)+num)
+    else:
+        return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
+
+def id2uri(string,entity):
+    global target_id
+    if string.startswith(base_id):
+        string=string.split(base_id_delimiter)[-1]
+    #if entity=="resources":
+    #    return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
+    #else:
+    return str(target_id+entity+"/"+string)
+    
+def getid(record,regex,entity):
+    _id=getmarc(record,regex,entity)
+    if _id:
+        return id2uri(_id,entity)
+
+
+def getisil(record,regex,entity):
+    isil=getmarc(record,regex,entity)
+    if isinstance(isil,str) and isil in isil2sameAs:
+        return isil
+    elif isinstance(isil,list):
+        for item in isil:
+            if item in isil2sameAs:
+                return item
+
+def getnumberofpages(record,regex,entity):
+    nop=getmarc(record,regex,entity)
+    try:
+        if isinstance(nop,str):
+            if "S." in nop and isint(nop.split('S.')[0].strip()):
+                nop=int(nop.split('S.')[0].strip())
+        elif isinstance(nop,list):
+            for number in nop:
+                if "S." in number and isint(number.split('S.')[0].strip()):
+                    nop=int(number.split('S.')[0])
+    except IndexError:
+        pass
+    except Exception as e:
+        with open("error.txt","a") as err:
+            print(e,file=err)
+    return nop
+    
+def getgenre(record,regex,entity):
+    genre=getmarc(record,regex,entity)
+    if genre:
+        return {"@type":"Text",
+                "Text":genre}
+
+def getisbn(record,regex,entity):
+    isbns=getmarc(record,regex,entity)
+    if isinstance(isbns,str):
+        isbns=[isbns]
+    elif isinstance(isbns,list):
+        for i,isbn in enumerate(isbns):
+            if "-" in isbn:
+                isbns[i]=isbn.replace("-","")
+            if " " in isbn:
+                for part in isbn.rsplit(" "):
+                    if isint(part):
+                        isbns[i]=part
+    
+    if isbns:
+        retarray=[]
+        for isbn in isbns:
+            if len(isbn)==10 or len(isbn)==13:
+                retarray.append(isbn)
+        return retarray
+
+def getmarc(record,regex,entity):
+    if "+" in regex:
+        marcfield=regex[:3]
+        if marcfield in record:
+            subfields=regex.split(".")[-1].split("+")
+            data=None
+            for array in record.get(marcfield):
+                for k,v in array.items():
+                    sset={}
+                    for subfield in v:
+                        for subfield_code in subfield:
+                            sset[subfield_code]=subfield[subfield_code]
+                    fullstr=""
+                    for sf in subfields:
+                        if sf in sset:
+                            if fullstr:
+                                fullstr+=". "
+                            if isinstance(sset[sf],str):
+                                fullstr+=sset[sf]
+                            elif isinstance(sset[sf],list):
+                                fullstr+=". ".join(sset[sf])
+                    if fullstr:
+                        data=litter(data,fullstr)
+            if data:
+                return ArrayOrSingleValue(data)
+    else:
+        ret=[]
+        if isinstance(regex,str):
+            regex=[regex]
+        for string in regex:
+            if string[:3] in record:
+                ret=litter(ret,ArrayOrSingleValue(list(getmarcvalues(record,string,entity))))
+        if ret:
+            if isinstance(ret,list):    #simple deduplizierung via uniq() 
+                ret = list(uniq(ret))
+            return ArrayOrSingleValue(ret)
+
+#generator object to get marc values like "240.a" or "001". yield is used bc can be single or multi
+def getmarcvalues(record,regex,entity):
+        if len(regex)==3 and regex in record:
+            yield record.get(regex)
+        #eprint(regex+":\n"+str(record)+"\n\n") ### beware! hardcoded traverse algorithm for marcXchange record encoded data !!! ### temporary workaround: http://www.smart-jokes.org/programmers-say-vs-what-they-mean.html
+        else:
+            record=record.get(regex[:3]) # = [{'__': [{'a': 'g'}, {'b': 'n'}, {'c': 'i'}, {'q': 'f'}]}]
+            if isinstance(record,list):  
+                for elem in record:
+                    if isinstance(elem,dict):
+                        for k in elem:
+                            if isinstance(elem[k],list):
+                                for final in elem[k]:
+                                    if regex[-1] in final:
+                                        yield final.get(regex[-1])
+
+def handle_about(jline,key,entity):
+    ret=[]
+    for k in key:
+        if k=="936" or k=="084":
+            data=getmarc(jline,k,None)
+            if isinstance(data,list):
+                for elem in data:
+                    ret.append(handle_single_rvk(elem))
+            elif isinstance(data,dict):
+                ret.append(handle_single_rvk(data))
+        elif k=="082" or k=="083":
+            data=getmarc(jline,k+"..a",None)
+            if isinstance(data,list):
+                for elem in data:
+                    if isinstance(elem,str):
+                        ret.append(handle_single_ddc(elem))
+                    elif isinstance(elem,list):
+                        for final_ddc in elem:
+                            ret.append(handle_single_ddc(final_ddc))
+            elif isinstance(data,dict):
+                ret.append(handle_single_ddc(data))
+            elif isinstance(data,str):
+                ret.append(handle_single_ddc(data))
+        elif k=="655":
+            data=get_subfield(jline,k,entity)
+            if isinstance(data,list):
+                for elem in data:
+                    if elem.get("identifier"):
+                        elem["value"]=elem.pop("identifier")
+                    ret.append({"identifier":elem})
+            elif isinstance(data,dict):
+                if data.get("identifier"):
+                    data["value"]=data.pop("identifier")
+                ret.append({"identifier":data})
+    if len(ret)>0:
+        return ret
+    else:
+        return None
+            
+def handle_single_ddc(data):
+    return {"identifier":{"@type"     :"PropertyValue",
+                          "propertyID":"DDC",
+                          "value"     :data},
+                          "@id":"http://purl.org/NET/decimalised#c"+data[:3]}
+
+def handle_single_rvk(data):
+    sset={}
+    record={}
+    if "rv" in data:
+        for subfield in data.get("rv"):
+            for k,v in subfield.items():
+                sset[k]=v
+        if "0" in sset:
+            record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
+        if "a" in sset:
+            record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
+            record["identifier"]={  "@type"     :"PropertyValue",
+                                "propertyID":"RVK",
+                                "value"     :sset.get("a")}
+        if "b" in sset:
+            record["name"]=sset.get("b")
+        if "k" in sset:
+            record["keywords"]=sset.get("k")
+        return record
+    
+
         
 def get_subfield_if_4(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
@@ -684,18 +547,18 @@ def get_subfields(jline,key,entity):
 
 #whenever you call get_subfield add the MARC21 field to the if/elif/else switch/case thingy with the correct MARC21 field->entity mapping
 def get_subfield(jline,key,entity):
-    if key=="711":
-        entityType="events"
-    elif key=="100" or key=="700":
-        entityType="persons"
-    elif key=="110" or key=="710":
-        entityType="orga"
-    elif key=="689" or key=="550" or key=="655":
-        entityType="tags"
-    elif key=="551":
-        entityType="geo"
-    elif key=="830":
-        entityType="resources"
+    keymap={"100":"persons",
+            "700":"persons",
+            "711":"events",
+            "110":"orga",
+            "710":"orga",
+            "551":"geo",
+            "830":"resources",
+            "689":"tags",
+            "550":"tags",
+            "655":"tags",
+            }
+    entityType=keymap.get(key)
     data=[]
     if key in jline:
         for array in jline[key]:
@@ -788,8 +651,6 @@ def birthDate(jline,key,entity):
     return marc_dates(jline.get(key),"birthDate")
 
 def marc_dates(record,event):
-    data=None
-    subset=None 
     recset={}
     if record:
         for indicator_level in record:
@@ -813,64 +674,23 @@ def marc_dates(record,event):
     else:
         return None
 
-def getparent(jline,key,entity):
-    data=None
-    for i in jline[key[0][0:3]][0]:
-        sset={}
-        for j in jline[key[0][0:3]][0][i]:
-            for k,v in dict(j).items():
-                sset[k]=v
-            conti=False
-            if "9" in sset:
-                if sset["9"]=='4:adue':
-                    conti=True
-            if conti and "0" in sset:
-                data=litter(data,gnd2uri(sset["0"]))
-    if data:
-        return data
-
 def honorificSuffix(jline,key,entity):
     data=None
-    if key[0][:3] in jline:
-        for i in jline.get(key[0][0:3])[0]:
-            sset={}
-            for j in jline.get(key[0][0:3])[0][i]:
-                for k,v in dict(j).items():
-                    sset[k]=v
-                conti=False
-                if "9" in sset:
-                    if sset["9"]=='4:adel' or sset["9"]=='4:akad':
-                            conti=True
-                if conti and "a" in sset:
-                    data=litter(data,sset["a"])
+    if key in jline:
+        for subfield in jline[key]:
+            for i in subfield:
+                sset={}
+                for j in subfield[i]:
+                    for k,v in dict(j).items():
+                        sset[k]=v
+                    conti=False
+                    if "9" in sset:
+                        if sset["9"]=='4:adel' or sset["9"]=='4:akad':
+                                conti=True
+                    if conti and "a" in sset:
+                        data=litter(data,sset["a"])
     if data:
         return data
-
-    
-def hasOccupation(jline,key,entity):
-    data=[]
-    if key[:3] in jline:
-        for i in jline[key[:3]]:
-            conti=False
-            job=None
-            sset={}
-            for k,v in i.items():               # v = [{'0': ['(DE-576)210258373', '(DE-588)4219681-4']}, {'a': 'Romanist'}, {'9': '4:berc'}, {'w': 'r'}, {'i': 'Charakteristischer Beruf'}]
-                for w in v:                     # w = {'0': ['(DE-576)210258373', '(DE-588)4219681-4']}
-                    for c,y in dict(w).items(): # c =0 y = ['(DE-576)210258373', '(DE-588)4219681-4']
-                        sset[c]=y
-            if "9" in sset:                     #sset = {'a': 'Romanist', 'w': 'r', '0': ['(DE-576)210258373', '(DE-588)4219681-4'], 'i': 'Charakteristischer Beruf', '9': '4:berc'}
-                if sset["9"]=='4:berc' or sset["9"]=='4:beru' or sset['9']=='4:akti':
-                        conti=True
-            if conti:
-                if key[-1] in sset:
-                    if isinstance(sset[key[-1]],list):
-                        for field in sset[key[-1]]:
-                            if field[1:7] in isil2sameAs:
-                                data.append(gnd2uri(field))
-    if data:
-        return ArrayOrSingleValue(data)
-
-
 
 def getgeo(arr):
     for k,v in traverse(arr,""):
@@ -992,12 +812,7 @@ def check(ldj,entity):
         v=ArrayOrSingleValue(v)
     if not ldj:
         return
-    if 'genre' in ldj:
-        genre=ldj.pop('genre')
-        ldj['genre']={}
-        ldj['genre']['@type']="Text"
-        ldj['genre']["Text"]=genre
-    #print(ldj.get("_isil"))
+    
     if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
         if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
             ldj["sameAs"]=[ldj["sameAs"]]
@@ -1015,54 +830,18 @@ def check(ldj,entity):
                 ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["identifier"])]
             elif ldj.get("_ppn"):
                 ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["_ppn"])]
-    if 'numberOfPages' in ldj:
-        numstring=ldj.pop('numberOfPages')
-        try:
-            if isinstance(numstring,str):
-                if "S." in numstring and isint(numstring.split('S.')[0].strip()):
-                    num=int(numstring.split('S.')[0].strip())
-                    ldj['numberOfPages']=num
-            elif isinstance(numstring,list):
-                for number in numstring:
-                    if "S." in number and isint(number.split('S.')[0].strip()):
-                        num=int(number.split('S.')[0])
-                        ldj['numberOfPages']=num
-        except IndexError:
-            if isint(numstring):
-                ldj['numberOfPages']=numstring
-            else:
-                pass
-        except Exception as e:
-            with open("error.txt","a") as err:
-                print(e,file=err)
-    #if entity=="Person":
-        #checks=["relatedTo","hasOccupation","birthPlace","deathPlace"]
-        #for key in checks:
-            #if key in ldj:
-                #if isinstance(ldj[key],list):
-                    #for pers in ldj[key]:
-                        #if "@id" not in pers:
-                            #del pers
-                #elif isinstance(ldj[key],dict):
-                    #if "@id" not in ldj[key]:
-                        #ldj.pop(key)
-                #elif isinstance(ldj[key],str):
-                    #ldj.pop(key)
-    for label in ["name","alternativeHeadline","alternateName"]:
-        try:
-            if label in ldj:
-                if isinstance(ldj[label],str):
-                    if ldj[label][-2:]==" /":
-                        ldj[label]=ldj[label][:-2]
-                elif isinstance(ldj[label],list):
-                    for n,i in enumerate(ldj[label]):
-                        if i[-2:]==" /":
-                            ldj[label][n]=i[:-2]
-                    if label=="name":
-                        name=" ".join(ldj[label])
-                        ldj[label]=name
-        except:
-            eprint(ldj,label)
+   
+    for label in ["name","alternativeHeadline","alternateName","nameSub"]:
+        if isinstance(ldj.get(label),str):
+            if ldj[label][-2:]==" /":
+                ldj[label]=ldj[label][:-2]
+        elif isinstance(ldj.get(label),list):
+            for n,i in enumerate(ldj[label]):
+                if i[-2:]==" /":
+                    ldj[label][n]=i[:-2]
+            if label=="name":
+                ldj[label]=" ".join(ldj[label])
+                        
     if "publisherImprint" in ldj:
         if not isinstance(ldj["@context"],list) and isinstance(ldj["@context"],str):
             ldj["@context"]=list([ldj.pop("@context")])
@@ -1225,12 +1004,6 @@ def process_line(jline,host,port,index,type):
             mapline["isBasedOn"]=target_id+"source/"+index+"/"+getmarc(jline,"001",None)
         return {entity:mapline}
     
-def output(entity,mapline,outstream):
-    if outstream:
-        outstream[entity].write(json.dumps(mapline,indent=None)+"\n")
-    else:
-        sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
-        sys.stdout.flush()
 
 
 def setupoutput(prefix):
@@ -1248,8 +1021,6 @@ def setupoutput(prefix):
 def init_mp(h,p,pr):
     global host
     global port
-    global outstream
-    global filepaths
     global prefix
     if not pr:
         prefix = ""
@@ -1259,8 +1030,6 @@ def init_mp(h,p,pr):
         prefix=pr
     port = p
     host = h
-    outstream={}
-    filepaths=[]
 
 def worker(ldj):
     #out={}
@@ -1319,13 +1088,13 @@ entities = {
         "single:Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
         "multi:issn"                       :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
         "multi:isbn"                       :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
-        "multi:genre"                      :{getmarc:"655..a"},
+        "multi:genre"                      :{getgenre:"655..a"},
         "multi:hasPart"                    :{getmarc:"773..g"},
         "multi:isPartOf"                   :{getmarc:["773..t","773..s","773..a"]}, 
         "multi:partOfSeries"               :{get_subfield:"830"},
         "single:license"                   :{getmarc:"540..a"},
         "multi:inLanguage"                 :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "single:numberOfPages"             :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "single:numberOfPages"             :{getnumberofpages:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
         "single:pageStart"                 :{getmarc:"773..q"},
         "single:issueNumber"               :{getmarc:"773..l"},
         "single:volumeNumer"               :{getmarc:"773..v"},
@@ -1383,7 +1152,7 @@ entities = {
         "single:hasOccupation" :{get_subfield:"550"},
         "single:birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
         "single:deathPlace"    :{get_subfield_if_4:"551^4:orts"},
-        "single:honorificSuffix" :{honorificSuffix:["550..0","550..i","550..a","550..9"]},
+        "single:honorificSuffix" :{honorificSuffix:"550"},
         "single:birthDate"     :{birthDate:"548"},
         "single:deathDate"     :{deathDate:"548"},
         "single:workLocation"  :{get_subfield_if_4:"551^4:ortw"},
