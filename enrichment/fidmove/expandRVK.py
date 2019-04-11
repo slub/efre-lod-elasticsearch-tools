@@ -18,20 +18,19 @@ def FuckUpWithRVKs(tree):
             yield rvks
 
 def enrichrecord(record):
-    newAbout=[]
-    for rvk in record.get("about"):
+    change=False
+    for n,rvk in enumerate(record.get("about")):
         if rvk.get("identifier").get("propertyID")=="RVK":
             rvktree=requests.get(rvk.get("@id"))
             if rvktree.ok:
+                change=True
+                record["about"][n]["keywords"]=[]
                 for name, uri in FuckUpWithRVKs(rvktree.json()):
-                    newAbout.append({"name":name,
-                                     "@id":uri,
-                                     "identifier":{"value":uri.split("/")[-1],
-                                                   "propertyID":"RVK",
-                                                   "@type":"PropertyValue"}
+                    if uri!=rvk.get("@id"):
+                        record["about"][n]["keywords"].append({"name":name,
+                                     "@id":uri
                                      })
-    if newAbout:
-        record["about"]=litter(record.get("about"),newAbout)
+    if change:
         print(json.dumps(record))
                 
                     
