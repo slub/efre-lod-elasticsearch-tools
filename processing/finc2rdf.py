@@ -86,7 +86,7 @@ def getFormatRdfType(record,prop):
                             }
     value=getformat(record,prop,formatmapping)
     if value:
-        return value
+        return {"@id":context.get(value)}
                    
 
 def getFormatDctMedium(record,prop):
@@ -101,10 +101,10 @@ def getFormatDctMedium(record,prop):
 def getOfferedBy(record,prop):
         if record.get(prop):
             return {
-           "@type": "Offer",
+           "@type": "http://schema.org/Offer",
            "offeredBy": {
                 "@id": "https://data.finc.info/resource/organisation/DE-15",
-                "@type": "Library",
+                "@type": "http://schema.org/Library",
                 "name": "Univeristätsbibliothek Leipzig",
                 "branchCode": "DE-15"
             },
@@ -132,9 +132,18 @@ def getProperty(record,prop):
 
 #           "target_field":{function:"source_field"}}
 
-context={ "dct:identifier":"http://purl.org/dc/terms/identifier",
+context={ 
+          "dct:identifier":"http://purl.org/dc/terms/identifier",
+          "dct:medium":"http://purl.org/dc/terms/medium",
           "bibo:issn":"http://purl.org/ontology/bibo/issn",
           "bibo:isbn":"http://purl.org/ontology/bibo/isbn",
+          "bibo:Article":"http://purl.org/ontology/bibo/Article",
+          "bibo:Periodical":"http://purl.org/ontology/bibo/Periodical",
+          "bibo:Manuscript":"http://purl.org/ontology/bibo/Manuscript",
+          "bibo:Map":"http://purl.org/ontology/bibo/Map",
+          "bibo:Thesis":"http://purl.org/ontology/bibo/Thesis",
+          "bibo:Document":"http://purl.org/ontology/bibo/Document",
+          "bibo:AudioVisualDocument":"http://purl.org/ontology/bibo/AudioVisualDocument",
           "umbel:isLike":"http://umbel.org/umbel/isLike",
           "dct:title":"http://purl.org/dc/terms/title",
           "rdau:P60493":"http://rdaregistry.info/Elements/u/P60493",
@@ -156,11 +165,12 @@ context={ "dct:identifier":"http://purl.org/dc/terms/identifier",
           "offeredBy":"http://schema.org/offeredBy",
           "Offer":"http://schema.org/Offer",
           "Library":"http://schema.org/Library"
-
           }
 
+
+
 mapping={ "@id":{getAtID:"id"},
-          "dct:identifier":{getIDs:["record_id","swb_id_str","kxp_id_str","source_id"]},
+          "dct:identifier":{getIDs:["record_id","swb_id_str","kxp_id_str"]},
           "bibo:issn":{getProperty:"issn"},
           "bibo:isbn":{getProperty:"isbn"},
           "umbel:isLike":{getProperty:"url"},
@@ -181,7 +191,7 @@ mapping={ "@id":{getAtID:"id"},
           "dct:isPartOf":{getProperty:"hierarchy_top_id"},
           "dct:bibliographicCitation":{getProperty:["container_title","container_reference"]},
           "dct:isPartOf":{getProperty:"hierarchy_parent_id"},
-          "rdf:type":{getFormatRdfType:"format_de15"},
+          "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_de15"},
           "dct:medium":{getFormatDctMedium:"format_de15"},
           "openAccessContent":{getoAC:"facet_avail"},
           "offeredBy": {getOfferedBy:"record_id"},
