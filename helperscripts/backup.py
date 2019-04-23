@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 import json
-import bz2
+import gzip
 import argparse
-from es2json import esgenerator
+from es2json import esfatgenerator
 
 # script needs a config file to know which indices to save. can be multiple machines
 #[
@@ -52,14 +52,18 @@ if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Backup your ES-Index')
     parser.add_argument('-help',action="store_true",help="print this help")
+    parser.add_argument('-conf',type=str,default="backup_conf.json",help="where to look for the backup configuration")
     args=parser.parse_args()
     if args.help:
         parser.print_help(sys.stderr)
         exit()
-    with open("backup_conf.json","r") as con:
+    with open(args.conf,"r") as con:
         conf=json.load(con)
         for machine in conf:
             for index in machine.get("indices"):
-                with bz2.open("{}-{}-{}.ldj.bz2".format(machine.get("host"),machine.get("port"),index) ,"wt") as fileout:
-                    for record in esgenerator(host=machine.get("host"),port=machine.get("port"),index=index,headless=True):
-                        print(json.dumps(record),file=fileout)
+                for records in esfatgenerator(host=machine.get("host"),port=machine.get("port"),index=index):
+                    if records:
+                        with gzip.open("{}-{}-{}-{}.ldj.gz".format(machine.get("host"),machine.get("port"),index,records[0].get("_type")) ,"at") as fileout:
+                            for record in records:
+                                print(json.dumps(record),file=fileout)
+                        
