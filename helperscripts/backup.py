@@ -2,52 +2,34 @@
 import json
 import gzip
 import argparse
+import traceback
 from es2json import esfatgenerator
+from multiprocessing import Pool
 
 # script needs a config file to know which indices to save. can be multiple machines
 #[
   #{
     #"host": "es_host",
     #"port": 9200,
-    #"indices": [
-      #"tags",
-      #"gnd-subjects",
-      #"ddc",
-      #"dnb-jobs",
-      #"geo",
-      #"gnd-records",
-      #"gvi-tit",
-      #"persons",
-      #"slub-resources",
-      #"gvi-tit-new",
-      #"swb-aut",
-      #"resources-fidmove",
-      #"orga",
-      #"works",
-      #"tages",
-      #"dnb-titel",
-      #"resources",
-      #"events",
-      #"gnd-bnodes"
-    #]
-  #},
+    #"index": "tags"},
   #{
     #"host": "localhost",
     #"port": 9201,
-    #"indices": [
-      #"ef",
-      #"date",
-      #"fidmove-enriched-aut",
-      #"kibana",
-      #"geonames",
-      #"finc-main",
-      #"dnb-titel",
-      #"resources-fidmovetest"
-    #]
+    #"index":"ef",
   #}
 #]
 
-
+def backup(conf):
+    try:
+        for records in esfatgenerator(host=conf.get("host"),port=conf.get("port"),index=conf.get("index")):
+            if records:
+                with gzip.open("{}-{}-{}-{}.ldj.gz".format(conf.get("host"),conf.get("port"),conf.get("index"),records[0].get("_type")) ,"at") as fileout:
+                    for record in records:
+                        print(json.dumps(record),file=fileout)
+    except Exception as e:
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
+    
 if __name__ == "__main__":
     #argstuff
     parser=argparse.ArgumentParser(description='Backup your ES-Index')
@@ -59,11 +41,6 @@ if __name__ == "__main__":
         exit()
     with open(args.conf,"r") as con:
         conf=json.load(con)
-        for machine in conf:
-            for index in machine.get("indices"):
-                for records in esfatgenerator(host=machine.get("host"),port=machine.get("port"),index=index):
-                    if records:
-                        with gzip.open("{}-{}-{}-{}.ldj.gz".format(machine.get("host"),machine.get("port"),index,records[0].get("_type")) ,"at") as fileout:
-                            for record in records:
-                                print(json.dumps(record),file=fileout)
+        p=Pool(4)
+        p.map(backup,conf)
                         
