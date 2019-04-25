@@ -138,7 +138,7 @@ class LODProcessFromRdi(LODTask):
         return LODFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
@@ -163,9 +163,9 @@ class LODUpdate(LODTask):
         enrichmentstr=[]
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):                                        ### doing several enrichment things before indexing the data
-                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && " #with -pipeline, all the data get's thru, not only enriched docs
+                cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && zcat {fd} | ".format(fd=path+"/"+index+"/"+f)#with -pipeline, all the data get's thru, not only enriched docs
                 #cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host}  | ".format(**self.config)
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} < {fd} | ".format(**self.config,fd=path+"/"+index+"/"+f)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host}  | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
                 if index=="geo":
