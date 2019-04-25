@@ -11,6 +11,7 @@ import sys
 import io
 import os.path
 import re
+import gzip
 from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
 from swb_fix import marc2relation
 
@@ -33,6 +34,7 @@ def main():
     parser.add_argument('-index',type=str,help='ElasticSearch Index to use')
     parser.add_argument('-id',type=str,help='map single document, given by id')
     parser.add_argument('-help',action="store_true",help="print this help")
+    parser.add_argument('-z',action="store_true",help="use gzip compression on output data")
     parser.add_argument('-prefix',type=str,default="ldj/",help='Prefix to use for output data')
     parser.add_argument('-debug',action="store_true",help='Dump processed Records to stdout (mostly used for debug-purposes)')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
@@ -55,7 +57,7 @@ def main():
         args.index=args.server.split("/")[3]
         if len(slashsplit)>4:
             args.type=slashsplit[4]
-        elif len(slashsplit)>5:
+        if len(slashsplit)>5:
             if "?pretty" in args.server:
                 args.pretty=True
                 args.id=slashsplit[5].rsplit("?")[0]
@@ -80,7 +82,7 @@ def main():
             print(json.dumps(process_line(json_record,args.host,args.port,args.index,args.type),indent=tabbing))
     elif args.host and args.index and args.type and args.idfile:
         setupoutput(args.prefix)
-        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix,args.z))
         for ldj in esidfilegenerator(host=args.host,
                        port=args.port,
                        index=args.index,
@@ -93,7 +95,7 @@ def main():
         pool.close()
         pool.join()
     elif args.host and args.index and args.type and args.debug:
-        init_mp(args.host,args.port,None)
+        init_mp(args.host,args.port,args.prefix,args.z)
         for ldj in esgenerator(host=args.host,
                        port=args.port,
                        index=args.index,
@@ -108,7 +110,7 @@ def main():
                     print(json.dumps(record[k],indent=None))
     elif args.host and args.index and args.type : #if inf not set, than try elasticsearch
         setupoutput(args.prefix)
-        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix))
+        pool = Pool(args.w,initializer=init_mp,initargs=(args.host,args.port,args.prefix,args.z))
         for ldj in esfatgenerator(host=args.host,
                        port=args.port,
                        index=args.index,
@@ -121,7 +123,7 @@ def main():
         pool.join()
     else: #oh noes, no elasticsearch input-setup. then we'll use stdin
         eprint("No host/port/index specified, trying stdin\n")
-        init_mp("localhost","DEBUG","DEBUG")
+        init_mp("localhost","DEBUG","DEBUG","DEBUG")
         with io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8') as input_stream:
             for line in input_stream:
                 ret=process_line(json.loads(line),"localhost",9200,"data","mrc")
@@ -162,7 +164,7 @@ def dateToEvent(date,schemakey):
         if date[0]=='[' and date[-1]==']': #oh..
             return str("["+dateToEvent(date[1:-1],schemakey)+"]")        
         if "irth" in schemakey: # (date of d|D)eath(Dates)
-                return getiso8601(dates[0])
+            return getiso8601(dates[0])
         elif "eath" in schemakey: #(date of d|D)eath(Date)
             if len(dates)==2:
                 return getiso8601(dates[1])
@@ -329,12 +331,13 @@ def getnumberofpages(record,regex,entity):
     nop=getmarc(record,regex,entity)
     try:
         if isinstance(nop,str):
-            if "S." in nop and isint(nop.split('S.')[0].strip()):
-                nop=int(nop.split('S.')[0].strip())
-        elif isinstance(nop,list):
+            nop=[nop]
+        if isinstance(nop,list):
             for number in nop:
                 if "S." in number and isint(number.split('S.')[0].strip()):
                     nop=int(number.split('S.')[0])
+                else:
+                    nop=None
     except IndexError:
         pass
     except Exception as e:
@@ -446,15 +449,13 @@ def handle_about(jline,key,entity):
                 ret.append(handle_single_ddc(data))
         elif k=="655":
             data=get_subfield(jline,k,entity)
+            if isinstance(data,dict):
+                data=[data]
             if isinstance(data,list):
                 for elem in data:
                     if elem.get("identifier"):
                         elem["value"]=elem.pop("identifier")
                     ret.append({"identifier":elem})
-            elif isinstance(data,dict):
-                if data.get("identifier"):
-                    data["value"]=data.pop("identifier")
-                ret.append({"identifier":data})
     if len(ret)>0:
         return ret
     else:
@@ -661,8 +662,8 @@ def marc_dates(record,event):
                         if k=="a" or k=="9":
                             sset[k]=v
                 if isinstance(sset.get("9"),str):
-                    recset[sset['9']]=sset.get("a")
-                elif isinstance(sset.get("9"),list):
+                    sset["9"]=[sset.get("9")]
+                if isinstance(sset.get("9"),list):
                     for elem in sset.get("9"):
                         if elem.startswith("4:dat"):
                             recset[elem]=sset.get("a")
@@ -716,17 +717,8 @@ def getav_katalogbeta(record,key,entity):#key should be a string: 001
     branchCode=getmarc(record,key[0],entity)
     #eprint(branchCode,finc_id)
     if finc_id and isinstance(branchCode,str) and branchCode=="DE-14":
-        retOffers.append({
-           "@type": "Offer",
-           "offeredBy": {
-                "@id": "http://data.slub-dresden.de/orga/195657810",
-                "@type": "Library",
-                "name": isil2sameAs.get(branchCode),
-                "branchCode": "DE-14"
-            },
-           "availability": "https://katalogbeta.slub-dresden.de/id/"+finc_id
-       })
-    elif finc_id and isinstance(branchCode,list):
+        branchCode=[branchCode]
+    if finc_id and isinstance(branchCode,list):
         for bc in branchCode:
             if bc=="DE-14":
                 retOffers.append({
@@ -739,7 +731,7 @@ def getav_katalogbeta(record,key,entity):#key should be a string: 001
             },
            "availability": "https://katalogbeta.slub-dresden.de/id/"+finc_id
        })
-    if len(retOffers)>0:
+    if retOffers:
         return retOffers
         
 
@@ -747,18 +739,9 @@ def getav(record,key,entity):
     retOffers=list()
     offers=getmarc(record,[0],entity)
     ppn=getmarc(record,key[1],entity)
-    if ppn and isinstance(offers,str) and offers in isil2sameAs:
-        retOffers.append({
-           "@type": "Offer",
-           "offeredBy": {
-                "@id": "https://data.finc.info/resource/organisation/"+offers,
-                "@type": "Library",
-                "name": isil2sameAs.get(offers),
-                "branchCode": offers
-            },
-           "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offers+":ppn:"+ppn
-       })
-    elif ppn and isinstance(offers,list):
+    if isinstance(offers,str):
+        offers=[offers]
+    if ppn and isinstance(offers,list):
         for offer in offers:
             if offer in isil2sameAs:
                 retOffers.append({
@@ -771,7 +754,7 @@ def getav(record,key,entity):
             },
            "availability": "http://data.ub.uni-leipzig.de/item/wachtl/"+offer+":ppn:"+ppn
                })
-    if len(retOffers)>0:
+    if retOffers:
         return retOffers
 
 def removeNone(obj):
@@ -865,7 +848,6 @@ def check(ldj,entity):
                 ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
     if "sameAs" in ldj:
         ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
-            
     return single_or_multi(ldj,entity)
 
 def single_or_multi(ldj,entity):
@@ -873,7 +855,7 @@ def single_or_multi(ldj,entity):
         for key,value in ldj.items():
             if key in k:
                 if "single" in k:
-                    continue #what to do if there's an array here?
+                    ldj[key]=ArrayOrSingleValue(value)
                 elif "multi" in k:
                     if not isinstance(value,list):
                         ldj[key]=[value]
@@ -965,14 +947,14 @@ def process_field(record,value,entity):
     ret=[]
     if isinstance(value,dict):
         for function,parameter in value.items():
-            ret.append(function(record,parameter,entity))
+            ret.append(function(record,parameter,entity))   #Function with parameters defined in mapping
     elif isinstance(value,str):
         return value
     elif isinstance(value,list):
         for elem in value:
             ret.append(ArrayOrSingleValue(process_field(record,elem,entity)))
     elif callable(value):
-        return ArrayOrSingleValue(value(record,entity))
+        return ArrayOrSingleValue(value(record,entity)) #Function without paremeters defined in mapping
     if ret:
         return ArrayOrSingleValue(ret)
 
@@ -1018,16 +1000,18 @@ def setupoutput(prefix):
         if not os.path.isdir(prefix+entity):
             os.mkdir(prefix+entity)
 
-def init_mp(h,p,pr):
+def init_mp(h,p,pr,z):
     global host
     global port
     global prefix
+    global comp
     if not pr:
         prefix = ""
     elif pr[-1]!="/":
         prefix=pr+"/"
     else:
         prefix=pr
+    comp=z
     port = p
     host = h
 
@@ -1036,31 +1020,37 @@ def worker(ldj):
     #for entity in entities:
     #    out[entity]=open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a")
     try:
+        if isinstance(ldj,dict):
+            ldj=[ldj]
         if isinstance(ldj,list):    # list of records
             for source_record in ldj:
                 target_record=process_line(source_record.pop("_source"),host,port,source_record.pop("_index"),source_record.pop("_type"))
                 if target_record:
                     for entity in target_record:
-                        with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
+                        name=prefix+entity+"/"+str(current_process().name)+"-records.ldj"
+                        if comp:
+                            opener=gzip.open
+                            name+=".gz"
+                        else:
+                            opener=open
+                        with opener(name,"at") as out:
                             print(json.dumps(target_record[entity],indent=None),file=out)
-        elif isinstance(ldj,dict): # single record
-            target_record=process_line(ldj.pop("_source"),host,port,ldj.pop("_index"),ldj.pop("_type"))
-            if target_record:
-                for entity in target_record:
-                    with open(prefix+entity+"/"+str(current_process().name)+"-records.ldj","a") as out:
-                        print(json.dumps(target_record[entity],indent=None),file=out)
     except Exception as e:
         with open("errors.txt",'a') as f:
             traceback.print_exc(file=f)
         
         
-#
-# Mapping:
-# a dict() (json) like table with function pointers
-#
-#
-#
-#
+"""Mapping:
+ a dict() (json) like table with function pointers
+ entitites={"entity_types:{"single_or_multi:target":"string",
+                           "single_or_multi:target":{function:"source"},
+                           "single_or_multi:target:function}
+                           }
+ 
+"""
+
+
+
 
 entities = {
    "resources":{   # mapping is 1:1 like works
@@ -1129,7 +1119,7 @@ entities = {
         "single:isPartOf"          :{getmarc:["773..t","773..s","773..a"]},
         "single:license"           :{getmarc:"540..a"},
         "multi:inLanguage"        :{getmarc:["377..a","041..a","041..d","130..l","730..l"]},
-        "single:numberOfPages"     :{getmarc:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
+        "single:numberOfPages"     :{getnumberofpages:["300..a","300..b","300..c","300..d","300..e","300..f","300..g"]},
         "single:pageStart"         :{getmarc:"773..q"},
         "single:issueNumber"       :{getmarc:"773..l"},
         "single:volumeNumer"       :{getmarc:"773..v"},

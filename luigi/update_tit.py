@@ -31,7 +31,7 @@ class LODTITTask(BaseTask):
         config = json.load(data_file)
         
     TAG = 'lodtit'
-    
+# deprecated 
 class LODTITSolrHarvesterMakeConfig(LODTITTask):
     
     def run(self):
@@ -43,6 +43,7 @@ class LODTITSolrHarvesterMakeConfig(LODTITTask):
     def output(self):
         return luigi.LocalTarget(self.now+".conf")
 
+# deprecated 
 class LODTITDownload(LODTITTask):
     def requires(self):
         return LODTITSolrHarvesterMakeConfig()
@@ -71,24 +72,25 @@ class LODTITDownloadSolrHarvester(LODTITTask):
         r=get("{host}/date/actual/2".format(**self.config))
         lu=r.json().get("_source").get("date")
         cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py > {date}.mrc".format(last=lu,now=self.now,host=self.config.get("url"),date=self.date)
-        print(cmdstring)
         output = shellout(cmdstring)
+        
     
     def output(self):
         return luigi.LocalTarget(self.date+".mrc")
-
+    
 class LODTITTransform2ldj(LODTITTask):
     
     def requires(self):
         #return LODTITDownload()
         return LODTITDownloadSolrHarvester()
     def run(self):
-        cmdstring="cat {date}.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
-        #cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
-        output=shellout(cmdstring)
-        with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as outp, open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
-            for rec in inp:
-                print(json.loads(rec).get("001"),file=outp)
+        if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
+            cmdstring="cat {date}.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
+            #cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
+            output=shellout(cmdstring)
+            with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as outp, open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
+                for rec in inp:
+                    print(json.loads(rec).get("001"),file=outp)
         #shutil.rmtree(str(self.date))
         return 0
     
@@ -96,12 +98,18 @@ class LODTITTransform2ldj(LODTITTask):
         return luigi.LocalTarget("{date}-ppns.txt".format(date=self.date))
 
     def complete(self):
+        try:
+            filesize=os.stat("{date}.mrc".format(date=self.date)).st_size
+        except FileNotFoundError:
+                return False
         if os.path.exists("{date}-ppns.txt".format(date=self.date)):
             try:
                 os.listdir("{date}".format(date=self.date))
                 return False
             except:
                 return True
+        elif filesize == 0:
+            return True
         else:
             return False
     
@@ -117,8 +125,9 @@ class LODTITFillRawdataIndex(LODTITTask):
         #put_dict("{host}/finc-main-{date}".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
         #put_dict("{host}/finc-main-{date}/_settings".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"index.mapping.total_fields.limit":20000})
         
-        cmd="esbulk -verbose -server {rawdata_host} -w {workers} -index finc-main -type mrc -id 001 {date}.ldj""".format(**self.config,date=self.date)
-        output=shellout(cmd)
+        if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
+            cmd="esbulk -verbose -server {rawdata_host} -w {workers} -index finc-main -type mrc -id 001 {date}.ldj""".format(**self.config,date=self.date)
+            output=shellout(cmd)
 
     def complete(self):
         fail=0
@@ -127,28 +136,35 @@ class LODTITFillRawdataIndex(LODTITTask):
         es_ids=set()
         
         try:
-            for record in esidfilegenerator(host="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="finc-main",type="mrc",idfile="{date}-ppns.txt".format(**self.config,date=self.date),source="False"):
-                es_ids.add(record.get("_id"))
-            es_recordcount=len(es_ids)
-        
-            with open("{date}.ldj".format(**self.config,date=self.date),"r") as fd:
-                ids=set()
-                for line in fd:
-                    jline=json.loads(line)
-                    ids.add(jline.get("001"))
-            file_recordcount=len(ids)
-            print(file_recordcount)
-            if es_recordcount==file_recordcount and es_recordcount>0:
-                return True
+            filesize=os.stat("{date}.mrc".format(date=self.date)).st_size
         except FileNotFoundError:
-            if os.path.exists("{date}".format(date=self.date)):
-                try:
-                    os.listdir("{date}".format(date=self.date))
-                    return False
-                except:
+                return False
+        if filesize > 0:
+            try:
+                for record in esidfilegenerator(host="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="finc-main",type="mrc",idfile="{date}-ppns.txt".format(**self.config,date=self.date),source="False"):
+                    es_ids.add(record.get("_id"))
+                    es_recordcount=len(es_ids)
+        
+                with open("{date}.ldj".format(**self.config,date=self.date),"r") as fd:
+                    ids=set()
+                    for line in fd:
+                        jline=json.loads(line)
+                        ids.add(jline.get("001"))
+                file_recordcount=len(ids)
+                print(file_recordcount)
+                if es_recordcount==file_recordcount and es_recordcount>0:
                     return True
+            except FileNotFoundError:
+                if os.path.exists("{date}".format(date=self.date)):
+                    try:
+                        os.listdir("{date}".format(date=self.date))
+                        return False
+                    except:
+                        return True
+                return False
             return False
-        return False
+        else:
+            return True
     
 class LODTITProcessFromRdi(LODTITTask):
     
@@ -156,20 +172,26 @@ class LODTITProcessFromRdi(LODTITTask):
         return LODTITFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -server {rawdata_host}/finc-main/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
-        output=shellout(cmd)
-        sleep(5)
+        if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
+            output=shellout(cmd)
+            sleep(5)
         
     def complete(self):
-        returnarray=[]
-        path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
         try:
-            for index in os.listdir(path):
-                for f in os.listdir(path+"/"+index):
-                    if not os.path.isfile(path+"/"+index+"/"+f):
-                        return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
+            filesize=os.stat("{date}.mrc".format(date=self.date)).st_size
         except FileNotFoundError:
-            return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
+                return False
+        if filesize > 0:
+            returnarray=[]
+            path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
+            try:
+                for index in os.listdir(path):
+                    for f in os.listdir(path+"/"+index):
+                        if not os.path.isfile(path+"/"+index+"/"+f):
+                            return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
+            except FileNotFoundError:
+                return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
         return True
     
 class LODTITUpdate(LODTITTask):
@@ -178,11 +200,13 @@ class LODTITUpdate(LODTITTask):
         return LODTITProcessFromRdi()
     
     def run(self):
-        path="{date}-data".format(date=self.date)
-        for index in os.listdir(path):
-            for f in os.listdir(path+"/"+index):
-                cmd="esbulk -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier {fd}".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
-                output=shellout(cmd)
+        
+        if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
+            path="{date}-data".format(date=self.date)
+            for index in os.listdir(path):
+                for f in os.listdir(path+"/"+index):
+                    cmd="esbulk -z -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier {fd}".format(**self.config,index=index,fd=path+"/"+index+"/"+f)
+                    output=shellout(cmd)
         #for f in os.listdir(path+"/resources"):
         #    cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && "
         #    cmd+="~/git/efre-lod-elasticsearch-tools/processing/merge2move.py -server {host} -stdin < {fd} | ".format(**self.config,fd=path+"/resources/"+f)
@@ -192,10 +216,16 @@ class LODTITUpdate(LODTITTask):
         put_dict("{host}/date/actual/2".format(**self.config),{"date":str(self.now)})
             
     def complete(self):
-        r=get("{host}/date/actual/2".format(**self.config))
-        if r.ok:
-            lu=r.json().get("_source").get("date")
-            if lu==self.now:
+        try:
+            if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
+                r=get("{host}/date/actual/2".format(**self.config))
+                if r.ok:
+                    lu=r.json().get("_source").get("date")
+                    if lu==self.now:
+                        return True
+                return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
+            else:
                 return True
-        return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
+        except FileNotFoundError:
+            return False
 
