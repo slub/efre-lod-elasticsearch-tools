@@ -510,7 +510,7 @@ def get_subfield_if_4(jline,key,entity):
                             if "ort" in key:
                                 node["@id"]=id2uri(sset.get("0"),"geo")
                             elif "adue" in key:
-                                node["@id"]=id2uri(sset.get("0"),"orga")
+                                node["@id"]=id2uri(sset.get("0"),"organizations")
                         elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
                             node["sameAs"]=uri
                         elif isinstance(uri,str):
@@ -523,7 +523,7 @@ def get_subfield_if_4(jline,key,entity):
                                     if "ort" in key:
                                         node["@id"]=id2uri(elem.split("=")[-1],"geo")
                                     elif "adue" in key:
-                                        node["@id"]=id2uri(elem.split("=")[-1],"orga")
+                                        node["@id"]=id2uri(elem.split("=")[-1],"organizations")
                                 elif elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
@@ -551,13 +551,13 @@ def get_subfield(jline,key,entity):
     keymap={"100":"persons",
             "700":"persons",
             "711":"events",
-            "110":"orga",
-            "710":"orga",
+            "110":"organizations",
+            "710":"organizations",
             "551":"geo",
             "830":"resources",
-            "689":"tags",
-            "550":"tags",
-            "655":"tags",
+            "689":"topics",
+            "550":"topics",
+            "655":"topics",
             }
     entityType=keymap.get(key)
     data=[]
@@ -578,7 +578,7 @@ def get_subfield(jline,key,entity):
                             entityType="persons"
                         elif sset.get(typ)=="b":
                             node["@type"]+="Organization"
-                            entityType="orga"
+                            entityType="organizations"
                         elif sset.get(typ)=="f":
                             node["@type"]+="Event"
                             entityType="events"
@@ -724,7 +724,7 @@ def getav_katalogbeta(record,key,entity):#key should be a string: 001
                 retOffers.append({
            "@type": "Offer",
            "offeredBy": {
-                "@id": "http://data.slub-dresden.de/orga/195657810",
+                "@id": "http://data.slub-dresden.de/organizations/195657810",
                 "@type": "Library",
                 "name": isil2sameAs.get(bc),
                 "branchCode": "DE-14"
@@ -876,8 +876,8 @@ def cleanup_sameAs(sameAs):
 map_entities={
         "p":"persons",      #Personen, individualisiert
         "n":"persons",      #Personen, namen, nicht individualisiert
-        "s":"tags",        #Schlagwörter/Berufe
-        "b":"orga",         #Organisationen
+        "s":"topics",        #Schlagwörter/Berufe
+        "b":"organizations",         #Organisationen
         "g":"geo",          #Geographika
         "u":"works",     #Werktiteldaten
         "f":"events"
@@ -1148,7 +1148,7 @@ entities = {
         "single:workLocation"  :{get_subfield_if_4:"551^4:ortw"},
         "single:about"                     :{handle_about:["936","084","083","082","655"]},
     },
-    "orga": {
+    "organizations": {
         "single:@type"             :"Organization",
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
@@ -1183,7 +1183,7 @@ entities = {
         "single:adressRegion"      :{getmarc:"043..c"},
         "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
-    "tags":{         
+    "topics":{         
         "single:@type"             :"Thing",
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
