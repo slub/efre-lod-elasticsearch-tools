@@ -218,9 +218,9 @@ def relatedTo(jline,key,entity):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith(base_id):
+                                if elem and elem.startswith(base_id):
                                     node["@id"]=id2uri(elem.split("=")[-1],"persons")
-                                elif elem.startswith("http") and not elem.startswith(base_id):
+                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -254,11 +254,11 @@ def relatedTo(jline,key,entity):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith(base_id):
+                                if elem and elem.startswith(base_id):
                                     node["@id"]=id2uri(elem.split("=")[-1],"persons")
-                                elif elem.startswith("http") and not elem.startswith(base_id):
+                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
-                                else:
+                                elif elem:
                                     node["identifier"]=litter(node["identifier"],elem)
                     if sset.get("a"):
                         node["name"]=sset.get("a")
@@ -269,11 +269,13 @@ def relatedTo(jline,key,entity):
             return ArrayOrSingleValue(data)
 
 isil2sameAs = {
-    "DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "(DE-627)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "DE-627":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    #"DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    #"(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
     "DE-588":"http://d-nb.info/gnd/",
-    "DE-601":"http://gso.gbv.de/PPN?PPN=",
-    "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
     "(DE-588)":"http://d-nb.info/gnd/",
+    "DE-601":"http://gso.gbv.de/PPN?PPN=",
     "(DE-601)":"http://gso.gbv.de/PPN?PPN=",
     "DE-15":"Univeristätsbibliothek Leipzig",
     "DE-14":"Sächsische Landesbibliothek – Staats- und Universitätsbibliothek Dresden",
@@ -300,8 +302,8 @@ def gnd2uri(string):
 def uri2url(isil,num):
     if isil and num and isil in isil2sameAs:
         return str(isil2sameAs.get(isil)+num)
-    else:
-        return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
+    #else:
+        #return str("("+isil+")"+num)    #bugfix for isil not be able to resolve for sameAs, so we give out the identifier-number
 
 def id2uri(string,entity):
     global target_id
@@ -310,7 +312,8 @@ def id2uri(string,entity):
     #if entity=="resources":
     #    return "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN="+string
     #else:
-    return str(target_id+entity+"/"+string)
+    if target_id and entity and string:
+        return str(target_id+entity+"/"+string)
     
 def getid(record,regex,entity):
     _id=getmarc(record,regex,entity)
@@ -550,6 +553,7 @@ def get_subfields(jline,key,entity):
 def get_subfield(jline,key,entity):
     keymap={"100":"persons",
             "700":"persons",
+            "500":"persons",
             "711":"events",
             "110":"organizations",
             "710":"organizations",
@@ -591,6 +595,10 @@ def get_subfield(jline,key,entity):
                 if entityType=="resources" and sset.get("w") and not sset.get("0"):
                     sset["0"]=sset.get("w")
                 if sset.get("0"):
+                        if isinstance(sset["0"],list) and entityType=="persons":
+                            for n,elem in enumerate(sset["0"]):
+                                if "DE-576" in elem:
+                                    sset["0"].pop(n)
                         uri=gnd2uri(sset.get("0"))
                         #eprint(uri)
                         if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
@@ -643,7 +651,23 @@ def get_subfield(jline,key,entity):
                     #data.append(node)
         if data:
             return  ArrayOrSingleValue(data)
-        
+
+def getsameAs(jline,keys,entity):
+    sameAs=[]
+    for key in keys:
+        data=getmarc(jline,key,entity)
+        if isinstance(data,list):
+            for elem in data:
+                if not "DE-576" in elem: #ignore old SWB id for root SameAs
+                    data=gnd2uri(elem)
+                    if isinstance(data,str):
+                        if data.startswith("http"):
+                            sameAs.append(data)
+                    elif isinstance(data,list):
+                        for elem in data:
+                            if elem and elem.startswith("http"):
+                                sameAs.append(data)
+    return sameAs
         
 def deathDate(jline,key,entity):
     return marc_dates(jline.get(key),"deathDate")
@@ -796,23 +820,23 @@ def check(ldj,entity):
     if not ldj:
         return
     
-    if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
-        if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
-            ldj["sameAs"]=[ldj["sameAs"]]
-            if entity!="resources":
-                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
-            elif ldj.get("_ppn"):
-                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
-        elif "sameAs" in ldj and isinstance(ldj["sameAs"],list):
-            if entity!="resources":
-                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
-            elif ldj.get("_ppn"):
-                ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
-        else:
-            if entity!="resources":
-                ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["identifier"])]
-            elif ldj.get("_ppn"):
-                ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["_ppn"])]
+    #if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
+        #if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
+            #ldj["sameAs"]=[ldj["sameAs"]]
+            #if entity!="resources":
+                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
+            #elif ldj.get("_ppn"):
+                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
+        #elif "sameAs" in ldj and isinstance(ldj["sameAs"],list):
+            #if entity!="resources":
+                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
+            #elif ldj.get("_ppn"):
+                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
+        #else:
+            #if entity!="resources":
+                #ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["identifier"])]
+            #elif ldj.get("_ppn"):
+                #ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["_ppn"])]
    
     for label in ["name","alternativeHeadline","alternateName","nameSub"]:
         if isinstance(ldj.get(label),str):
@@ -1064,7 +1088,7 @@ entities = {
         "single:_ppn"                      :{getmarc:"980..a"},
         "single:_sourceID"                 :{getmarc:"980..b"},
         "single:dateModified"              :{getdateModified:"005"},
-        "multi:sameAs"                     :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"                     :{getsameAs:["035..a","670..u"]},
         "single:name"                      :{getmarc:["245..a","245..b"]},
         "single:nameShort"                 :{getmarc:"245..a"},
         "single:nameSub"                   :{getmarc:"245..b"},
@@ -1095,18 +1119,18 @@ entities = {
         "multi:mentions"                   :{get_subfield:"689"},
         "multi:relatedEvent"               :{get_subfield:"711"}
         },
-    "works":{   # mapping is 1:1 like resources
+    "works":{   
         "single:@type"             :"CreativeWork",
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
-        "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
-        "single:name"              :{getmarc:["130..a","130..p"]},
+        "single:dateModified"  :{getdateModified:"005"},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
+        "multi:name"           :{getmarc:["100..t"]},
         "single:alternativeHeadline"      :{getmarc:["245..c"]},
-        "multi:alternateName"     :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
-        "multi:author"            :{get_subfield:"100"},
+        "multi:alternateName"     :{getmarc:["400..t","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "multi:author"            :{get_subfield:"500"},
         "multi:contributor"       :{get_subfield:"700"},
         "single:pub_name"          :{getmarc:["260..b","264..b"]},
         "single:pub_place"         :{getmarc:["260..a","264..a"]},
@@ -1133,7 +1157,7 @@ entities = {
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         
         "single:name"          :{getmarc:"100..a"},
         "single:gender"        :{handlesex:"375..a"},
@@ -1155,7 +1179,7 @@ entities = {
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         
         "single:name"              :{getmarc:"110..a+b"},
         "multi:alternateName"     :{getmarc:"410..a+b"},
@@ -1174,7 +1198,7 @@ entities = {
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         
         "single:name"              :{getmarc:"151..a"},
         "multi:alternateName"     :{getmarc:"451..a"},
@@ -1190,7 +1214,7 @@ entities = {
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         "single:name"              :{getmarc:"150..a"},
         "multi:alternateName"     :{getmarc:"450..a+x"},
         "single:description"       :{getmarc:"679..a"},
@@ -1211,7 +1235,7 @@ entities = {
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"   :{getdateModified:"005"},
-        "multi:sameAs"        :{getmarc:["024..a","670..u"]},
+        "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         
         "single:name"          :{getmarc:["111..a"]},
         "multi:alternateName" :{getmarc:["411..a"]},

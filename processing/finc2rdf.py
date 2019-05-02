@@ -164,10 +164,12 @@ context={
           "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
           "offeredBy":"http://schema.org/offeredBy",
           "Offer":"http://schema.org/Offer",
-          "Library":"http://schema.org/Library"
+          "Library":"http://schema.org/Library",
+          "bf:Contribution":"http://id.loc.gov/ontologies/bibframe/Contribution",
+          "bf:contribution":"http://id.loc.gov/ontologies/bibframe/contribution",
+          "bf:agent":"http://id.loc.gov/ontologies/bibframe/agent",
+          "bf:role":"http://id.loc.gov/ontologies/bibframe/role"
           }
-
-
 
 mapping={ "@id":{getAtID:"id"},
           "dct:identifier":{getIDs:["record_id","swb_id_str","kxp_id_str"]},
@@ -180,7 +182,7 @@ mapping={ "@id":{getAtID:"id"},
           "bibo:shortTitle":{getTitle:"title_short"},
           "dct:alternative":{getTitle:"title_alt"},
           "dc:contributor":{getProperty:"author2"},
-          "dc:creator":{getGND:"author_id"},
+          "author_id":{getGND:"author_id"},
           "rdau:P60333":{getProperty:"imprint"},
           "rdau:P60163":{getProperty:"publishPlace"},
           "dct:publisher":{getProperty:"publisher"},
@@ -191,8 +193,8 @@ mapping={ "@id":{getAtID:"id"},
           "dct:isPartOf":{getProperty:"hierarchy_top_id"},
           "dct:bibliographicCitation":{getProperty:["container_title","container_reference"]},
           "dct:isPartOf":{getProperty:"hierarchy_parent_id"},
-          "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_de15"},
-          "dct:medium":{getFormatDctMedium:"format_de15"},
+          "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_finc"},
+          "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
           "offeredBy": {getOfferedBy:"record_id"},
           }
