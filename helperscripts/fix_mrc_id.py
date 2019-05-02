@@ -9,9 +9,10 @@ def fix_mrc_id(jline):
         _id=jline.pop("001")
         for elem in _id:
             jline["001"]=elem
-            if elem=="0021114284":  # this particulary FINC-MARC21 Record is broken and will break the whole toolchain
+            if elem=="0021114284" or len(elem)>512:  # this particulary FINC-MARC21 Record is broken and will break the whole toolchain
+                eprint(elem)
                 return None
-    return jline
+        return jline
 
 def valid_mrc_fields(jline):
     if jline:
