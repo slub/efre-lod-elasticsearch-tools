@@ -477,8 +477,15 @@ def handle_single_rvk(data):
         for subfield in data.get("rv"):
             for k,v in subfield.items():
                 sset[k]=v
-        if "0" in sset:
-            record["sameAs"]=gnd2uri("(DE-576)"+sset.get("0"))
+        if "0" in sset and isinstance(sset["0"],str):
+            sset["0"]=[sset.get("0")]
+        if "0" in sset and isinstance(sset["0"],list):
+            record["sameAs"]=[]
+            for elem in sset["0"]:
+                if isinstance(elem,str):
+                    sameAs=gnd2uri(elem)
+                    if sameAs:
+                        record["sameAs"].append(sameAs)
         if "a" in sset:
             record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
             record["identifier"]={  "@type"     :"PropertyValue",
@@ -597,7 +604,7 @@ def get_subfield(jline,key,entity):
                 if sset.get("0"):
                         if isinstance(sset["0"],list) and entityType=="persons":
                             for n,elem in enumerate(sset["0"]):
-                                if "DE-576" in elem:
+                                if elem and "DE-576" in elem:
                                     sset["0"].pop(n)
                         uri=gnd2uri(sset.get("0"))
                         #eprint(uri)
@@ -1127,9 +1134,9 @@ entities = {
         "single:_isil"         :{getisil:"003"},
         "single:dateModified"  :{getdateModified:"005"},
         "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
-        "multi:name"           :{getmarc:["100..t"]},
+        "multi:name"           :{getmarc:["100..t","110..t","130..t","111..t"]},
         "single:alternativeHeadline"      :{getmarc:["245..c"]},
-        "multi:alternateName"     :{getmarc:["400..t","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "multi:alternateName"     :{getmarc:["400..t","410..t","411..t","430..t","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "multi:author"            :{get_subfield:"500"},
         "multi:contributor"       :{get_subfield:"700"},
         "single:pub_name"          :{getmarc:["260..b","264..b"]},
