@@ -565,10 +565,10 @@ def get_subfield(jline,key,entity):
             "110":"organizations",
             "710":"organizations",
             "551":"geo",
-            "830":"resources",
             "689":"topics",
             "550":"topics",
             "655":"topics",
+            "830":"resources",
             }
     entityType=keymap.get(key)
     data=[]
@@ -602,30 +602,33 @@ def get_subfield(jline,key,entity):
                 if entityType=="resources" and sset.get("w") and not sset.get("0"):
                     sset["0"]=sset.get("w")
                 if sset.get("0"):
-                        if isinstance(sset["0"],list) and entityType=="persons":
-                            for n,elem in enumerate(sset["0"]):
-                                if elem and "DE-576" in elem:
-                                    sset["0"].pop(n)
-                        uri=gnd2uri(sset.get("0"))
-                        #eprint(uri)
-                        if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
-                            node["@id"]=id2uri(uri,entityType)
-                        elif isinstance(uri,str) and uri.startswith(base_id) and entityType=="resources":
-                            node["sameAs"]=base_id+id2uri(uri,entityType).split("/")[-1]
-                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
-                            node["sameAs"]=uri
-                        elif isinstance(uri,str):
-                            node["identifier"]=uri
-                        elif isinstance(uri,list):
-                            node["sameAs"]=None
-                            node["identifier"]=None
-                            for elem in uri:
-                                if isinstance(elem,str) and elem.startswith(base_id):
-                                    node["@id"]=id2uri(elem,entityType)
-                                elif isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
-                                    node["sameAs"]=litter(node["sameAs"],elem)
-                                elif elem:
-                                    node["identifier"]=litter(node["identifier"],elem)
+                    if isinstance(sset["0"],list) and entityType=="persons":
+                        for n,elem in enumerate(sset["0"]):
+                            if elem and "DE-576" in elem:
+                                sset["0"].pop(n)
+                    uri=gnd2uri(sset.get("0"))
+                    if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
+                        node["@id"]=id2uri(uri,entityType)
+                    elif isinstance(uri,str) and uri.startswith(base_id) and entityType=="resources":
+                        node["sameAs"]=base_id+id2uri(uri,entityType).split("/")[-1]
+                    elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                        node["sameAs"]=uri
+                    elif isinstance(uri,str):
+                        node["identifier"]=uri
+                    elif isinstance(uri,list):
+                        node["sameAs"]=None
+                        node["identifier"]=None
+                        for elem in uri:
+                            if isinstance(elem,str) and elem.startswith(base_id):
+                                if key=="830":  #Dirty Workaround for k10plus finc id
+                                    rsplit=elem.rsplit("=")
+                                    rsplit[-1]="0-"+rsplit[-1]
+                                    elem='='.join(rsplit)
+                                node["@id"]=id2uri(elem,entityType)
+                            elif isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
+                                node["sameAs"]=litter(node["sameAs"],elem)
+                            elif elem:
+                                node["identifier"]=litter(node["identifier"],elem)
                 if isinstance(sset.get("a"),str) and len(sset.get("a"))>1:
                     node["name"]=sset.get("a")
                 elif isinstance(sset.get("a"),list):
