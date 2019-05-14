@@ -4,7 +4,7 @@ import argparse
 import sys
 import json
 
-from es2json import ArrayOrSingleValue
+from es2json import ArrayOrSingleValue, eprint
 
 baseuri="http://data.finc.info/resources/"
 
@@ -75,7 +75,7 @@ def getformat(record,prop,formattable):
                 return formattable.get(elem)
 
 def getFormatRdfType(record,prop):
-    formatmapping={ "Article, E-Article":"bibo:Article",           
+    formatmapping={     "Article, E-Article":"bibo:Article",           
                         "Book, E-Book":"bibo:Book",
                         "Journal, E-Journal":"bibo:Periodical",
                         "Manuscript":"bibo:Manuscript",
@@ -103,7 +103,7 @@ def getOfferedBy(record,prop):
             return {
            "@type": "http://schema.org/Offer",
            "offeredBy": {
-                "@id": "https://data.finc.info/resource/organisation/DE-15",
+                "@id": "https://data.finc.info/organisation/DE-15",
                 "@type": "http://schema.org/Library",
                 "name": "Univeristätsbibliothek Leipzig",
                 "branchCode": "DE-15"
@@ -128,6 +128,17 @@ def getProperty(record,prop):
     else:
         return None
 
+def getIsPartOf(record,prop):
+    data=getProperty(record,prop)
+    if isinstance(data,str):
+        return "https://data.finc.info/resources/"+data
+    elif isinstance(data,list):
+        ret=[]
+        for elem in data:
+            ret.append({"@id":"https://data.finc.info/resources/"+elem})
+        return ret
+
+
 # mapping={ "target_field":"someString"},
 
 #           "target_field":{function:"source_field"}}
@@ -140,6 +151,7 @@ context={
           "bibo:Article":"http://purl.org/ontology/bibo/Article",
           "bibo:Periodical":"http://purl.org/ontology/bibo/Periodical",
           "bibo:Manuscript":"http://purl.org/ontology/bibo/Manuscript",
+          "bibo:Book":"http://purl.org/ontology/bibo/Book",
           "bibo:Map":"http://purl.org/ontology/bibo/Map",
           "bibo:Thesis":"http://purl.org/ontology/bibo/Thesis",
           "bibo:Document":"http://purl.org/ontology/bibo/Document",
@@ -172,7 +184,7 @@ context={
           }
 
 mapping={ "@id":{getAtID:"id"},
-          "dct:identifier":{getIDs:["record_id","swb_id_str","kxp_id_str"]},
+          "dct:identifier":{getIDs:["swb_id_str","kxp_id_str"]},
           "bibo:issn":{getProperty:"issn"},
           "bibo:isbn":{getProperty:"isbn"},
           "umbel:isLike":{getProperty:"url"},
@@ -190,9 +202,8 @@ mapping={ "@id":{getAtID:"id"},
           "rdau:P60489":{getProperty:"dissertation_note"},
           "isbd:P1053":{getProperty:"physical"},
           "dct:language":{getProperty:"language"},
-          "dct:isPartOf":{getProperty:"hierarchy_top_id"},
+          "dct:isPartOf":{getIsPartOf:"hierarchy_top_id"},
           "dct:bibliographicCitation":{getProperty:["container_title","container_reference"]},
-          "dct:isPartOf":{getProperty:"hierarchy_parent_id"},
           "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_finc"},
           "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
