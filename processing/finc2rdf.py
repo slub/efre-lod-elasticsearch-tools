@@ -54,6 +54,12 @@ def getGND(record,prop):
     else:
         return None
 
+def getLanguage(record,prop):
+    lang=getProperty(record,prop)
+    if lang:
+        language={"en":lang}
+        return language
+    
 def getTitle(record,prop):
     title=getProperty(record,prop)
     if title:
@@ -131,20 +137,39 @@ def getProperty(record,prop):
 def getIsPartOf(record,prop):
     data=getProperty(record,prop)
     if isinstance(data,str):
-        return "https://data.finc.info/resources/"+data
+        return {"@id":"https://data.finc.info/resources/"+data}
     elif isinstance(data,list):
         ret=[]
         for elem in data:
             ret.append({"@id":"https://data.finc.info/resources/"+elem})
         return ret
-
+    
+def getIssued(record,prop):
+    data=getProperty(record,prop)
+    if isinstance(data,str):
+        return {context.get("dateTime"):data}
+    elif isinstance(data,list):
+        ret=[]
+        for elem in data:
+            ret.append({"@type": "xsd:gYear",
+                        "@value":elem})
+        return ret
+    
 
 # mapping={ "target_field":"someString"},
 
 #           "target_field":{function:"source_field"}}
 
-context={ 
-          "dct:identifier":"http://purl.org/dc/terms/identifier",
+context={ "issued":{
+            "@id": "http://purl.org/dc/terms/issued",
+            "@type": "xsd:gYear"
+           },
+          "xsd:gYear":"http://www.w3.org/2001/XMLSchema#gYear",
+          "xsd:string":"http://www.w3.org/2001/XMLSchema#string",
+          "identifier":{
+              "@id":"http://purl.org/dc/terms/identifier",
+              "@type":"xsd:string"
+                  },
           "dct:medium":"http://purl.org/dc/terms/medium",
           "bibo:issn":"http://purl.org/ontology/bibo/issn",
           "bibo:isbn":"http://purl.org/ontology/bibo/isbn",
@@ -170,7 +195,10 @@ context={
           "dct:issued":"http://purl.org/dc/terms/issued",
           "rdau:P60489":"http://rdaregistry.info/Elements/u/P60489",
           "isbd:P1053":"http://iflastandards.info/ns/isbd/elements/P1053",
-          "dct:language":"http://purl.org/dc/terms/language",
+          "language":{
+              "@id":"http://purl.org/dc/terms/language",
+              "@container":"@language"
+                  },
           "dct:isPartOf":"http://purl.org/dc/terms/isPartOf",
           "dct:bibliographicCitation":"http://purl.org/dc/terms/bibliographicCitation",
           "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
@@ -184,7 +212,7 @@ context={
           }
 
 mapping={ "@id":{getAtID:"id"},
-          "dct:identifier":{getIDs:["swb_id_str","kxp_id_str"]},
+          "identifier":{getIDs:["swb_id_str","kxp_id_str"]},
           "bibo:issn":{getProperty:"issn"},
           "bibo:isbn":{getProperty:"isbn"},
           "umbel:isLike":{getProperty:"url"},
@@ -198,10 +226,10 @@ mapping={ "@id":{getAtID:"id"},
           "rdau:P60333":{getProperty:"imprint"},
           "rdau:P60163":{getProperty:"publishPlace"},
           "dct:publisher":{getProperty:"publisher"},
-          "dct:issued":{getProperty:"publishDate"},
+          "dct:issued":{getIssued:"publishDate"},
           "rdau:P60489":{getProperty:"dissertation_note"},
           "isbd:P1053":{getProperty:"physical"},
-          "dct:language":{getProperty:"language"},
+          "language":{getLanguage:"language"},
           "dct:isPartOf":{getIsPartOf:"hierarchy_top_id"},
           "dct:bibliographicCitation":{getProperty:["container_title","container_reference"]},
           "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_finc"},

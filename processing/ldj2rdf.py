@@ -80,41 +80,33 @@ def get_bulkrdf(doc):
                 toRemove.clear()
                 doc[n]=elem.pop("_source")
             if "sameAs" in elem:
+                if isinstance(elem.get("sameAs"),str):
+                    elem["sameAs"]=[elem.get("sameAs")]
                 if isinstance(elem.get("sameAs"),list):
                     for m,elen in elem.get("sameAs"):
                         if not elen.startswith("http"):
                             del doc[n]["sameAs"][m]
-                elif isinstance(elem.get("sameAs"),str):
-                    if not elem.get("sameAs").startswith("http"):
-                        doc[n].pop("sameAs")
         for n,elem in enumerate(doc):
             if isinstance(elem,dict):
                 toRemoveVal=["http://www.biographien.ac.at"]
                 for item in toRemoveVal:
-                    if "sameAs" in elem:
-                        if isinstance(elem["sameAs"],dict):
-                            toremove=[]
-                            for k,v in elem["sameAs"].items():
-                                if item in v:
-                                    toremove.append(k)
-                            for item in toremove:
-                                doc[n]["sameAs"].pop(item)
+                    if isinstance(elem["sameAs"],dict):
+                        toremove=[]
+                        for k,v in elem["sameAs"].items():
+                            if item in v:
+                                toremove.append(k)
+                        for item in toremove:
+                            doc[n]["sameAs"].pop(item)
                 if (not text or elem.get("@context")==text ) and elem.get("@context") and isinstance(elem.get("@context"),str):
                     text=doc[n].pop("@context")
                 else:
                     context_included=True
+                if isinstance(elem.get("about"),dict):
+                    elem["about"]=[elem.get("about")]
                 if isinstance(elem.get("about"),list):
                     for m,rvkl in enumerate(elem.get("about")):
                         if isinstance(rvkl.get("identifier"),dict) and rvkl.get("identifier").get("propertyID") and rvkl.get("identifier").get("propertyID")=="RVK":
                             doc[n]["about"][m]["@id"]=doc[n]["about"][m]["@id"].replace(" ","+")
-                    #    elif isinstance(rvkl.get("identifier"),list):
-                    #        for l,ids in enumerate(rvkl.get("identifier")):
-                    #            if ids.get("propertyID") and ids.get("propertyID")=="RVK":
-                    #                doc[n]["about"][m]
-                elif isinstance(elem.get("about"),dict):
-                    if elem.get("about").get("identifier") and elem.get("about").get("identifier").get("propertyID") and elem.get("about").get("identifier").get("propertyID")=="RVK":
-                        doc[n]["about"]["@id"]=doc[n]["about"]["@id"].replace(" ","+")
-                            
         if doc:
             g=ConjunctiveGraph()
             if text not in con:
@@ -125,6 +117,7 @@ def get_bulkrdf(doc):
                 if mp:
                     lock.release()
             if not args.debug:
+                opener=None
                 if ".bz" in name:
                     opener=bz2.open
                 else:
@@ -134,23 +127,19 @@ def get_bulkrdf(doc):
                         g.parse(data=json.dumps(doc), format='json-ld')
                     else:
                         g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-                    fd.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-                    fd.write("\n")
-                    fd.flush()
+                    print(str(g.serialize(format='nt').decode('utf-8').rstrip()),file=fd)
             else:
                 if context_included:
                     g.parse(data=json.dumps(doc), format='json-ld')
                 else:
                     g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-                sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-            return
+                    print(str(g.serialize(format='nt').decode('utf-8').rstrip()))
     except Exception as e:
         with open("errors.txt",'a') as f:
             traceback.print_exc(file=f)
     
 def get_rdf(doc):
+    global text
     text=""
     context_included=False
     if isinstance(doc,dict):
@@ -171,10 +160,10 @@ def get_rdf(doc):
         else:
             opener=open
         g=ConjunctiveGraph()
-        if text not in con and not context_included:
+        if not context_included and text not in con:
             if mp:
                 lock.acquire()
-            get_context()
+            get_context(con,text)
             if mp:
                 lock.release()
         if not args.debug:
@@ -235,7 +224,7 @@ if __name__ == "__main__":
                 "index":args.index,
                 "compression":args.compress})
     if not args.doc or not args.debug:
-        pool = Pool(processes=int(cpu_count()/2),initializer=init,initargs=(l,c,True,i,))
+        pool = Pool(processes=180,initializer=init,initargs=(l,c,True,i,))
     if args.help:
         parser.print_help(sys.stderr)
         exit()        
@@ -266,6 +255,10 @@ if __name__ == "__main__":
         init(l,c,True,i,)
         record["_source"]["@id"]="http://d-nb.info/gnd/"+record["_source"].pop("id")
         get_rdf(record.get("_source"))
+    elif args.debug:
+        init(l,c,True,i,)
+        for line in sys.stdin:
+            get_rdf(json.loads(line))
     else:
         for line in sys.stdin:
             pool.apply_async(get_rdf,args=(json.loads(line),))
