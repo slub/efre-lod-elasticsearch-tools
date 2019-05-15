@@ -9,10 +9,11 @@ import json
 import argparse
 import sys
 import io
+import copy
 import os.path
 import re
 import gzip
-from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, litter, isint
+from es2json import esgenerator, esidfilegenerator, esfatgenerator, ArrayOrSingleValue, eprint, eprintjs, litter, isint
 from swb_fix import marc2relation
 
 es=None
@@ -189,84 +190,6 @@ def handlesex(record,key,entity):
     elif marcvalue==9:
         return None
 
-
-def relatedTo(jline,key,entity):
-
-    #e.g. split "551^4:orta" to 551 and orta
-    marcfield=key[:3]
-    data=[]
-    if marcfield in jline:
-        for array in jline[marcfield]:
-            for k,v in array.items():
-                sset={}
-                for subfield in v:
-                    for subfield_code in subfield:
-                        sset[subfield_code]=subfield[subfield_code]
-                #eprint(sset.get("9"),subfield4)
-                if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
-                    node={}
-                    node["_key"]=marc2relation[sset.get("9")]
-                    if sset.get("0"):
-                        uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith(base_id):
-                            node["@id"]=id2uri(sset.get("0"),"persons")
-                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
-                            node["sameAs"]=uri
-                        elif isinstance(uri,str):
-                            node["identifier"]=sset.get("0")
-                        elif isinstance(uri,list):
-                            node["sameAs"]=None
-                            node["identifier"]=None
-                            for elem in uri:
-                                if elem and elem.startswith(base_id):
-                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
-                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
-                                    node["sameAs"]=litter(node["sameAs"],elem)
-                                else:
-                                    node["identifier"]=litter(node["identifier"],elem)
-                    if sset.get("a"):
-                        node["name"]=sset.get("a")
-                    data.append(node)
-                elif isinstance(sset.get("9"),list):
-                    node={}
-                    for elem in sset.get("9"):
-                        if elem.startswith("v"):
-                            for k,v in marc2relation.items():
-                                if k.lower() in elem.lower():
-                                    node["_key"]=v
-                                    break
-                        elif [x for x in marc2relation if x.lower() in elem.lower()]:
-                            for x in marc2relation:
-                                if x.lower() in elem.lower():
-                                    node["_key"]=marc2relation[x]
-                        elif not node.get("_key"):
-                            node["_key"]="relatedTo"
-                        #eprint(elem,node)
-                    if sset.get("0"):
-                        uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith(base_id):
-                            node["@id"]=id2uri(sset.get("0"),"persons")
-                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
-                            node["sameAs"]=uri
-                        elif isinstance(uri,str):
-                            node["identifier"]=uri
-                        elif isinstance(uri,list):
-                            node["sameAs"]=None
-                            node["identifier"]=None
-                            for elem in uri:
-                                if elem and elem.startswith(base_id):
-                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
-                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
-                                    node["sameAs"]=litter(node["sameAs"],elem)
-                                elif elem:
-                                    node["identifier"]=litter(node["identifier"],elem)
-                    if sset.get("a"):
-                        node["name"]=sset.get("a")
-                    data.append(node)
-                    #eprint(node)
-                    
-        if data:
-            return ArrayOrSingleValue(data)
 
 isil2sameAs = {
     "(DE-627)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
@@ -498,6 +421,83 @@ def handle_single_rvk(data):
         return record
     
 
+
+def relatedTo(jline,key,entity):
+
+    #e.g. split "551^4:orta" to 551 and orta
+    marcfield=key[:3]
+    data=[]
+    if marcfield in jline:
+        for array in jline[marcfield]:
+            for k,v in array.items():
+                sset={}
+                for subfield in v:
+                    for subfield_code in subfield:
+                        sset[subfield_code]=subfield[subfield_code]
+                if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
+                    node={}
+                    node["_key"]=marc2relation[sset["9"]]
+                    if sset.get("0"):
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            node["@id"]=id2uri(sset.get("0"),"persons")
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
+                        elif isinstance(uri,str):
+                            node["identifier"]=sset.get("0")
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem and elem.startswith(base_id):
+                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
+                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                else:
+                                    node["identifier"]=litter(node["identifier"],elem)
+                    if sset.get("a"):
+                        node["name"]=sset.get("a")
+                    data.append(node)
+                elif isinstance(sset["9"],list):
+                    node={}
+                    for elem in sset["9"]:
+                        if elem.startswith("v"):
+                            for k,v in marc2relation.items():
+                                if k.lower() in elem.lower():
+                                    node["_key"]=v
+                                    break
+                        elif [x for x in marc2relation if x.lower() in elem.lower()]:
+                            for x in marc2relation:
+                                if x.lower() in elem.lower():
+                                    node["_key"]=marc2relation[x]
+                        elif not node.get("_key"):
+                            node["_key"]="relatedTo"
+                        #eprint(elem,node)
+                    if sset.get("0"):
+                        uri=gnd2uri(sset.get("0"))
+                        if isinstance(uri,str) and uri.startswith(base_id):
+                            node["@id"]=id2uri(sset.get("0"),"persons")
+                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                            node["sameAs"]=uri
+                        elif isinstance(uri,str):
+                            node["identifier"]=uri
+                        elif isinstance(uri,list):
+                            node["sameAs"]=None
+                            node["identifier"]=None
+                            for elem in uri:
+                                if elem and elem.startswith(base_id):
+                                    node["@id"]=id2uri(elem.split("=")[-1],"persons")
+                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
+                                    node["sameAs"]=litter(node["sameAs"],elem)
+                                elif elem:
+                                    node["identifier"]=litter(node["identifier"],elem)
+                    if sset.get("a"):
+                        node["name"]=sset.get("a")
+                    data.append(node)
+                    #eprint(node)
+                    
+        if data:
+            return ArrayOrSingleValue(data)
         
 def get_subfield_if_4(jline,key,entity):
     #e.g. split "551^4:orta" to 551 and orta
@@ -511,30 +511,31 @@ def get_subfield_if_4(jline,key,entity):
                 for subfield in v:
                     for subfield_code in subfield:
                         sset[subfield_code]=subfield[subfield_code]
-                #eprint(sset.get("9"),subfield4)
-                if "9" in sset and subfield4 in sset.get("9"):
+                if sset.get("4") and subfield4 in sset.get("4"):
+                    newrecord=copy.deepcopy(jline)
+                    for i,subtype in enumerate(newrecord[marcfield]):
+                        for elem in subtype.get("__"):
+                            if elem.get("4") and subfield4!=elem["4"]:
+                                del newrecord[marcfield][i]["__"]
+                    data=litter(get_subfields(newrecord,marcfield,entity),data)
+    if data:
+        return ArrayOrSingleValue(data)
+"""                
                     node={}
                     if sset.get("0"):
                         uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str) and uri.startswith(base_id):
-                            if "ort" in key:
-                                node["@id"]=id2uri(sset.get("0"),"geo")
-                            elif "adue" in key:
-                                node["@id"]=id2uri(sset.get("0"),"organizations")
-                        elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
-                            node["sameAs"]=uri
-                        elif isinstance(uri,str):
-                            node["identifier"]=uri
-                        elif isinstance(uri,list):
+                        if isinstance(uri,str):
+                            uri=[uri]
+                        if isinstance(uri,list):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem.startswith(base_id):
+                                if elem and elem.startswith(base_id):
                                     if "ort" in key:
                                         node["@id"]=id2uri(elem.split("=")[-1],"geo")
                                     elif "adue" in key:
                                         node["@id"]=id2uri(elem.split("=")[-1],"organizations")
-                                elif elem.startswith("http") and not elem.startswith(base_id):
+                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -543,7 +544,7 @@ def get_subfield_if_4(jline,key,entity):
                     data.append(node)
         if data:
             return ArrayOrSingleValue(data)
-
+"""
 def get_subfields(jline,key,entity):
     data=[]
     if isinstance(key,list):
@@ -567,6 +568,7 @@ def get_subfield(jline,key,entity):
             "551":"geo",
             "689":"topics",
             "550":"topics",
+            "551":"geo",
             "655":"topics",
             "830":"resources",
             }
@@ -579,7 +581,6 @@ def get_subfield(jline,key,entity):
                 for subfield in v:
                     for subfield_code in subfield:
                         sset[subfield_code]=subfield[subfield_code]
-                #eprint(sset.get("9"),subfield4)
                 node={}
                 for typ in ["D","d"]:
                     if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
@@ -638,6 +639,8 @@ def get_subfield(jline,key,entity):
                             
                 if sset.get("v") and entityType=="resources":
                     node["position"]=sset["v"]
+                if sset.get("i"):
+                    node["description"]=sset["i"]
                 if sset.get("n") and entityType=="events":
                     node["position"]=sset["n"]
                 for typ in ["D","d"]:
@@ -693,39 +696,20 @@ def marc_dates(record,event):
                 sset={}
                 for sf_elem in indicator_level.get(subfield):
                     for k,v in sf_elem.items():
-                        if k=="a" or k=="9":
+                        if k=="a" or k=="4":
                             sset[k]=v
-                if isinstance(sset.get("9"),str):
-                    sset["9"]=[sset.get("9")]
-                if isinstance(sset.get("9"),list):
-                    for elem in sset.get("9"):
-                        if elem.startswith("4:dat"):
+                if isinstance(sset.get("4"),str):
+                    sset["4"]=[sset.get("4")]
+                if isinstance(sset.get("4"),list):
+                    for elem in sset.get("4"):
+                        if elem.startswith("dat"):
                             recset[elem]=sset.get("a")
-    #eprint(recset)
-    if recset.get("4:datx"):
-        return dateToEvent(recset["4:datx"],event)
-    elif recset.get("4:datl"):
-        return dateToEvent(recset["4:datl"],event)
+    if recset.get("datx"):
+        return dateToEvent(recset["datx"],event)
+    elif recset.get("datl"):
+        return dateToEvent(recset["datl"],event)
     else:
         return None
-
-def honorificSuffix(jline,key,entity):
-    data=None
-    if key in jline:
-        for subfield in jline[key]:
-            for i in subfield:
-                sset={}
-                for j in subfield[i]:
-                    for k,v in dict(j).items():
-                        sset[k]=v
-                    conti=False
-                    if "9" in sset:
-                        if sset["9"]=='4:adel' or sset["9"]=='4:akad':
-                                conti=True
-                    if conti and "a" in sset:
-                        data=litter(data,sset["a"])
-    if data:
-        return data
 
 def getgeo(arr):
     for k,v in traverse(arr,""):
@@ -830,24 +814,6 @@ def check(ldj,entity):
     if not ldj:
         return
     
-    #if ldj.get("identifier") and ldj.get("_isil") and isil2sameAs.get(ldj.get("_isil")):
-        #if "sameAs" in ldj and isinstance(ldj.get("sameAs"),str):
-            #ldj["sameAs"]=[ldj["sameAs"]]
-            #if entity!="resources":
-                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
-            #elif ldj.get("_ppn"):
-                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
-        #elif "sameAs" in ldj and isinstance(ldj["sameAs"],list):
-            #if entity!="resources":
-                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["identifier"]))
-            #elif ldj.get("_ppn"):
-                #ldj["sameAs"].append(uri2url(ldj["_isil"],ldj["_ppn"]))
-        #else:
-            #if entity!="resources":
-                #ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["identifier"])]
-            #elif ldj.get("_ppn"):
-                #ldj["sameAs"]=[uri2url(ldj["_isil"],ldj["_ppn"])]
-   
     for label in ["name","alternativeHeadline","alternateName","nameSub"]:
         if isinstance(ldj.get(label),str):
             if ldj[label][-2:]==" /":
@@ -998,8 +964,6 @@ def process_line(jline,host,port,index,type):
     entity=getentity(jline)
     if entity:
         mapline={}
-        mapline["@type"]=[URIRef(u'http://schema.org/'+entity)]
-        mapline["@context"]=[URIRef(u'http://schema.org')]
         for sortkey,val in entities[entity].items():
             key=sortkey.split(":")[1]
             value=process_field(jline,val,entity)
@@ -1007,14 +971,14 @@ def process_line(jline,host,port,index,type):
                 if "related" in key and  isinstance(value,dict) and "_key" in value:
                     dictkey=value.pop("_key")
                     mapline[dictkey]=litter(mapline.get(dictkey),value)
-                elif "related" in key and isinstance(value,list):
+                elif "related" in key and isinstance(value,list) and any("_key" in x for x in value):
                     for elem in value:
                         if "_key" in elem:
                             relation=elem.pop("_key")
                             dictkey=relation
                             mapline[dictkey]=litter(mapline.get(dictkey),elem)
                 else:
-                    mapline[key]=value
+                    mapline[key]=litter(mapline.get(key),value)
         mapline=check(mapline,entity)
         if index:
             mapline["isBasedOn"]=target_id+"source/"+index+"/"+getmarc(jline,"001",None)
@@ -1088,7 +1052,7 @@ def worker(ldj):
 
 entities = {
    "resources":{   # mapping is 1:1 like works
-        "single:@type"                     :"CreativeWork",
+        "single:@type"                     :[URIRef(u'http://schema.org/CreativeWork')],
         "single:@context"                  :"http://schema.org",
         "single:@id"                       :{getid:"001"},
         "single:identifier"                :{getmarc:["001"]},
@@ -1130,7 +1094,7 @@ entities = {
         "multi:relatedEvent"               :{get_subfield:"711"}
         },
     "works":{   
-        "single:@type"             :"CreativeWork",
+        "single:@type"             :[URIRef(u'http://schema.org/CreativeWork')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
@@ -1157,11 +1121,11 @@ entities = {
         "single:pageStart"         :{getmarc:"773..q"},
         "single:issueNumber"       :{getmarc:"773..l"},
         "single:volumeNumer"       :{getmarc:"773..v"},
-        "single:locationCreated"   :{get_subfield_if_4:"551^4:orth"},
+        "single:locationCreated"   :{get_subfield_if_4:"551^orth"},
         "single:relatedTo"         :{relatedTo:"500..0"}
         },
     "persons": {
-        "single:@type"             :"Person",
+        "single:@type"             :[URIRef(u'http://schema.org/Person')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
@@ -1172,18 +1136,19 @@ entities = {
         "single:name"          :{getmarc:"100..a"},
         "single:gender"        :{handlesex:"375..a"},
         "multi:alternateName" :{getmarc:["400..a","400..c"]},
-        "single:relatedTo"     :{relatedTo:"500..0"},
-        "single:hasOccupation" :{get_subfield:"550"},
-        "single:birthPlace"    :{get_subfield_if_4:"551^4:ortg"},
-        "single:deathPlace"    :{get_subfield_if_4:"551^4:orts"},
-        "single:honorificSuffix" :{honorificSuffix:"550"},
+        "multi:relatedTo"     :{relatedTo:"500..0"},
+        "multi:hasOccupation" :{get_subfield:"550"},
+        "single:birthPlace"    :{get_subfield_if_4:"551^ortg"},
+        "single:deathPlace"    :{get_subfield_if_4:"551^orts"},
+        "single:workLocation"  :{get_subfield_if_4:"551^ortw"},
+        "multi:honorificSuffix" :{get_subfield_if_4:"550^adel"},
+        "multi:honorificSuffix" :{get_subfield_if_4:"550^akad"},
         "single:birthDate"     :{birthDate:"548"},
         "single:deathDate"     :{deathDate:"548"},
-        "single:workLocation"  :{get_subfield_if_4:"551^4:ortw"},
-        "single:about"                     :{handle_about:["936","084","083","082","655"]},
+        "multi:about"                     :{handle_about:["936","084","083","082","655"]},
     },
     "organizations": {
-        "single:@type"             :"Organization",
+        "single:@type"             :[URIRef(u'http://schema.org/Organization')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
@@ -1194,15 +1159,15 @@ entities = {
         "single:name"              :{getmarc:"110..a+b"},
         "multi:alternateName"     :{getmarc:"410..a+b"},
         
-        "single:additionalType"    :{get_subfield_if_4:"550^4:obin"},
-        "single:parentOrganization":{get_subfield_if_4:"551^4:adue"},
-        "single:location"          :{get_subfield_if_4:"551^4:orta"}, 
-        "single:fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
-        "single:areaServed"        :{get_subfield_if_4:"551^4:geow"},
+        "single:additionalType"    :{get_subfield_if_4:"550^obin"},
+        "single:parentOrganization":{get_subfield_if_4:"551^adue"},
+        "single:location"          :{get_subfield_if_4:"551^orta"}, 
+        "single:fromLocation"      :{get_subfield_if_4:"551^geoa"},
+        "single:areaServed"        :{get_subfield_if_4:"551^geow"},
         "multi:about"                     :{handle_about:["936","084","083","082","655"]},
         },
     "geo": {
-        "single:@type"             :"Place",
+        "single:@type"             :[URIRef(u'http://schema.org/Place')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
@@ -1218,7 +1183,7 @@ entities = {
         "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
     "topics":{         
-        "single:@type"             :"Thing",
+        "single:@type"             :[URIRef(u'http://schema.org/Thing')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
@@ -1228,32 +1193,32 @@ entities = {
         "single:name"              :{getmarc:"150..a"},
         "multi:alternateName"     :{getmarc:"450..a+x"},
         "single:description"       :{getmarc:"679..a"},
-        "single:additionalType"    :{get_subfield:"550"},
-        "single:location"          :{get_subfield_if_4:"551^4:orta"},
-        "single:fromLocation"      :{get_subfield_if_4:"551^4:geoa"},
-        "single:areaServed"        :{get_subfield_if_4:"551^4:geow"},
-        "single:contentLocation"   :{get_subfield_if_4:"551^4:punk"},
-        "single:participant"       :{get_subfield_if_4:"551^4:bete"},
-        "single:relatedTo"         :{get_subfield_if_4:"551^4:vbal"},
+        "multi:additionalType"    :{get_subfield:"550"},
+        "multi:location"          :{get_subfield_if_4:"551^orta"},
+        "multi:fromLocation"      :{get_subfield_if_4:"551^geoa"},
+        "multi:areaServed"        :{get_subfield_if_4:"551^geow"},
+        "multi:contentLocation"   :{get_subfield_if_4:"551^punk"},
+        "multi:participant"       :{get_subfield_if_4:"551^bete"},
+        "multi:relatedTo"         :{get_subfield_if_4:"551^vbal"},
         "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
     
     "events": {
-        "single:@type"         :"Event",
+        "single:@type"         :[URIRef(u'http://schema.org/Event')],
         "single:@context"      :"http://schema.org",
         "single:@id"           :{getid:"001"},
         "single:identifier"    :{getmarc:"001"},
         "single:_isil"         :{getisil:"003"},
-        "single:dateModified"   :{getdateModified:"005"},
+        "single:dateModified"  :{getdateModified:"005"},
         "multi:sameAs"         :{getsameAs:["035..a","670..u"]},
         
         "single:name"          :{getmarc:["111..a"]},
-        "multi:alternateName" :{getmarc:["411..a"]},
-        "single:location"      :{get_subfield_if_4:"551^4:ortv"},
+        "multi:alternateName"  :{getmarc:["411..a"]},
+        "single:location"      :{get_subfield_if_4:"551^ortv"},
         "single:startDate"     :{birthDate:"548"},
         "single:endDate"       :{deathDate:"548"},
         "single:adressRegion"  :{getmarc:"043..c"},
-        "multi:about"         :{handle_about:["936","084","083","082","655"]},
+        "multi:about"          :{handle_about:["936","084","083","082","655"]},
     },
 }
 
