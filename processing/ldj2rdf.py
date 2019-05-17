@@ -64,11 +64,11 @@ def init(l,c,m,i):
     con = c
     lock = l
     
-def get_bulkrdf(doc):
+def adjust_or_get_context_elasticsearchScroll(doc):
     context_included=False
+    global text
+    text=""
     try:
-        global text
-        text=""
         for n,elem in enumerate(doc):
             if isinstance(elem,dict):
                 toRemove=[]
@@ -108,98 +108,78 @@ def get_bulkrdf(doc):
                         if isinstance(rvkl.get("identifier"),dict) and rvkl.get("identifier").get("propertyID") and rvkl.get("identifier").get("propertyID")=="RVK":
                             doc[n]["about"][m]["@id"]=doc[n]["about"][m]["@id"].replace(" ","+")
         if doc:
-            g=ConjunctiveGraph()
-            if text not in con:
-                if mp:
-                    lock.acquire()
-                if not context_included:
-                    get_context(con,text)
-                if mp:
-                    lock.release()
-            if not args.debug:
-                opener=None
-                if ".bz" in name:
-                    opener=bz2.open
-                else:
-                    opener=open
-                with opener(name,"at") as fd:
-                    if context_included:
-                        g.parse(data=json.dumps(doc), format='json-ld')
-                    else:
-                        g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-                    print(str(g.serialize(format='nt').decode('utf-8').rstrip()),file=fd)
-            else:
-                if context_included:
-                    g.parse(data=json.dumps(doc), format='json-ld')
-                else:
-                    g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-                    print(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+            transpose_to_rdf(doc,con,text,context_included,name)
     except Exception as e:
         with open("errors.txt",'a') as f:
             traceback.print_exc(file=f)
-    
-def get_rdf(doc):
-    global text
-    text=""
-    context_included=False
-    if isinstance(doc,dict):
-            toRemove=[]
-            for key in doc:
-                if key.startswith("_") and key!="_source":
-                    toRemove.append(key)
-            for key in toRemove:
-                doc.pop(key)
-            toRemove.clear()
-    if (not text or doc.get("@context")==text ) and doc.get("@context") and isinstance(doc.get("@context"),str):
-        text=doc.pop("@context")
-    elif isinstance(doc.get("@context"),dict):
-        context_included=True
-    if doc:
+
+def adjust_or_get_context_singledoc(doc):
+    try:
+        global text
+        text=""
+        context_included=False
+        if isinstance(doc,dict):
+                toRemove=[]
+                for key in doc:
+                    if key.startswith("_") and key!="_source":
+                        toRemove.append(key)
+                for key in toRemove:
+                    doc.pop(key)
+                toRemove.clear()
+        if (not text or doc.get("@context")==text ) and doc.get("@context") and isinstance(doc.get("@context"),str):
+            text=doc.pop("@context")
+        elif isinstance(doc.get("@context"),dict):
+            context_included=True
+        if doc:
+            transpose_to_rdf(doc,con,text,context_included,name)
+    except Exception as e:
+        with open("errors.txt",'a') as f:
+            traceback.print_exc(file=f)
+            
+def transpose_to_rdf(doc,con,text,context_included,name):
+    g=ConjunctiveGraph()
+    if text not in con:
+        if mp:
+            lock.acquire()
+        if not context_included:
+           get_context(con,text)
+        if mp:
+            lock.release()
+    if not args.debug:
+        opener=open
         if ".bz" in name:
             opener=bz2.open
+        if context_included:
+            g.parse(data=json.dumps(doc), format='json-ld')
         else:
-            opener=open
-        g=ConjunctiveGraph()
-        if not context_included and text not in con:
-            if mp:
-                lock.acquire()
-            get_context(con,text)
-            if mp:
-                lock.release()
-        if not args.debug:
-            
-            if context_included:
-                g.parse(data=json.dumps(doc), format='json-ld')
-            else:
-                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-            with opener(name,"at") as fd:
-                print(str(g.serialize(format='nt').decode('utf-8').rstrip()),file=fd)
+            g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+        with opener(name,"at") as fd:
+            print(str(g.serialize(format='nt').decode('utf-8').rstrip()),file=fd)
+    else:
+        if context_included:
+            g.parse(data=json.dumps(doc), format='json-ld')
         else:
-            if context_included:
-                g.parse(data=json.dumps(doc), format='json-ld')
-            else:
-                g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
-            sys.stdout.write(str(g.serialize(format='nt').decode('utf-8').rstrip()))
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-        return
-    
-if __name__ == "__main__":
-    parser=argparse.ArgumentParser(description='ElasticSearch/ld-json to RDF/Virtuoso')
+            g.parse(data=json.dumps(doc), format='json-ld',context=con[text])
+        print(str(g.serialize(format='nt').decode('utf-8').rstrip()))
+
+if  __name__ == "__main__":
+    parser=argparse.ArgumentParser(description='ElasticSearch/ld-json-stdin to ntriple-RDF')
     parser.add_argument('-host',type=str,default="localhost",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')
     parser.add_argument('-debug',action="store_true",help='debug')
     parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    parser.add_argument('-w',type=int,default=8,help='How many Workers to use!')
     parser.add_argument('-index',default="resources",type=str,help='ElasticSearch Search Index to use')
     parser.add_argument('-help',action="store_true",help="print this help")
     parser.add_argument('-type',default="schemaorg",type=str,help='ElasticSearch Search Index Type to use')
     parser.add_argument('-doc',type=str,help='id of the document to serialize to RDF')
     parser.add_argument('-scroll',action="store_true",help="print out the whole index as RDF instead getting a single doc")
-    parser.add_argument('-inp',type=str,help="generate RDF out of LDJ")
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id")
     parser.add_argument('-context',type=str,help="deliver a url to the context if there is no @context field in the data")
     parser.add_argument('-compress',action="store_true",help="use this flag to enable bzip2 compression on the fly")
     args=parser.parse_args()
-    
+    if args.help:
+        parser.print_help(sys.stderr)
+        exit()
     if args.server:
         slashsplit=args.server.split("/")
         args.host=slashsplit[2].rsplit(":")[0]
@@ -224,44 +204,28 @@ if __name__ == "__main__":
                 "index":args.index,
                 "compression":args.compress})
     if not args.doc or not args.debug:
-        pool = Pool(processes=180,initializer=init,initargs=(l,c,True,i,))
-    if args.help:
-        parser.print_help(sys.stderr)
-        exit()        
-        
-    elif args.inp and not args.debug:
-        with open(args.inp,"r") as inp:
-            for line in inp:
-                pool.apply_async(get_rdf,args=(json.loads(line),))
-    elif args.inp and args.debug:
-        init(l,c,m,i)
-        with open(args.inp,"r") as inp:
-            for line in inp:
-                get_rdf(json.loads(line))
-    elif args.scroll and not args.debug:
+        pool = Pool(processes=args.w,initializer=init,initargs=(l,c,True,i,))
+    if args.scroll and not args.debug:
         for fatload in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
-            pool.apply_async(get_bulkrdf,args=(fatload,))
+            pool.apply_async(adjust_or_get_context_elasticsearchScroll,args=(fatload,))
     elif args.scroll and args.debug:
-            global con
-            global mp
-            mp=False
-            global name
-            con={}
-            for doc in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
-                get_bulkrdf(doc)
+        init(l,c,True,i,)
+        for fatload in esfatgenerator(host=args.host,port=args.port,type=args.type,index=args.index,source_exclude="_isil,_recorddate,identifier"):
+            adjust_or_get_context_elasticsearchScroll(fatload)
     elif args.doc:
         es=Elasticsearch([{'host':args.host}],port=args.port)  
         record=es.get(index=args.index,doc_type=args.type,id=args.doc,_source_exclude="_isil,_recorddate,identifier")
         init(l,c,True,i,)
         record["_source"]["@id"]="http://d-nb.info/gnd/"+record["_source"].pop("id")
-        get_rdf(record.get("_source"))
+        adjust_or_get_context_singledoc(record.get("_source"))
     elif args.debug:
         init(l,c,True,i,)
         for line in sys.stdin:
-            get_rdf(json.loads(line))
+            adjust_or_get_context_singledoc(json.loads(line))
     else:
+        init(l,c,True,i,)
         for line in sys.stdin:
-            pool.apply_async(get_rdf,args=(json.loads(line),))
+            pool.apply_async(adjust_or_get_context_singledoc,args=(json.loads(line),))
     if not args.doc or not args.debug:
         pool.close() 
         pool.join()

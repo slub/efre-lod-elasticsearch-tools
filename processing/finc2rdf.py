@@ -108,13 +108,13 @@ def getOfferedBy(record,prop):
         if record.get(prop):
             return {
            "@type": "http://schema.org/Offer",
-           "offeredBy": {
+           "schema:offeredBy": {
                 "@id": "https://data.finc.info/organisation/DE-15",
-                "@type": "http://schema.org/Library",
-                "name": "Univeristätsbibliothek Leipzig",
-                "branchCode": "DE-15"
+                "@type": "schema:Library",
+                "schema:name": "Univeristätsbibliothek Leipzig",
+                "schema:branchCode": "DE-15"
             },
-           "availability": "http://data.ub.uni-leipzig.de/item/wachtl/DE-15:ppn:"+record[prop]
+           "schema:availability": "http://data.ub.uni-leipzig.de/item/wachtl/DE-15:ppn:"+record[prop]
        }
 
 def getProperty(record,prop):
@@ -155,63 +155,43 @@ def getIssued(record,prop):
                         "@value":elem})
         return ret
     
+def putContext(record):
+    return context
 
 # mapping={ "target_field":"someString"},
 
 #           "target_field":{function:"source_field"}}
 
-context={ "issued":{
-            "@id": "http://purl.org/dc/terms/issued",
-            "@type": "xsd:gYear"
-           },
-          "xsd:gYear":"http://www.w3.org/2001/XMLSchema#gYear",
-          "xsd:string":"http://www.w3.org/2001/XMLSchema#string",
-          "identifier":{
-              "@id":"http://purl.org/dc/terms/identifier",
-              "@type":"xsd:string"
-                  },
-          "dct:medium":"http://purl.org/dc/terms/medium",
-          "bibo:issn":"http://purl.org/ontology/bibo/issn",
-          "bibo:isbn":"http://purl.org/ontology/bibo/isbn",
-          "bibo:Article":"http://purl.org/ontology/bibo/Article",
-          "bibo:Periodical":"http://purl.org/ontology/bibo/Periodical",
-          "bibo:Manuscript":"http://purl.org/ontology/bibo/Manuscript",
-          "bibo:Book":"http://purl.org/ontology/bibo/Book",
-          "bibo:Map":"http://purl.org/ontology/bibo/Map",
-          "bibo:Thesis":"http://purl.org/ontology/bibo/Thesis",
-          "bibo:Document":"http://purl.org/ontology/bibo/Document",
-          "bibo:AudioVisualDocument":"http://purl.org/ontology/bibo/AudioVisualDocument",
-          "umbel:isLike":"http://umbel.org/umbel/isLike",
-          "dct:title":"http://purl.org/dc/terms/title",
-          "rdau:P60493":"http://rdaregistry.info/Elements/u/P60493",
-          "rdau:P60327":"http://rdaregistry.info/Elements/u/P60327",
-          "bibo:shortTitle":"http://purl.org/ontology/bibo/shortTitle",
-          "dct:alternative":"http://purl.org/dc/terms/alternative",
-          "dc:creator":"http://purl.org/dc/elements/1.1/creator",
-          "dc:contributor":"http://purl.org/dc/elements/1.1/contributor",
-          "rdau:P60333":"http://rdaregistry.info/Elements/u/P60333",
-          "rdau:P60163":"http://rdaregistry.info/Elements/u/P60163",
-          "dct:publisher":"http://purl.org/dc/terms/publisher",
-          "dct:issued":"http://purl.org/dc/terms/issued",
-          "rdau:P60489":"http://rdaregistry.info/Elements/u/P60489",
-          "isbd:P1053":"http://iflastandards.info/ns/isbd/elements/P1053",
-          "language":{
-              "@id":"http://purl.org/dc/terms/language",
-              "@container":"@language"
-                  },
-          "dct:isPartOf":"http://purl.org/dc/terms/isPartOf",
-          "dct:bibliographicCitation":"http://purl.org/dc/terms/bibliographicCitation",
-          "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
-          "offeredBy":"http://schema.org/offeredBy",
-          "Offer":"http://schema.org/Offer",
-          "Library":"http://schema.org/Library",
-          "bf:Contribution":"http://id.loc.gov/ontologies/bibframe/Contribution",
-          "bf:contribution":"http://id.loc.gov/ontologies/bibframe/contribution",
-          "bf:agent":"http://id.loc.gov/ontologies/bibframe/agent",
-          "bf:role":"http://id.loc.gov/ontologies/bibframe/role"
-          }
+context={
+    "xsd":"http://www.w3.org/2001/XMLSchema#",
+    "bf":"http://id.loc.gov/ontologies/bibframe/",
+    "dct":"http://purl.org/dc/terms/",
+    "dc":"http://purl.org/dc/terms/",
+    "bibo":"http://purl.org/ontology/bibo/",
+    "rdau":"http://rdaregistry.info/Elements/u/",
+    "umbel":"http://umbel.org/umbel/",
+    "isbd":"http://iflastandards.info/ns/isbd/elements/",
+    "schema":"http://schema.org/",
+    "issued":{
+        "@id": "dct:issued",
+        "@type": "xsd:gYear"
+    },
+    "identifier":{
+        "@id":"dct:identifier",
+        "@type":"xsd:string"
+    },
+    "language":{
+        "@id":"http://purl.org/dc/terms/language",
+        "@container":"@language"
+    },
+    "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
+    "Library":"http://schema.org/Library"
+}
 
-mapping={ "@id":{getAtID:"id"},
+
+mapping={ 
+          "@context":putContext,
+          "@id":{getAtID:"id"},
           "identifier":{getIDs:["swb_id_str","kxp_id_str"]},
           "bibo:issn":{getProperty:"issn"},
           "bibo:isbn":{getProperty:"isbn"},
@@ -222,7 +202,7 @@ mapping={ "@id":{getAtID:"id"},
           "bibo:shortTitle":{getTitle:"title_short"},
           "dct:alternative":{getTitle:"title_alt"},
           "dc:contributor":{getProperty:"author2"},
-          "author_id":{getGND:"author_id"},
+          #"author_id":{getGND:"author_id"},
           "rdau:P60333":{getProperty:"imprint"},
           "rdau:P60163":{getProperty:"publishPlace"},
           "dct:publisher":{getProperty:"publisher"},
@@ -235,7 +215,7 @@ mapping={ "@id":{getAtID:"id"},
           "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_finc"},
           "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
-          "offeredBy": {getOfferedBy:"record_id"},
+          "schema:offers": {getOfferedBy:"record_id"},
           }
 
 def process_field(record,source_field):
@@ -265,17 +245,11 @@ def removeNone(obj):
 def process_line(record):
     mapline={}
     for key,val in mapping.items():
-        #key=sortkey.split(":")[1]
         value=process_field(record,val)
         if value:
             mapline[key]=value
     mapline=removeNone(mapline)
     if mapline:
-        map_context={}
-        for k in mapline:
-            if k in context:
-                map_context[k]=context[k]
-        mapline["@context"]=map_context
         return mapline
     else:
         return None
