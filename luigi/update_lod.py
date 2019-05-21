@@ -24,6 +24,7 @@ import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
 
+
 class LODTask(BaseTask):
     """
     Just a base class for LOD
@@ -59,9 +60,9 @@ class LODDownload(LODTask):
 
     def complete(self):
         for n,date in enumerate(self.config.get("dates")):
-            if not os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)):
-                return False
-        return True
+            if os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)):
+                return True
+        return False
 
 class LODExtract(LODTask):
     
@@ -70,8 +71,9 @@ class LODExtract(LODTask):
     
     def run(self):
         for date in self.config.get("dates"):
-            cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz && cat norm-aut.mrc >> {yesterday}-norm.mrc && rm norm-*.mrc".format(**self.config,date=date,yesterday=self.yesterday.strftime("%y%m%d"))
-            output = shellout(cmdstring)
+            if os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)):
+                cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz && cat norm-aut.mrc >> {yesterday}-norm.mrc && rm norm-*.mrc".format(**self.config,date=date,yesterday=self.yesterday.strftime("%y%m%d"))
+                output = shellout(cmdstring)
         return 0
     
     def output(self):
@@ -179,12 +181,34 @@ class LODUpdate(LODTask):
 
 
     def complete(self):
+        es=elasticsearch.Elasticsearch([{"host":self.config.get("host").split(":")[1][2:]}],port=int(self.config.get("host").split(":")[2]))
         yesterday = date.today() - timedelta(1)
         now=yesterday.strftime("%Y-%m-%d")
-        r=get("{host}/date/actual/1".format(**self.config))
-        lu=r.json().get("_source").get("date")
-        if lu==now:
-            return True
-        else:
+        r=es.get("date","actual","1")
+        lu=r.get("_source").get("date")
+        if not lu==now:
             return False
-        
+        map_entities={
+            "p":"persons",      #Personen, individualisiert
+            "n":"persons",      #Personen, namen, nicht individualisiert
+            "s":"topics",        #Schlagwörter/Berufe
+            "b":"organizations",         #Organisationen
+            "g":"geo",          #Geographika
+            "u":"works",     #Werktiteldaten
+            "f":"events"
+            }   
+
+        person_count_raw=0
+        person_count_map=0
+        for k,v in map_entities.items():
+            result_raw=es.count(index="swb-aut",doc_type="mrc",body={"query":{"match":{"079.__.b.keyword":k}}})
+            result_map=es.count(index=v,doc_type="schemaorg")
+            if v=="persons":
+                person_count_raw+=result_raw.get("count")
+                person_count_map=result_map.get("count")
+            else:
+                if result_raw.get("count") != result_map.get("count") or result_map.get("count")==0:
+                    return False
+        if person_count_raw == 0 or person_count_raw != person_count_map:
+            return False
+        return True
