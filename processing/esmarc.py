@@ -420,10 +420,7 @@ def handle_single_rvk(data):
             record["keywords"]=sset.get("k")
         return record
     
-
-
 def relatedTo(jline,key,entity):
-
     #e.g. split "551^4:orta" to 551 and orta
     marcfield=key[:3]
     data=[]
@@ -458,7 +455,7 @@ def relatedTo(jline,key,entity):
                     if sset.get("a"):
                         node["name"]=sset.get("a")
                     data.append(node)
-                elif isinstance(sset["9"],list):
+                elif isinstance(sset.get("9"),list):
                     node={}
                     for elem in sset["9"]:
                         if elem.startswith("v"):
@@ -520,31 +517,7 @@ def get_subfield_if_4(jline,key,entity):
                     data=litter(get_subfields(newrecord,marcfield,entity),data)
     if data:
         return ArrayOrSingleValue(data)
-"""                
-                    node={}
-                    if sset.get("0"):
-                        uri=gnd2uri(sset.get("0"))
-                        if isinstance(uri,str):
-                            uri=[uri]
-                        if isinstance(uri,list):
-                            node["sameAs"]=None
-                            node["identifier"]=None
-                            for elem in uri:
-                                if elem and elem.startswith(base_id):
-                                    if "ort" in key:
-                                        node["@id"]=id2uri(elem.split("=")[-1],"geo")
-                                    elif "adue" in key:
-                                        node["@id"]=id2uri(elem.split("=")[-1],"organizations")
-                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
-                                    node["sameAs"]=litter(node["sameAs"],elem)
-                                else:
-                                    node["identifier"]=litter(node["identifier"],elem)
-                    if sset.get("a"):
-                        node["name"]=sset.get("a")
-                    data.append(node)
-        if data:
-            return ArrayOrSingleValue(data)
-"""
+    
 def get_subfields(jline,key,entity):
     data=[]
     if isinstance(key,list):
@@ -806,49 +779,43 @@ def removeEmpty(obj):
         return obj
 
 
-#make data more RDF-like and do some post-mapping cleanups and data-transformations
-def check(ldj,entity):
-    ldj=removeNone(removeEmpty(ldj))
-    for k,v in ldj.items():
-        v=ArrayOrSingleValue(v)
-    if not ldj:
-        return
-    
-    for label in ["name","alternativeHeadline","alternateName","nameSub"]:
-        if isinstance(ldj.get(label),str):
-            if ldj[label][-2:]==" /":
-                ldj[label]=ldj[label][:-2]
-        elif isinstance(ldj.get(label),list):
-            for n,i in enumerate(ldj[label]):
-                if i[-2:]==" /":
-                    ldj[label][n]=i[:-2]
-            if label=="name":
-                ldj[label]=" ".join(ldj[label])
-                        
-    if "publisherImprint" in ldj:
-        if not isinstance(ldj["@context"],list) and isinstance(ldj["@context"],str):
-            ldj["@context"]=list([ldj.pop("@context")])
-        ldj["@context"].append(URIRef(u'http://bib.schema.org/'))
-    if "isbn" in ldj:
-        ldj["@type"]=URIRef(u'http://schema.org/Book')
-    if "issn" in ldj:
-        ldj["@type"]=URIRef(u'http://schema.org/CreativeWorkSeries')
-    if "pub_name" in ldj or "pub_place" in ldj:
-        ldj["publisher"]={}
-        if "pub_name" in ldj:
-            ldj["publisher"]["name"]=ldj.pop("pub_name")
-            ldj["publisher"]["@type"]="Organization"
-        if "pub_place" in ldj:
-            ldj["publisher"]["location"]={"name":ldj.pop("pub_place"),
-                                          "type":"Place"}
-            if ldj["publisher"]["location"]["name"][-1] in [".",",",";",":"]:
-                ldj["publisher"]["location"]["name"]=ldj["publisher"]["location"]["name"][:-1].strip()
-        for value in ["name","location"]:        # LOD-JIRA Ticket #105
-            if ldj.get("publisher") and ldj.get("publisher").get(value) and isinstance(ldj.get("publisher").get(value),str)and ldj.get("publisher").get(value)[-1] in [",",":",";"]:
-                ldj["publisher"][value]=ldj.get("publisher").get(value)[:-1].strip()
-    if "sameAs" in ldj:
-        ldj["sameAs"]=removeNone(cleanup_sameAs(ldj.pop("sameAs")))
-    return single_or_multi(ldj,entity)
+def getName(record,key,entity):
+    data=getAlternateNames(record,key,entity)
+    if isinstance(data,list):
+        data=" ".join(data)
+    return data if data else None
+
+def getAlternateNames(record,key,entity):
+    data=getmarc(record,key,entity)
+    if isinstance(data,str):
+            if data[-2:]==" /":
+                data=data[:-2]
+    elif isinstance(data,list):
+        for n,i in enumerate(data):
+            if i[-2:]==" /":
+                data[n]=i[:-2]
+    return data if data else None
+
+
+def getpublisher(record,key,entity):
+    pub_name=getmarc(record,["260..b","264..b"],entity)
+    pub_place=getmarc(record,["260..a","264..a"],entity)
+    if pub_name or pub_place:
+        data={}
+        if pub_name:
+            if pub_name[-1] in [".",",",";",":"]:
+                data["name"]=pub_name[:-1].strip()
+            else:
+                data["name"]=pub_name
+            data["@type"]="Organization"
+        if pub_place:
+            if pub_place[-1] in [".",",",";",":"]:
+                data["location"]={"name":pub_place[:-1].strip(),
+                              "type":"Place"}
+            else:
+                data["location"]={"name":pub_place,
+                              "type":"Place"}
+        return data
 
 def single_or_multi(ldj,entity):
     for k in entities[entity]:
@@ -859,19 +826,8 @@ def single_or_multi(ldj,entity):
                 elif "multi" in k:
                     if not isinstance(value,list):
                         ldj[key]=[value]
-                else:
-                    continue
     return ldj
 
-def cleanup_sameAs(sameAs):
-    if isinstance(sameAs,list):
-        for n,elem in enumerate(sameAs):
-            sameAs[n]=cleanup_sameAs(elem)
-    elif isinstance(sameAs,str):
-        if not sameAs.strip().startswith("http"):
-            return None
-    return sameAs
-        
 
 map_entities={
         "p":"persons",      #Personen, individualisiert
@@ -966,7 +922,7 @@ def process_line(jline,host,port,index,type):
         mapline={}
         for sortkey,val in entities[entity].items():
             key=sortkey.split(":")[1]
-            value=process_field(jline,val,entity)
+            value=ArrayOrSingleValue(process_field(jline,val,entity))
             if value:
                 if "related" in key and  isinstance(value,dict) and "_key" in value:
                     dictkey=value.pop("_key")
@@ -979,10 +935,16 @@ def process_line(jline,host,port,index,type):
                             mapline[dictkey]=litter(mapline.get(dictkey),elem)
                 else:
                     mapline[key]=litter(mapline.get(key),value)
-        mapline=check(mapline,entity)
-        if index:
-            mapline["isBasedOn"]=target_id+"source/"+index+"/"+getmarc(jline,"001",None)
-        return {entity:mapline}
+        if mapline:
+            if "publisherImprint" in mapline:
+                mapline["@context"]=list([mapline.pop("@context"),URIRef(u'http://bib.schema.org/')])
+            if "isbn" in mapline:
+                mapline["@type"]=URIRef(u'http://schema.org/Book')
+            if "issn" in mapline:
+                mapline["@type"]=URIRef(u'http://schema.org/CreativeWorkSeries')
+            if index:
+                mapline["isBasedOn"]=target_id+"source/"+index+"/"+getmarc(jline,"001",None)
+            return {entity:single_or_multi(removeNone(removeEmpty(mapline)),entity)}
     
 
 
@@ -1047,9 +1009,6 @@ def worker(ldj):
  
 """
 
-
-
-
 entities = {
    "resources":{   # mapping is 1:1 like works
         "single:@type"                     :[URIRef(u'http://schema.org/CreativeWork')],
@@ -1063,15 +1022,14 @@ entities = {
         "single:_sourceID"                 :{getmarc:"980..b"},
         "single:dateModified"              :{getdateModified:"005"},
         "multi:sameAs"                     :{getsameAs:["035..a","670..u"]},
-        "single:name"                      :{getmarc:["245..a","245..b"]},
-        "single:nameShort"                 :{getmarc:"245..a"},
-        "single:nameSub"                   :{getmarc:"245..b"},
-        "single:alternativeHeadline"       :{getmarc:["245..c"]},
-        "multi:alternateName"              :{getmarc:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
+        "single:name"                      :{getName:["245..a","245..b"]},
+        "single:nameShort"                 :{getAlternateNames:"245..a"},
+        "single:nameSub"                   :{getAlternateNames:"245..b"},
+        "single:alternativeHeadline"       :{getAlternateNames:["245..c"]},
+        "multi:alternateName"              :{getAlternateNames:["240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "multi:author"                     :{get_subfields:["100","110"]},
         "multi:contributor"                :{get_subfields:["700","710"]},
-        "single:pub_name"                  :{getmarc:["260..b","264..b"]},
-        "single:pub_place"                 :{getmarc:["260..a","264..a"]},
+        "single:publisher"                 :{getpublisher:["260..a""260..b","264..a","264..b"]},
         "single:datePublished"             :{getmarc:["130..f","260..c","264..c","362..a"]},
         "single:Thesis"                    :{getmarc:["502..a","502..b","502..c","502..d"]},
         "multi:issn"                       :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
@@ -1106,8 +1064,7 @@ entities = {
         "multi:alternateName"     :{getmarc:["400..t","410..t","411..t","430..t","240..a","240..p","246..a","246..b","245..p","249..a","249..b","730..a","730..p","740..a","740..p","920..t"]},
         "multi:author"            :{get_subfield:"500"},
         "multi:contributor"       :{get_subfield:"700"},
-        "single:pub_name"          :{getmarc:["260..b","264..b"]},
-        "single:pub_place"         :{getmarc:["260..a","264..a"]},
+        "single:publisher"         :{getpublisher:["260..a""260..b","264..a","264..b"]},
         "single:datePublished"     :{getmarc:["130..f","260..c","264..c","362..a"]},
         "single:Thesis"            :{getmarc:["502..a","502..b","502..c","502..d"]},
         "multi:issn"              :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
@@ -1202,7 +1159,6 @@ entities = {
         "multi:relatedTo"         :{get_subfield_if_4:"551^vbal"},
         "multi:about"             :{handle_about:["936","084","083","082","655"]},
         },
-    
     "events": {
         "single:@type"         :[URIRef(u'http://schema.org/Event')],
         "single:@context"      :"http://schema.org",
@@ -1221,7 +1177,6 @@ entities = {
         "multi:about"          :{handle_about:["936","084","083","082","655"]},
     },
 }
-
 
 if __name__ == "__main__":
     main()
