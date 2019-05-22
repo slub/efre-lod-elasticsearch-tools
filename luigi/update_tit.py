@@ -10,6 +10,7 @@ from time import sleep
 import os
 import shutil
 import subprocess
+import gzip
 import luigi
 import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
@@ -150,7 +151,7 @@ class LODTITFillRawdataIndex(LODTITTask):
                     es_ids.add(record.get("_id"))
                     es_recordcount=len(es_ids)
         
-                with open("{date}.ldj".format(**self.config,date=self.date),"r") as fd:
+                with gzip.open("{date}.ldj.gz".format(**self.config,date=self.date),"r") as fd:
                     ids=set()
                     for line in fd:
                         jline=json.loads(line)
