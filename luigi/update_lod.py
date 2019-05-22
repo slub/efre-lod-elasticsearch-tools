@@ -9,7 +9,7 @@ from requests import get,head,put
 from time import sleep
 import os
 import shutil
-from gzip import decompress
+import gzip
 import subprocess
 import argparse
 
@@ -85,15 +85,15 @@ class LODTransform2ldj(LODTask):
         return LODExtract()
 
     def run(self):
-        cmdstring="marc2jsonl < {date}-norm.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py > {date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmdstring="marc2jsonl < {date}-norm.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmdstring)
-        with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,open("{date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as inp:
+        with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,gzip.open("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as inp:
             for rec in inp:
                 print(json.loads(rec).get("001"),file=outp)
         return 0
     
     def output(self):
-        return luigi.LocalTarget("{date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
+        return luigi.LocalTarget("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
 
 
 class LODFillRawdataIndex(LODTask):
@@ -108,7 +108,7 @@ class LODFillRawdataIndex(LODTask):
         #put_dict("{host}/swb-aut".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
         #put_dict("{host}/swb-aut/_settings".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
 
-        cmd="esbulk -verbose -server {host} -w {workers} -index swb-aut -type mrc -id 001 {date}-norm-aut.ldj""".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmd="esbulk -z -verbose -server {host} -w {workers} -index swb-aut -type mrc -id 001 {date}-norm-aut.ldj.gz""".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
 
     def complete(self):

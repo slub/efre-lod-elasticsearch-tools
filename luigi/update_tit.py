@@ -35,7 +35,7 @@ class LODTITTask(BaseTask):
 class LODTITSolrHarvesterMakeConfig(LODTITTask):
     
     def run(self):
-        r=get("{host}/date/actual/2".format(**self.config))
+        r=get("{host}/date/actual/4".format(**self.config))
         lu=r.json().get("_source").get("date")
         with open(self.now+".conf","w") as fd:
             print("---\nsolr_endpoint: '{host}'\nsolr_parameters:\n    fq: last_indexed:[{last} TO {now}]\nrows_size: 1000\nchunk_size: 10000\nfullrecord_field: 'fullrecord'\nfullrecord_format: 'marc'\nreplace_method: 'decimal'\noutput_directory: './'\noutput_prefix: 'finc_'\noutput_format: 'marc'\noutput_validation: True".format(last=lu,now=self.now,host=self.config.get("url")),file=fd)
@@ -69,7 +69,7 @@ class LODTITDownload(LODTITTask):
         
 class LODTITDownloadSolrHarvester(LODTITTask):
     def run(self):
-        r=get("{host}/date/actual/2".format(**self.config))
+        r=get("{host}/date/actual/4".format(**self.config))
         lu=r.json().get("_source").get("date")
         cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py > {date}.mrc".format(last=lu,now=self.now,host=self.config.get("url"),date=self.date)
         output = shellout(cmdstring)
@@ -85,12 +85,17 @@ class LODTITTransform2ldj(LODTITTask):
         return LODTITDownloadSolrHarvester()
     def run(self):
         if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
-            cmdstring="cat {date}.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
+            cmdstring="cat {date}.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gunzip >> {date}.ldj.gz".format(date=self.date)
             #cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
             output=shellout(cmdstring)
-            with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as outp, open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
-                for rec in inp:
-                    print(json.loads(rec).get("001"),file=outp)
+            cmdstring="jq -r '.[\"001\"]'  < {date}.ldj > {date}-ppns.txt".format(date=datetime.today().strftime("%Y%m%d"))
+            output=shellout(cmdstring)
+        #    with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as ppns, \
+        #         open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
+        #        for rec in inp:
+        #            record=json.loads(rec)
+        #            if "001" in record:
+        #                print(record["001"],file=ppns)
         #shutil.rmtree(str(self.date))
         return 0
     
@@ -126,7 +131,7 @@ class LODTITFillRawdataIndex(LODTITTask):
         #put_dict("{host}/finc-main-{date}/_settings".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"index.mapping.total_fields.limit":20000})
         
         if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
-            cmd="esbulk -verbose -server {rawdata_host} -w {workers} -index finc-main -type mrc -id 001 {date}.ldj""".format(**self.config,date=self.date)
+            cmd="esbulk -z -verbose -server {rawdata_host} -w {workers} -index finc-main-k10plus -type mrc -id 001 {date}.ldj.gz""".format(**self.config,date=self.date)
             output=shellout(cmd)
 
     def complete(self):
@@ -141,7 +146,7 @@ class LODTITFillRawdataIndex(LODTITTask):
                 return False
         if filesize > 0:
             try:
-                for record in esidfilegenerator(host="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="finc-main",type="mrc",idfile="{date}-ppns.txt".format(**self.config,date=self.date),source="False"):
+                for record in esidfilegenerator(host="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{rawdata_host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="finc-main-k10plus",type="mrc",idfile="{date}-ppns.txt".format(**self.config,date=self.date),source="False"):
                     es_ids.add(record.get("_id"))
                     es_recordcount=len(es_ids)
         
@@ -173,7 +178,7 @@ class LODTITProcessFromRdi(LODTITTask):
     
     def run(self):
         if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
-            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
             output=shellout(cmd)
             sleep(5)
         
@@ -213,12 +218,12 @@ class LODTITUpdate(LODTITTask):
         #    cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py  -searchserver {host} -stdin  | ".format(**self.config,fd=path+"/resources/"+f)
         #    cmd+="esbulk -verbose -server {rawdata_host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove")
         #    output=shellout(cmd)
-        put_dict("{host}/date/actual/2".format(**self.config),{"date":str(self.now)})
+        put_dict("{host}/date/actual/4".format(**self.config),{"date":str(self.now)})
             
     def complete(self):
         try:
             if os.stat("{date}.mrc".format(date=self.date)).st_size > 0:
-                r=get("{host}/date/actual/2".format(**self.config))
+                r=get("{host}/date/actual/4".format(**self.config))
                 if r.ok:
                     lu=r.json().get("_source").get("date")
                     if lu==self.now:
