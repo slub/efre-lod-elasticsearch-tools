@@ -5,7 +5,7 @@ from dateutil import parser
 from requests import get,head
 import os
 import shutil
-from gzip import decompress
+import gzip
 import subprocess
 import argparse
 
@@ -26,19 +26,8 @@ class EFTask(BaseTask):
     """
     TAG = 'gnd'
 
-    config={
-    #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "url":"https://data.dnb.de/opendata/authorities_entityfacts_20190305.jsonld.gz",
-        "username":"opendata",
-        "password":"opendata",
-        "file":"ef-dump.ldj",
-        "fixfile":"ef-dump-fixed.ldj",
-        "host":"localhost",
-        "index":"ef",
-        "type":"gnd",
-        "port":9200,
-        "workers":8,
-        }
+    with open('ef_config.json') as data_file:    
+        config = json.load(data_file)
 
     def closest(self):
         return daily(date=self.date)
@@ -52,7 +41,7 @@ class EFDownload(EFTask):
     #]
     #if you delete the first character on the line by cut -c2-, you already got line-delimited json.
     def run(self):
-        cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- > {file} ".format(**self.config)
+        cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- | gzip {file} ".format(**self.config)
         output = shellout(cmdstring)
         return 0
 
@@ -80,8 +69,8 @@ class EFFixIDs(EFTask):
         return EFDownload()
     
     def run(self):
-        with open(self.config.get("file"),"r") as f:
-            with open(self.config.get("fixfile"),"w") as out:
+        with gzip.open(self.config.get("file"),"rt") as f:
+            with gzip.open(self.config.get("fixfile"),"wt") as out:
                 for line in f:
                     try:
                         record=json.loads(line)
@@ -105,7 +94,7 @@ class EFFillEsIndex(EFTask):
         return EFFixIDs()
 
     def run(self):
-        cmd="esbulk -purge -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
+        cmd="esbulk -z -purge -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(**self.config)
         out = shellout(cmd)
         pass
 
@@ -118,7 +107,7 @@ class EFFillEsIndex(EFTask):
         r = get(cmd)
         #result=self.es.search(index=self.config["index"],doc_type=typ,size=0)
         if os.path.exists(self.config["fixfile"]):
-            with open(self.config["fixfile"],"r") as f:
+            with gzip.open(self.config["fixfile"],"rt") as f:
                 for line in f:
                     try:
                         record=json.loads(line)

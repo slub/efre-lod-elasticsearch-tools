@@ -5,7 +5,7 @@ from dateutil import parser
 from requests import get,head
 import os
 import shutil
-from gzip import decompress
+import gzip
 import subprocess
 import argparse
 
@@ -63,16 +63,16 @@ def compact_object(jsonobject):
             #    if isinstance(compacted.get("fix"),(dict,list)):
             #        compacted.pop(fix)
             if (node and compacted.get("@id") and compacted.get("@id").startswith("_:")) or (node and compacted.get("id") and compacted.get("id").startswith("_:")):
-                with open(pathprefix+str(current_process().name)+"-bnodes.ldj","a") as fileout:           ###avoid raceconditions
+                with gzip.open(pathprefix+str(current_process().name)+"-bnodes.ldj.gz","at") as fileout:           ###avoid raceconditions
                     fileout.write(json.dumps(compacted, indent=None)+"\n")
             else:
-                with open(pathprefix+str(current_process().name)+".ldj","a") as fileout:
+                with gzip.open(pathprefix+str(current_process().name)+".ldj.gz","at") as fileout:
                     _id=compacted.pop("id")
                     compacted["id"]=_id.split("/")[-1]
                     fileout.write(json.dumps(compacted, indent=None)+"\n")
             
 def yield_obj(path,basepath):
-    with open(path,"rb") as fin:
+    with gzip.open(path,"r") as fin:
         builder=ijson.common.ObjectBuilder()
         for prefix,event,val in ijson.parse(fin):
             try:
@@ -112,26 +112,8 @@ class GNDTask(BaseTask):
     """
     TAG = 'gnd'
 
-    config={
-    #    "url":"https://data.dnb.de/Adressdatei.jsonld.gz",
-        "urls":["https://data.dnb.de/opendata/authorities-geografikum_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-koerperschaft_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-kongress_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-name_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-person_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-sachbegriff_lds_20190213.jsonld.gz",
-               "https://data.dnb.de/opendata/authorities-werk_lds_20190213.jsonld.gz"
-               ],
-        "context":"https://raw.githubusercontent.com/hbz/lobid-gnd/master/conf/context.jsonld",
-        "username":"opendata",
-        "password":"opendata",
-        "host":"localhost",
-        "indices":{"record":"gnd-records",
-                   "bnode":"gnd-bnodes"},
-        "port":9200,
-        "workers":8,
-        "doc_types":["bnodes","records"]
-        }
+    with open('gnd_config.json') as data_file:    
+        config = json.load(data_file)
 
     def closest(self):
         return daily(date=self.date)
@@ -140,13 +122,13 @@ class GNDDownload(GNDTask):
 
     def run(self):
         for url in self.config.get("urls"):
-            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
+            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc | gzip > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
             output = shellout(cmdstring)
         return 0
 
     def complete(self):
         for url in self.config["urls"]:
-            fd=url.split("/")[-1].split(".gz")[0]
+            fd=url.split("/")[-1]
             r=head(url,auth=(self.config["username"],self.config["username"]))
             remote=None
             if r.headers.get("Last-Modified"):
@@ -185,7 +167,7 @@ class GNDcompactedJSONdata(GNDTask):
         CleanWorkspace().run()
         os.mkdir("chunks")
         for url in self.config.get("urls"):
-            process(url.split("/")[-1].split(".gz")[0],None,self.config.get("context"),"chunks/",True,28)
+            process(url.split("/")[-1],None,self.config.get("context"),"chunks/",True,28)
 
     def output(self):
         return [luigi.LocalTarget("chunks")]
@@ -197,9 +179,9 @@ class GNDconcatChunks(GNDTask):
         return [ GNDcompactedJSONdata()]
     
     def run(self):
-        with open("records.ldj","w") as records, open("bnodes.ldj","w") as bnodes:
+        with gzip.open("records.ldj.gz","wt") as records, gzip.open("bnodes.ldj.gz","w") as bnodes:
             for f in os.listdir("chunks/"):
-                with open("chunks/" + f,"r") as chunk:
+                with gzip.open("chunks/" + f,"rt") as chunk:
                     for line in chunk:
                         jline=json.loads(line)
                         for date in ("dateOfBirth","dateOfDeath"):
@@ -229,7 +211,7 @@ class GNDUpdate(GNDTask):
         return GNDconcatChunks()
 
     def run(self):
-        cmd="esbulk -verbose -server http://{host}:{port} -w {workers}""".format(**self.config)
+        cmd="esbulk -z -verbose -server http://{host}:{port} -w {workers}""".format(**self.config)
         for k,v in self.config.get("indices").items():
             out=shellout("curl -XDELETE http://{host}:{port}/{index}".format(**self.config,index=v))
             put_dict("http://{host}/{index}".format(**self.config,index=v),{"mappings":{k:{"date_detection":False}}})
@@ -244,7 +226,7 @@ class GNDUpdate(GNDTask):
             i=0
             r = get(cmd)
             try:
-                with open(str(k)+"s.ldj","r") as f:
+                with gzip.open(str(k)+"s.ldj.gz","rt") as f:
                     for i,l in enumerate(f):
                         pass
             except FileNotFoundError:
