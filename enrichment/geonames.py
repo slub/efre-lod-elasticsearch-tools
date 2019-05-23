@@ -5,11 +5,16 @@ import json
 import sys
 import requests
 import elasticsearch
-from es2json import esgenerator,isint,litter,eprint,isfloat,isiter
-from rdflib import Graph
+from es2json import esgenerator
+from es2json import isint
+from es2json import litter
+from es2json import eprint
+from es2json import isfloat
+from es2json import isiter
 
-
-# Use geonames API (slow and quota limit for free accounts)
+"""
+ Use geonames API (slow and quota limit for free accounts)
+"""
 def get_gnid(rec):
     if not any("http://www.geonames.org" in s for s in rec.get("sameAs")) and rec["geo"].get("latitude") and rec["geo"].get("longitude"):
         changed=False

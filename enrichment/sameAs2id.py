@@ -1,22 +1,13 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import elasticsearch
-from elasticsearch import Elasticsearch, helpers
+from elasticsearch import Elasticsearch
 import json
-from pprint import pprint
 import argparse
 import sys
-import os.path
 import requests
-import signal
-import urllib3.request
-from multiprocessing import Lock, Pool, Manager
 from es2json import esgenerator
 from es2json import eprint
-from esmarc import gnd2uri
 from esmarc import isint
-from esmarc import ArrayOrSingleValue
-from es2json import simplebar
 
 es=None
 
@@ -42,7 +33,7 @@ map_id={"additionalType":"",
         "children":["persons"],
         "deathPlace":["geo"],
         "follows":["persons"],
-        "honorificPrefix":["tags"],
+        "honorificSuffix":["tags"],
         "parent":["persons"],
         "sibling":["persons"],
         "workLocation":["geo","orga"],

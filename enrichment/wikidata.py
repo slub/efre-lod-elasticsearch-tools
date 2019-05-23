@@ -5,7 +5,6 @@ import json
 import sys
 import requests
 from es2json import esgenerator,isint,litter,eprint
-from rdflib import Graph
 
 def get_wdid(gnd,rec):
     changed=False
