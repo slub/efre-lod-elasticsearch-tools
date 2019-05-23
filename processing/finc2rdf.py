@@ -185,11 +185,10 @@ context={
         "@container":"@language"
     },
     "openAccessContent":"http://dbpedia.org/ontology/openAccessContent",
-    "Library":"http://schema.org/Library"
 }
 
 
-mapping={ 
+mapping = { 
           "@context":putContext,
           "@id":{getAtID:"id"},
           "identifier":{getIDs:["swb_id_str","kxp_id_str"]},
@@ -203,10 +202,10 @@ mapping={
           "dct:alternative":{getTitle:"title_alt"},
           "dc:contributor":{getProperty:"author2"},
           #"author_id":{getGND:"author_id"},
-          "rdau:P60333":{getProperty:"imprint"},
+          "rdau:P60333":{getProperty:"imprint_str_mv"},
           "rdau:P60163":{getProperty:"publishPlace"},
           "dct:publisher":{getProperty:"publisher"},
-          "dct:issued":{getIssued:"publishDate"},
+          "issued":{getIssued:"publishDate"},
           "rdau:P60489":{getProperty:"dissertation_note"},
           "isbd:P1053":{getProperty:"physical"},
           "language":{getLanguage:"language"},
