@@ -72,12 +72,12 @@ class LODExtract(LODTask):
     def run(self):
         for date in self.config.get("dates"):
             if os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config,date=date)):
-                cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz && cat norm-aut.mrc >> {yesterday}-norm.mrc && rm norm-*.mrc".format(**self.config,date=date,yesterday=self.yesterday.strftime("%y%m%d"))
+                cmdstring="tar xvzf TA-MARC-norm-{date}.tar.gz && gzip < norm-aut.mrc >> {yesterday}-norm.mrc.gz && rm norm-*.mrc".format(**self.config,date=date,yesterday=self.yesterday.strftime("%y%m%d"))
                 output = shellout(cmdstring)
         return 0
     
     def output(self):
-        return luigi.LocalTarget("{date}-norm.mrc".format(date=self.yesterday.strftime("%y%m%d")))
+        return luigi.LocalTarget("{date}-norm.mrc.gz".format(date=self.yesterday.strftime("%y%m%d")))
 
 class LODTransform2ldj(LODTask):
     
@@ -85,9 +85,9 @@ class LODTransform2ldj(LODTask):
         return LODExtract()
 
     def run(self):
-        cmdstring="marc2jsonl < {date}-norm.mrc | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmdstring="zcat {date}-norm.mrc.gz | marc2jsonl  | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmdstring)
-        with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,gzip.open("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as inp:
+        with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,gzip.open("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"rt") as inp:
             for rec in inp:
                 print(json.loads(rec).get("001"),file=outp)
         return 0
@@ -121,7 +121,7 @@ class LODFillRawdataIndex(LODTask):
         es_recordcount=len(es_ids)
         
         try:
-            with open("{date}-norm-aut.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"r") as fd:
+            with gzip.open("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"rt") as fd:
                 ids=set()
                 for line in fd:
                     jline=json.loads(line)
