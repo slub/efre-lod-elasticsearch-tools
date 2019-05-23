@@ -1,38 +1,38 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
-from elasticsearch import Elasticsearch
 import json
 import argparse
-import sys, time
-import os.path
-import codecs
-import syslog
+import sys
+import time
 from requests import get
 from es2json import esgenerator
 from es2json import isint
 from es2json import litter
 
 def entityfacts(record,gnd,ef_instances):
-    changed = False
-    for url in ef_instances:
-        r = get(url+str(gnd))
-        if r.ok:
-            data=r.json()
-            if data.get("_source"):
-                data=data.get("_source")
-            sameAsses=[] # ba-dum-ts
-            if data.get("sameAs") and isinstance(data["sameAs"],list):
-                for sameAs in data.get("sameAs"):
-                    if sameAs.get("@id"):
-                        if not sameAs.get("@id").startswith("http://d-nb.info"):
-                            sameAsses.append(sameAs.get("@id"))
-            #print(sameAsses,url)
-            if sameAsses:
-                record["sameAs"]=litter(record.get("sameAs"),sameAsses)
-                changed=True
-            break
-    return record if changed else None
+    try:
+        changed = False
+        for url in ef_instances:
+            r = get(url+str(gnd))
+            if r.ok:
+                data=r.json()
+                if data.get("_source"):
+                    data=data.get("_source")
+                sameAsses=[] # ba-dum-ts
+                if data.get("sameAs") and isinstance(data["sameAs"],list):
+                    for sameAs in data.get("sameAs"):
+                        if sameAs.get("@id"):
+                            if not sameAs.get("@id").startswith("http://d-nb.info"):
+                                sameAsses.append(sameAs.get("@id"))
+                #print(sameAsses,url)
+                if sameAsses:
+                    record["sameAs"]=litter(record.get("sameAs"),sameAsses)
+                    changed=True
+                break
+        return record if changed else None
+    except Exception as e:
+        time.sleep(5)
+        return entityfacts(record,gnd,ef_instances)
  
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='enrich ES by EF!')
@@ -67,7 +67,7 @@ if __name__ == "__main__":
             gnd=None
             record=None
             if rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
+                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info"in x for x in rec.get("sameAs")):
                     for item in rec.get("sameAs"):
                         if "http://d-nb.info" in item and len(item.split("/"))>4:
                             gnd=item.rstrip().split("/")[4]
@@ -83,7 +83,7 @@ if __name__ == "__main__":
         for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
             gnd=None
             if rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
+                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" in x for x in rec.get("sameAs")):
                     for item in rec.get("sameAs"):
                         if "http://d-nb.info" in item and len(item.split("/"))>4:
                             gnd=item.split("/")[4]
