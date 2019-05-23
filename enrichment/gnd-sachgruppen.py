@@ -3,7 +3,7 @@ import sys
 import json
 import requests
 import argparse
-from es2json import eprint,litter
+from es2json import eprint,litter,isint,esgenerator
 
 map=["gndSubjectCategory","fieldOfStudy","fieldOfActivity","biographicalOrHistoricalInformation"]
 
@@ -52,36 +52,66 @@ def process(record,dnb_uri,server):
                             record["about"]=litter(record["about"],newabout)
     return record if change else None
         
-def find_gnd(jline,server):
-    if isinstance(jline.get("sameAs"),str):
-        if jline.get("sameAs").startswith("http://d-nb.info"):
-            return process(jline,jline.get("sameAs"),server)
-        else:
-            return jline
-    elif isinstance(jline.get("sameAs"),list):
-        for elem in jline.get("sameAs"):
-            if isinstance(elem,str) and elem.startswith("http://d-nb.info"):
-                newrec=process(jline,elem,server)
-                if newrec:
-                    jline=newrec
-        return jline
-    
+
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='enrich ES by GND Sachgruppen!!')
+    parser.add_argument('-host',type=str,default="127.0.0.1",help='hostname or IP-Address of the ElasticSearch-node to use, default is localhost.')
+    parser.add_argument('-port',type=int,default=9200,help='Port of the ElasticSearch-node to use, default is 9200.')
+    parser.add_argument('-index',type=str,help='ElasticSearch Search Index to use')
+    parser.add_argument('-type',type=str,help='ElasticSearch Search Index Type to use')
+    parser.add_argument("-id",type=str,help="retrieve single document (optional)")
+    parser.add_argument('-stdin',action="store_true",help="get data from stdin")
     parser.add_argument('-pipeline',action="store_true",help="output every record (even if not enriched) to put this script into a pipeline")
-    parser.add_argument('-searchserver',type=str,help="use http://host:port/") #the server where to search...
+    parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
+    parser.add_argument('-searchserver',type=str,help="use http://host:port for your GND ElasticSearch Server") #no, i don't steal the syntax from esbulk...
     args=parser.parse_args()
-        
-    for line in sys.stdin:
-        try:
-            jline=json.loads(line)
-        except:
-            eprint("corrupt json: "+str(line))
-            continue
-        newrec=find_gnd(jline,args.searchserver)
-        if newrec:
-            print(json.dumps(newrec,indent=None))
-        elif not newrec and args.pipeline:
-            print(json.dumps(jline,indent=None))
-        else:
-            continue
+    if args.server:
+        slashsplit=args.server.split("/")
+        args.host=slashsplit[2].rsplit(":")[0]
+        if isint(args.server.split(":")[2].rsplit("/")[0]):
+            args.port=args.server.split(":")[2].split("/")[0]
+        args.index=args.server.split("/")[3]
+        if len(slashsplit)>4:
+            args.type=slashsplit[4]
+        if len(slashsplit)>5:
+            if "?pretty" in args.server:
+                args.pretty=True
+                args.id=slashsplit[5].rsplit("?")[0]
+            else:
+                args.id=slashsplit[5]
+    if args.stdin:
+        for line in sys.stdin:
+            rec=json.loads(line)
+            gnd=None
+            record=None
+            if rec and rec.get("sameAs"):
+                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
+                    for item in rec.get("sameAs"):
+                        if "http://d-nb.info" in item and len(item.split("/"))>4:
+                            gnd=item.rstrip().split("/")[-1]
+                elif isinstance(rec.get("sameAs"),str) and "http://d-nb.info" in rec.get("sameAs"):
+                    gnd=rec.get("sameAs").split("/")[-1]
+            if gnd:
+                record=process(rec,gnd,args.searchserver)
+                if record:
+                    rec=record
+            if (record or args.pipeline) and rec:
+                print(json.dumps(rec,indent=None))
+    else:                                                                                                   
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
+            gnd=None
+            if rec.get("sameAs"):
+                if isinstance(rec.get("sameAs"),list):
+                    for item in rec.get("sameAs"):
+                        if "http://d-nb.info" in item and len(item.split("/"))>4:
+                            gnd=item.split("/")[-1]
+                elif isinstance(rec.get("sameAs"),str):
+                    gnd=rec.get("sameAs").split("/")[-1]
+            if gnd:
+                record=process(rec,gnd,args.searchserver)
+                if record:
+                    rec=record
+            if record or args.pipeline:
+                print(json.dumps(rec,indent=None))
+                
+
