@@ -194,7 +194,7 @@ def get_contributon(record,prop):
     fields=["100","110","111","700","710","711"]
     for record in reader:
         for field in fields:
-            if record[field]:
+            for f in record.get_fields(field):
                 contributor = {
                     "@type" : [ "bf:Contribution" ],
                     "bf:agent" : {
@@ -204,15 +204,15 @@ def get_contributon(record,prop):
                         "@id" : "http://id.loc.gov/vocabulary/relators/",
                         }
                 }
-                if record[field]['a']:
-                    contributor["bf:agent"]["https://www.w3.org/TR/rdf-schema/#ch_label"]=record[field]['a']
-                if record[field]['0'] and record[field]['0'].startswith("(DE-588)"):
-                    contributor["bf:agent"]["gndIdentifier"]=record[field]['0'].split(")")[1]
+                if f['a']:
+                    contributor["bf:agent"]["https://www.w3.org/TR/rdf-schema/#ch_label"]=f['a']
+                if f['0'] and f['0'].startswith("(DE-588)"):
+                    contributor["bf:agent"]["gndIdentifier"]=f['0'].split(")")[1]
                     contributor["bf:agent"]["@id"]+=contributor["bf:agent"]["gndIdentifier"]
                 else:
                     del contributor['bf:agent']['@id']
-                if record[field]['4']:
-                    contributor['bf:role']['@id']+=record[field]['4']
+                if f['4']:
+                    contributor['bf:role']['@id']+=f['4']
                 else:
                     del contributor['bf:role']
                 if contributor['bf:agent'].get('https://www.w3.org/TR/rdf-schema/#ch_label'):
