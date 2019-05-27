@@ -5,6 +5,9 @@ import sys
 import json
 
 from es2json import ArrayOrSingleValue, eprint
+from fincsolr2marc import fixRecord
+from pymarc import MARCReader
+
 
 baseuri="http://data.finc.info/resources/"
 
@@ -154,7 +157,69 @@ def getIssued(record,prop):
             ret.append({"@type": "xsd:gYear",
                         "@value":elem})
         return ret
-    
+
+"""...
+  "contribution" : [ {
+    "type" : [ "Contribution" ],
+    "agent" : {
+      "id" : "http://d-nb.info/gnd/1049709292",
+      "type" : [ "Person" ],
+      "dateOfBirth" : "1974",
+      "gndIdentifier" : "1049709292",
+      "label" : "Nichols, Catherine" 
+    },
+    "role" : {
+      "id" : "http://id.loc.gov/vocabulary/relators/edt",
+      "label" : "Herausgeber/in" 
+    }
+  }, {
+    "type" : [ "Contribution" ],
+    "agent" : {
+      "id" : "http://d-nb.info/gnd/130408026",
+      "type" : [ "Person" ],
+      "dateOfBirth" : "1951",
+      "gndIdentifier" : "130408026",
+      "label" : "Blume, Eugen" 
+    },
+    "role" : {
+      "id" : "http://id.loc.gov/vocabulary/relators/ctb",
+      "label" : "Mitwirkende" 
+    }
+  }
+"""
+def get_contributon(record,prop):
+    fullrecord_fixed=fixRecord(record=getProperty(record,prop),record_id=record.get("record_id"),validation=False,replaceMethod='decimal')
+    reader=MARCReader(fullrecord_fixed.encode('utf-8'))
+    data=[]
+    fields=["100","110","111","700","710","711"]
+    for record in reader:
+        for field in fields:
+            if record[field]:
+                contributor = {
+                    "@type" : [ "bf:Contribution" ],
+                    "bf:agent" : {
+                    "@id" : "http://d-nb.info/gnd/"
+                    },
+                    "bf:role" : {
+                        "@id" : "http://id.loc.gov/vocabulary/relators/",
+                        }
+                }
+                if record[field]['a']:
+                    contributor["bf:agent"]["https://www.w3.org/TR/rdf-schema/#ch_label"]=record[field]['a']
+                if record[field]['0'] and record[field]['0'].startswith("(DE-588)"):
+                    contributor["bf:agent"]["gndIdentifier"]=record[field]['0'].split(")")[1]
+                    contributor["bf:agent"]["@id"]+=contributor["bf:agent"]["gndIdentifier"]
+                else:
+                    del contributor['bf:agent']['@id']
+                if record[field]['4']:
+                    contributor['bf:role']['@id']+=record[field]['4']
+                else:
+                    del contributor['bf:role']
+                if contributor['bf:agent'].get('https://www.w3.org/TR/rdf-schema/#ch_label'):
+                    data.append(contributor)
+    return data if data else None
+
+
 def putContext(record):
     return context
 
@@ -172,6 +237,7 @@ context={
     "umbel":"http://umbel.org/umbel/",
     "isbd":"http://iflastandards.info/ns/isbd/elements/",
     "schema":"http://schema.org/",
+    "bf":"http://id.loc.gov/ontologies/bibframe",
     "issued":{
         "@id": "dct:issued",
         "@type": "xsd:gYear"
@@ -197,10 +263,10 @@ mapping = {
           "umbel:isLike":{getProperty:"url"},
           "dct:title":{getTitle:"title"},
           "rdau:P60493":{getTitle:["title_part","title_sub"]},
-          "rdau:P60327":{getProperty:"author"},
           "bibo:shortTitle":{getTitle:"title_short"},
           "dct:alternative":{getTitle:"title_alt"},
-          "dc:contributor":{getProperty:"author2"},
+          #"rdau:P60327":{getProperty:"author"},
+          #"dc:contributor":{getProperty:"author2"},
           #"author_id":{getGND:"author_id"},
           "rdau:P60333":{getProperty:"imprint_str_mv"},
           "rdau:P60163":{getProperty:"publishPlace"},
@@ -215,6 +281,7 @@ mapping = {
           "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
           "schema:offers": {getOfferedBy:"record_id"},
+          "bf:contribution":{get_contributon:"fullrecord"}
           }
 
 def process_field(record,source_field):
