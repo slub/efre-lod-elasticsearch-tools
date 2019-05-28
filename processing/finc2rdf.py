@@ -205,7 +205,7 @@ def get_contributon(record,prop):
                         }
                 }
                 if f['a']:
-                    contributor["bf:agent"]["https://www.w3.org/TR/rdf-schema/#ch_label"]=f['a']
+                    contributor["bf:agent"]["rdfs:ch_label"]=f['a']
                 if f['0'] and f['0'].startswith("(DE-588)"):
                     contributor["bf:agent"]["gndIdentifier"]=f['0'].split(")")[1]
                     contributor["bf:agent"]["@id"]+=contributor["bf:agent"]["gndIdentifier"]
@@ -218,8 +218,10 @@ def get_contributon(record,prop):
                 if field[1:]=="10":
                     contributor['bf:agent']['@type']='bf:Person'
                 elif field[1:]=="00":
-                    contributor['bf:agent']['@type']='bf:CorporateBody'
-                if contributor['bf:agent'].get('https://www.w3.org/TR/rdf-schema/#ch_label'):
+                    contributor['bf:agent']['@type']='bf:Organization'
+                elif field[1:]=="11":
+                    contributor['bf:agent']['@type']='bf:Meeting'
+                if contributor['bf:agent'].get('rdfs:ch_label'):
                     data.append(contributor)
     return data if data else None
 
@@ -240,7 +242,8 @@ context={
     "rdau":"http://rdaregistry.info/Elements/u/",
     "umbel":"http://umbel.org/umbel/",
     "isbd":"http://iflastandards.info/ns/isbd/elements/",
-    "schema":"http://schema.org/"
+    "schema":"http://schema.org/",
+    "rdfs":"https://www.w3.org/TR/rdf-schema/#",
     "issued":{
         "@id": "dct:issued",
         "@type": "xsd:gYear"
@@ -268,8 +271,8 @@ mapping = {
           "rdau:P60493":{getTitle:["title_part","title_sub"]},
           "bibo:shortTitle":{getTitle:"title_short"},
           "dct:alternative":{getTitle:"title_alt"},
-          #"rdau:P60327":{getProperty:"author"},
-          #"dc:contributor":{getProperty:"author2"},
+          "rdau:P60327":{getProperty:"author"},
+          "dc:contributor":{getProperty:"author2"},
           #"author_id":{getGND:"author_id"},
           "rdau:P60333":{getProperty:"imprint_str_mv"},
           "rdau:P60163":{getProperty:"publishPlace"},
@@ -280,7 +283,7 @@ mapping = {
           "language":{getLanguage:"language"},
           "dct:isPartOf":{getIsPartOf:"hierarchy_top_id"},
           "dct:bibliographicCitation":{getProperty:["container_title","container_reference"]},
-          "https://www.w3.org/TR/rdf-schema/#ch_type":{getFormatRdfType:"format_finc"},
+          "rdfs:ch_type":{getFormatRdfType:"format_finc"},
           "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
           "schema:offers": {getOfferedBy:"record_id"},
