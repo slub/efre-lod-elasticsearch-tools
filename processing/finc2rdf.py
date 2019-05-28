@@ -198,7 +198,7 @@ def get_contributon(record,prop):
                 contributor = {
                     "@type" : [ "bf:Contribution" ],
                     "bf:agent" : {
-                    "@id" : "http://d-nb.info/gnd/"
+                        "@id" : "http://d-nb.info/gnd/"
                     },
                     "bf:role" : {
                         "@id" : "http://id.loc.gov/vocabulary/relators/",
@@ -215,6 +215,10 @@ def get_contributon(record,prop):
                     contributor['bf:role']['@id']+=f['4']
                 else:
                     del contributor['bf:role']
+                if field[1:]=="10":
+                    contributor['bf:agent']['@type']='bf:Person'
+                elif field[1:]=="00":
+                    contributor['bf:agent']['@type']='bf:CorporateBody'
                 if contributor['bf:agent'].get('https://www.w3.org/TR/rdf-schema/#ch_label'):
                     data.append(contributor)
     return data if data else None
@@ -236,8 +240,7 @@ context={
     "rdau":"http://rdaregistry.info/Elements/u/",
     "umbel":"http://umbel.org/umbel/",
     "isbd":"http://iflastandards.info/ns/isbd/elements/",
-    "schema":"http://schema.org/",
-    "bf":"http://id.loc.gov/ontologies/bibframe",
+    "schema":"http://schema.org/"
     "issued":{
         "@id": "dct:issued",
         "@type": "xsd:gYear"
