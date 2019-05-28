@@ -6,7 +6,7 @@ import json
 
 from es2json import ArrayOrSingleValue, eprint
 from fincsolr2marc import fixRecord
-from multiprocessing import Pool
+from multiprocessing import Pool,Lock
 from pymarc import MARCReader
 
 
@@ -211,8 +211,11 @@ def get_contributon(record,prop):
                     contributor["bf:agent"]["@id"]+=f['0'].split(")")[1]
                 else:
                     del contributor['bf:agent']['@id']
-                if f['4']:
-                    contributor['bf:role']['@id']+=f['4']
+                if f['4'] and len(f['4'])<=4:
+                    if f['4'][0]=='-':
+                        contributor['bf:role']['@id']+=f['4'][1:]
+                    else:
+                        contributor['bf:role']['@id']+=f['4']
                 else:
                     del contributor['bf:role']
                 if field[1:]=="00":
@@ -313,7 +316,8 @@ def removeNone(obj):
             for k, v in obj.items() if k is not None and v is not None)
     else:
         return obj
-
+    
+lock=Lock()
 def process_line(record):
     mapline={}
     for key,val in mapping.items():
@@ -322,7 +326,9 @@ def process_line(record):
             mapline[key]=value
     mapline=removeNone(mapline)
     if mapline:
-        print(json.dumps(mapline))
+        with lock:
+            sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
+            sys.stdout.flush()
     
 def main():
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
@@ -340,7 +346,7 @@ def main():
                         fl.add(elem)
         print("solrdump -verbose -server {} -q institution:DE-15 -fl {}".format(args.server,','.join(fl)))
         quit()
-    p=Pool(8)
+    p=Pool(4)
     for line in sys.stdin:
         p.apply_async(process_line,args=(json.loads(line),))
         #target_record=process_line(json.loads(line))
