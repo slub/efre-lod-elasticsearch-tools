@@ -215,9 +215,9 @@ def get_contributon(record,prop):
                     contributor['bf:role']['@id']+=f['4']
                 else:
                     del contributor['bf:role']
-                if field[1:]=="10":
+                if field[1:]=="00":
                     contributor['bf:agent']['@type']='bf:Person'
-                elif field[1:]=="00":
+                elif field[1:]=="10":
                     contributor['bf:agent']['@type']='bf:Organization'
                 elif field[1:]=="11":
                     contributor['bf:agent']['@type']='bf:Meeting'
