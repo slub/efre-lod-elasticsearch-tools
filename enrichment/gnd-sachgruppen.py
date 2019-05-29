@@ -35,6 +35,7 @@ def process(record,dnb_uri,server):
                                 newabout["name"]=" ".join(hit.get("_source").get("skos:prefLabel").get("@value").replace("\n","").split())
                     if not record.get("about"):
                         record["about"]=newabout
+                        change=True
                     else:
                         plzAdd=True
                         #print(elem,record.get("about"))
@@ -49,6 +50,7 @@ def process(record,dnb_uri,server):
                                         if ident_list_elem.get("@id") and elem in ident_list_elem.get("@id"):
                                             plzAdd=False
                         if plzAdd:
+                            change=True
                             record["about"]=litter(record["about"],newabout)
     return record if change else None
         
@@ -100,12 +102,11 @@ if __name__ == "__main__":
     else:                                                                                                   
         for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
             gnd=None
-            if rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"),list):
-                    for item in rec.get("sameAs"):
-                        if "http://d-nb.info" in item and len(item.split("/"))>4:
-                            gnd=item.split("/")[-1]
-                elif isinstance(rec.get("sameAs"),str):
+            if isinstance(rec.get("sameAs"),list):
+                for item in rec.get("sameAs"):
+                    if "http://d-nb.info" in item and len(item.split("/"))>4:
+                        gnd=item.split("/")[-1]
+            elif isinstance(rec.get("sameAs"),str):
                     gnd=rec.get("sameAs").split("/")[-1]
             if gnd:
                 record=process(rec,gnd,args.searchserver)
