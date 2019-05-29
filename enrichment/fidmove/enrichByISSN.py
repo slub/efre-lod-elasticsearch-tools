@@ -81,7 +81,7 @@ if __name__ == "__main__":
                     record=get_gndbyISSN(rec,search_host,search_port,series.json().get("_source").get("issn"))
                     if record:
                         pass
-                        #print(record)
-            #if args.pipeline or record:
-                #print(json.dumps(rec,indent=None))
+                        #print(json.dumps(record))
+         #   if args.pipeline or record:
+          #      print(json.dumps(rec,indent=None))
             
