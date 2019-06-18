@@ -30,7 +30,23 @@ mapping={"author":{         "fields":["hasOccupation","about","workLocation","sa
                             "index":["fidmove-enriched-aut"]}
          }
 
-
+generic_mapping={"author":{ "fields":["hasOccupation","about","workLocation","sameAs","birthPlace","deathPlace"],
+                            "index":["persons","organizations","fidmove-enriched-aut"]},
+         "contributor":{    "fields":["hasOccupation","about","workLocation","geo","adressRegion","sameAs"],
+                            "index":["persons","organizations","fidmove-enriched-aut"]},
+         "workLocation":{   "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "birthPlace":{   "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "deathPlace":{   "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "location":{   "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "mentions":{       "fields":["geo","adressRegion","sameAs"],
+                            "index":["geo"]},
+         "relatedEvent":{   "fields":["adressRegion","location","geo","sameAs"],
+                            "index":["fidmove-enriched-aut"]}
+         }
 
 
 def isAlive(node):
@@ -39,16 +55,16 @@ def isAlive(node):
     else:
         return True
 
-def enrich_record(node,entity,host,port):
+def enrich_record(node,entity,host,port,map):
     toDel=[]
     for field in mapping:
         if isinstance(node.get(field),dict):
-            ret=enrich_record(node.get(field),field,host,port)
+            ret=enrich_record(node.get(field),field,host,port,map)
             if ret:
                 node[field]=ret
         elif isinstance(node.get(field),list):
             for n,fld in enumerate(node.get(field)):
-                ret=enrich_record(fld,field,host,port)
+                ret=enrich_record(fld,field,host,port,map)
                 if ret:
                     node[field][n]=ret
                 else:
@@ -115,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty syntax. overwrites host/port/index/id/pretty")
     parser.add_argument('-pretty',action="store_true",default=False,help="output tabbed json")
     parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
+    parser.add_argument('-fidmove',action="store_true",default=False,help="Reduction to FIDMove")
     args=parser.parse_args()
     
     if args.server:
@@ -140,25 +157,30 @@ if __name__ == "__main__":
     else:
         tabbing=None
     es=Elasticsearch([{'host':args.host}],port=args.port)
-    
+    map=None
+    if args.fidmove:
+        map=mapping
+    else:
+        map=generic_mapping
+
     if args.stdin:
         for line in sys.stdin:
-            newrecord=enrich_record(json.loads(line),None,args.host,str(args.port))
+            newrecord=enrich_record(json.loads(line),None,args.host,str(args.port),map)
             if newrecord.get("author") or newrecord.get("contributor"):
-                print(json.dumps(enrich_record(newrecord,None,args.host,str(args.port)),indent=tabbing))
+                print(json.dumps(enrich_record(newrecord,None,args.host,str(args.port)),indent=tabbing),map)
     elif args.idfile:
         for record in esidfilegenerator(host=args.host,port=9200,index=args.index,type=args.type,body=None,source=True,source_exclude=None,source_include=None,headless=True,idfile=args.idfile):
             #recstrlen=len(json.dumps(record,indent=None))
             #print(json.dumps(record,indent=tabbing),"\n")
             length=len(json.dumps(record,indent=None))
-            newrecord=enrich_record(record,None,args.host,str(args.port))
+            newrecord=enrich_record(record,None,args.host,str(args.port),map)
             dumpstring=str(json.dumps(newrecord,indent=None))
             if len(dumpstring) > length:
             #if newrecord.get("author") or newrecord.get("contributor"):
                 print(json.dumps(newrecord,indent=tabbing))
     
     else:
-        if args.index=="resources":
+        if args.fidmove and args.index=="resources":
            searchbody={
   "query": {
     "bool" : {
@@ -1324,7 +1346,7 @@ if __name__ == "__main__":
             recstrlen=len(json.dumps(record,indent=None))
             #print(json.dumps(record,indent=tabbing),"\n")
             #length=len(json.dumps(record,indent=None))
-            newrecord=enrich_record(record,None,args.host,str(args.port))
+            newrecord=enrich_record(record,None,args.host,str(args.port),map)
             if args.index!="resources" and newrecord and len(json.dumps(newrecord,indent=None))>recstrlen:
                 print(json.dumps(newrecord))
             elif args.index=="resources" and (newrecord.get("author") or newrecord.get("contributor")):
