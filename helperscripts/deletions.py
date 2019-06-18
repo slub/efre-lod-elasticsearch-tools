@@ -171,12 +171,14 @@ if __name__ == '__main__':
         if args.dtype in ('all', 'epn'):
             for xpn,dat in lm.epn_deletions.items():
                 print("%s %s" % (xpn, dat.strftime('%Y%m%d%H%M')))
+        outputset=set()
         if args.dtype in ('all', 'ppn'):
             for xpn,dat in lm.ppn_deletions.items():
                 for getstring in getstrings:
                     r=get(getstring+xpn.strip())
                     if r.ok and r.json()["found"]:
-                        delete(getstring[:25]+"/"+r.json()["_index"]+"/"+r.json()["_type"]+"/"+r.json()["_id"])
-                        #print(getstring[:25]+"/"+r.json()["_index"]+"/"+r.json()["_type"]+"/"+r.json()["_id"])
-            
+                        outputset.add(getstring[:25]+"/"+r.json()["_index"]+"/"+r.json()["_type"]+"/"+r.json()["_id"])
+                        #delete(getstring[:25]+"/"+r.json()["_index"]+"/"+r.json()["_type"]+"/"+r.json()["_id"])
+        for item in outputset:
+            print(item)
 #				print("%s" % (xpn))

@@ -161,6 +161,8 @@ def put_dict(url, dictionary):
     )
     
 def ArrayOrSingleValue(array):
+    if isinstance(array,(int,float)):
+        return array
     if array:
         length=len(array)
         if length>1 or isinstance(array,dict):
@@ -173,7 +175,12 @@ def ArrayOrSingleValue(array):
         
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-        
+
+def eprintjs(*args, **kwargs):
+    for arg in args:
+        print(json.dumps(arg,indent=4), file=sys.stderr, **kwargs)
+
+
 def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,timeout=10):
     if not source:
         source=True

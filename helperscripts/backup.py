@@ -21,11 +21,12 @@ from multiprocessing import Pool
 
 def backup(conf):
     try:
-        for records in esfatgenerator(host=conf.get("host"),port=conf.get("port"),index=conf.get("index")):
+        for records in esfatgenerator(host=conf.get("host"),port=conf.get("port"),index=conf.get("index"),timeout=60):
             if records:
                 with gzip.open("{}-{}-{}-{}.ldj.gz".format(conf.get("host"),conf.get("port"),conf.get("index"),records[0].get("_type")) ,"at") as fileout:
                     for record in records:
-                        print(json.dumps(record),file=fileout)
+                        if "_source" in record:
+                            print(json.dumps(record["_source"]),file=fileout)
     except Exception as e:
         with open("errors.txt",'a') as f:
             traceback.print_exc(file=f)
@@ -41,6 +42,5 @@ if __name__ == "__main__":
         exit()
     with open(args.conf,"r") as con:
         conf=json.load(con)
-        p=Pool(4)
-        p.map(backup,conf)
-                        
+        p=Pool(5)
+        p.map(backup,conf) 
