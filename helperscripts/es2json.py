@@ -318,7 +318,8 @@ def litter(lst, elm):
         else:
             return lst
 
-def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False,timeout=10):
+def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False,timeout=10,verbose=False):
+    progress=1000
     if not source:
         source=True
     es=Elasticsearch([{'host':host}],port=port,timeout=timeout)
@@ -353,6 +354,9 @@ def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,sourc
         pages = es.scroll(scroll_id = sid, scroll='12h')
         sid = pages['_scroll_id']
         scroll_size = len(pages['hits']['hits'])
+        if verbose:
+            eprint("{}/{}".format(progress,pages['hits']['total']))
+            progress+=1000
         for hits in pages['hits']['hits']:
             if headless:
                 yield hits['_source']
@@ -422,7 +426,7 @@ if __name__ == "__main__":
         for json_record in esidfileconsumegenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,idfile=args.idfile_consume):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     elif not args.id:
-        for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include):
+        for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,verbose=True):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     else:
         es=Elasticsearch([{"host":args.host}],port=args.port)
