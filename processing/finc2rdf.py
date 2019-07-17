@@ -8,6 +8,7 @@ from es2json import ArrayOrSingleValue, eprint
 from fincsolr2marc import fixRecord
 from multiprocessing import Pool,Lock
 from pymarc import MARCReader
+from swb_fix import rolemapping 
 
 
 baseuri="http://data.finc.info/resources/"
@@ -96,7 +97,7 @@ def getFormatRdfType(record,prop):
                             }
     value=getformat(record,prop,formatmapping)
     if value:
-        return {"@id":context.get(value)}
+        return {"@id":value}
                    
 
 def getFormatDctMedium(record,prop):
@@ -214,8 +215,12 @@ def get_contributon(record,prop):
                 if f['4'] and len(f['4'])<=4:
                     if f['4'][0]=='-':
                         contributor['bf:role']['@id']+=f['4'][1:]
+                        if rolemapping.get(f['4'][1:]):
+                            contributor['bf:role']['rdfs:ch_label']=rolemapping[f['4'][1:]]
                     else:
                         contributor['bf:role']['@id']+=f['4']
+                        if rolemapping.get(f['4']):
+                            contributor['bf:role']['rdfs:ch_label']=rolemapping[f['4']]
                 else:
                     del contributor['bf:role']
                 if field[1:]=="00":
@@ -226,8 +231,16 @@ def get_contributon(record,prop):
                     contributor['bf:agent']['@type']='bf:Meeting'
                 if contributor['bf:agent'].get('rdfs:ch_label'):
                     data.append(contributor)
+                
     return data if data else None
 
+def get_rvk(record,prop):
+    if prop in record:
+        for rvk in record[prop]:
+            if rvk=="No subject assigned":
+                continue
+            elif isinstance(rvk,str):
+                return str("https://rvk.uni-regensburg.de/regensburger-verbundklassifikation-online#notation/{}".format(rvk))
 
 def putContext(record):
     return context
@@ -290,7 +303,8 @@ mapping = {
           "dct:medium":{getFormatDctMedium:"format_finc"},
           "openAccessContent":{getoAC:"facet_avail"},
           "schema:offers": {getOfferedBy:"record_id"},
-          "bf:contribution":{get_contributon:"fullrecord"}
+          "bf:contribution":{get_contributon:"fullrecord"},
+          "umbel:relatesToNotation":{get_rvk:"rvk_facet"}
           }
 
 def process_field(record,source_field):
@@ -338,12 +352,13 @@ def main():
     if args.gen_cmd:
         fl=set()
         for k,v in mapping.items():
-            for c,w in v.items():
-                if isinstance(w,str):
-                    fl.add(w)
-                elif isinstance(w,list):
-                    for elem in w:
-                        fl.add(elem)
+            if not callable(v):
+                for c,w in v.items():
+                    if isinstance(w,str):
+                        fl.add(w)
+                    elif isinstance(w,list):
+                        for elem in w:
+                            fl.add(elem)
         print("solrdump -verbose -server {} -q institution:DE-15 -fl {}".format(args.server,','.join(fl)))
         quit()
     p=Pool(4)
@@ -355,3 +370,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
