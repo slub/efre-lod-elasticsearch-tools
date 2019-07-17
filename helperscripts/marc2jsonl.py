@@ -19,7 +19,7 @@ def transpose_to_ldj(record):
             ind="".join(field.indicators).replace(" ","_")
             fd={}
             for k,v in izip_longest(*[iter(field.subfields)] * 2):
-                if k==".":
+                if k=="." or k.isspace():
                     k="_"
                 if v:
                     fd[k]=litter(fd.get(k),v)
