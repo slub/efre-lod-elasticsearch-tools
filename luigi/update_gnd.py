@@ -88,7 +88,7 @@ def yield_obj(path,basepath):
 
 
 #put this into a function to able to use jsonld2compactjsonldldj as a lib
-def process(input,record_field,context_url,pathprefix,bnode,worker):
+def process(inputs,record_field,context_url,pathprefix,bnode,worker):
     r=get(context_url)
     if r.ok:
         jsonldcontext=r.json()
@@ -100,9 +100,11 @@ def process(input,record_field,context_url,pathprefix,bnode,worker):
     pool = Pool(worker,initializer=init_mp,initargs=(jsonldcontext,record_field,context_url,pathprefix,bnode,))
     #init_mp(jsonldcontext,record_field,context_url,pathprefix,bnode)
     #item.item = go down 2 (array-)levels as in jsonld-1.1 spec
-    for obj in yield_obj(input,"item.item"):
-        #compact_object(obj)
-        pool.apply_async(compact_object,(obj,))
+    for url in inputs:
+        input=url.split("/")[-1]
+        for obj in yield_obj(input,"item.item"):
+            #compact_object(obj)
+            pool.apply_async(compact_object,(obj,))
     pool.close()
     pool.join()
 
@@ -119,10 +121,12 @@ class GNDTask(BaseTask):
         return daily(date=self.date)
 
 class GNDDownload(GNDTask):
-
+    files=[]
     def run(self):
         for url in self.config.get("urls"):
-            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc | gzip > {file} ".format(**self.config,url=url,file=url.split("/")[-1].split(".gz")[0])
+            fd=url.split("/")[-1]
+            cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc | gzip > {file} ".format(**self.config,url=url,file=fd)
+            self.files.append(luigi.LocalTarget(fd))
             output = shellout(cmdstring)
         return 0
 
@@ -144,7 +148,7 @@ class GNDDownload(GNDTask):
         return True
 
     def output(self):
-        return luigi.LocalTarget(self.config.get("file"))
+        return self.files
 
 class CleanWorkspace(GNDTask):
     
@@ -166,8 +170,9 @@ class GNDcompactedJSONdata(GNDTask):
     def run(self):
         CleanWorkspace().run()
         os.mkdir("chunks")
-        for url in self.config.get("urls"):
-            process(url.split("/")[-1],None,self.config.get("context"),"chunks/",True,28)
+        #for url in self.config.get("urls"):
+        #    process(url.split("/")[-1],None,self.config.get("context"),"chunks/",True,28)
+        process(self.config.get("urls"),None,self.config.get("context"),"chunks/",True,28)
 
     def output(self):
         return [luigi.LocalTarget("chunks")]
@@ -179,7 +184,7 @@ class GNDconcatChunks(GNDTask):
         return [ GNDcompactedJSONdata()]
     
     def run(self):
-        with gzip.open("records.ldj.gz","wt") as records, gzip.open("bnodes.ldj.gz","w") as bnodes:
+        with gzip.open("records.ldj.gz","wt") as records, gzip.open("bnodes.ldj.gz","wt") as bnodes:
             for f in os.listdir("chunks/"):
                 with gzip.open("chunks/" + f,"rt") as chunk:
                     for line in chunk:
@@ -189,15 +194,13 @@ class GNDconcatChunks(GNDTask):
                                 for i,item in enumerate(jline[date]):
                                     if isinstance(item,str):
                                         jline[date][i]={"@value":item}
-                            else:
-                                eprint(jline.get(date))
                         if "bnode"in f:                
                             bnodes.write(json.dumps(jline,indent=None)+"\n")
                         else:
                             records.write(json.dumps(jline,indent=None)+"\n")
         
     def output(self):
-        return [luigi.LocalTarget("bnodes.ldj"),luigi.LocalTarget("records.ldj")]
+        return [luigi.LocalTarget("bnodes.ldj.gz"),luigi.LocalTarget("records.ldj.gz")]
     
 class GNDUpdate(GNDTask):
     """
@@ -215,7 +218,7 @@ class GNDUpdate(GNDTask):
         for k,v in self.config.get("indices").items():
             out=shellout("curl -XDELETE http://{host}:{port}/{index}".format(**self.config,index=v))
             put_dict("http://{host}/{index}".format(**self.config,index=v),{"mappings":{k:{"date_detection":False}}})
-            out = shellout(cmd+""" -index {index} -type {type} -id id {type}s.ldj""".format(index=v,type=k))
+            out = shellout(cmd+""" -index {index} -type {type} -id id {type}s.ldj.gz""".format(index=v,type=k))
             
 
     def complete(self):
