@@ -62,7 +62,7 @@ class LODTITDownload(LODTITTask):
 
     def output(self):
         ret=[]
-        return luigi.LocalTarget(datetime.today().strftime("%Y%m%d"))
+        return luigi.LocalTarget(self.date)
     
     def complete(self):
         if os.path.exists("{date}".format(date=self.date)):
@@ -77,7 +77,7 @@ class LODTITDownloadSolrHarvester(LODTITTask):
     def run(self):
         r=get("{host}/date/actual/4".format(**self.config))
         lu=r.json().get("_source").get("date")
-        cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py | {bzip} > {date}.mrc.bz2".format(last=lu,now=self.now,host=self.config.get("url"),bzip=get_bzipper(),date=self.date)
+        cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py -valid | {bzip} > {date}.mrc.bz2".format(last=lu,now=self.now,host=self.config.get("url"),bzip=get_bzipper(),date=self.date)
         output = shellout(cmdstring)
         
     
@@ -91,10 +91,10 @@ class LODTITTransform2ldj(LODTITTask):
         return LODTITDownloadSolrHarvester()
     def run(self):
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
-            cmdstring="{bzip} -dc {date}.mrc.bz2 | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip >> {date}.ldj.gz".format(bzip=get_bzipper(),date=self.date)
+            cmdstring="{bzip} -dc {date}.mrc.bz2 | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip >> {date}.ldj.gz".format(bzip=get_bzipper(),date=self.date)
             #cmdstring="cat {date}/*.mrc | marc2jsonl | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py >> {date}.ldj".format(date=self.date)
             output=shellout(cmdstring)
-            cmdstring="zcat {date}.ldj.gz | jq -r '.[\"001\"]' > {date}-ppns.txt".format(date=datetime.today().strftime("%Y%m%d"))
+            cmdstring="zcat {date}.ldj.gz | jq -r '.[\"001\"]' > {date}-ppns.txt".format(date=self.date)
             output=shellout(cmdstring)
         #    with open("{date}-ppns.txt".format(**self.config,date=datetime.today().strftime("%Y%m%d")),"w") as ppns, \
         #         open("{date}.ldj".format(**self.config,date=self.date),"r") as inp:
@@ -184,7 +184,7 @@ class LODTITProcessFromRdi(LODTITTask):
     
     def run(self):
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
-            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=datetime.today().strftime("%Y%m%d"))
+            cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(**self.config,date=self.date)
             output=shellout(cmd)
             sleep(5)
         
@@ -195,7 +195,7 @@ class LODTITProcessFromRdi(LODTITTask):
                 return False
         if filesize > 0:
             returnarray=[]
-            path="{date}-data".format(date=datetime.today().strftime("%Y%m%d"))
+            path="{date}-data".format(date=self.date)
             try:
                 for index in os.listdir(path):
                     for f in os.listdir(path+"/"+index):
