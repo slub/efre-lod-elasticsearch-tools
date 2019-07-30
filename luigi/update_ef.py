@@ -41,7 +41,7 @@ class EFDownload(EFTask):
     #]
     #if you delete the first character on the line by cut -c2-, you already got line-delimited json.
     def run(self):
-        cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- | gzip {file} ".format(**self.config)
+        cmdstring="wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- | gzip > {file} ".format(**self.config)
         output = shellout(cmdstring)
         return 0
 
