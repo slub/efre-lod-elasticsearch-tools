@@ -78,6 +78,7 @@ class LODTITDownloadSolrHarvester(LODTITTask):
         r=get("{host}/date/actual/4".format(**self.config))
         lu=r.json().get("_source").get("date")
         cmdstring="solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py -valid | {bzip} > {date}.mrc.bz2".format(last=lu,now=self.now,host=self.config.get("url"),bzip=get_bzipper(),date=self.date)
+        print(cmdstring)
         output = shellout(cmdstring)
         
     
@@ -228,12 +229,16 @@ class LODTITUpdate(LODTITTask):
             
     def complete(self):
         try:
+            lastUpdateRequest=get("{host}/date/actual/4".format(**self.config))
+            if lastUpdateRequest.ok:
+                lu=lastUpdateRequest.json().get("_source").get("date")
+            r=get("{server}/select?fl=fullrecord%2Cid%2Crecordtype&q=last_indexed:[{last}%20TO%20{now}]&wt=json&fl=id".format(server=self.config.get("url"),last=lu,now=self.now))
+            print(r.json())
+            if r.ok and r.json().get("response") and r.json().get("response").get("numFound")==0 or ( lu==self.now and os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0):
+                return True
             if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
-                r=get("{host}/date/actual/4".format(**self.config))
-                if r.ok:
-                    lu=r.json().get("_source").get("date")
-                    if lu==self.now:
-                        return True
+                if lu==self.now:
+                    return True
                 return True if os.path.exists("{date}".format(date=self.date)) and not os.listdir("{date}".format(date=self.date)) else False
             else:
                 return True
