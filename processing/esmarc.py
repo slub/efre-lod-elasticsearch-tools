@@ -446,9 +446,9 @@ def relatedTo(jline,key,entity):
                             node["sameAs"]=None
                             node["identifier"]=None
                             for elem in uri:
-                                if elem and elem.startswith(base_id):
+                                if elem and isinstance(elem,str) and elem.startswith(base_id):
                                     node["@id"]=id2uri(elem.split("=")[-1],"persons")
-                                elif elem and elem.startswith("http") and not elem.startswith(base_id):
+                                elif elem and isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
                                     node["sameAs"]=litter(node["sameAs"],elem)
                                 else:
                                     node["identifier"]=litter(node["identifier"],elem)
@@ -715,7 +715,7 @@ def getav_katalogbeta(record,key,entity):#key should be a string: 001
                 retOffers.append({
            "@type": "Offer",
            "offeredBy": {
-                "@id": "http://data.slub-dresden.de/organizations/195657810",
+                "@id": "http://data.slub-dresden.de/organizations/191800287",
                 "@type": "Library",
                 "name": isil2sameAs.get(bc),
                 "branchCode": "DE-14"
