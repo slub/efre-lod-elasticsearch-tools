@@ -4,9 +4,33 @@ import argparse
 import json
 import sys
 import requests
-from es2json import esgenerator,isint,litter,eprint,esidfilegenerator
+from es2json import esgenerator,isint,litter,eprint,esidfileconsumegenerator
 
-
+def cleanup_rec(rec):
+        if "about" in rec:
+            if isinstance(rec["about"],dict):
+                if "keywords" in rec["about"]:
+                    if isinstance(rec["about"]["keywords"],list):
+                        for n,elem in enumerate(rec["about"]):
+                            if isinstance(elem,str):
+                                del rec["about"]["keywords"][n]
+                    elif isinstance(rec["about"]["keywords"],dict):
+                        continue
+                    elif isinstance(rec["about"]["keywords"],str):
+                        rec["about"].pop("keywords")
+            elif isinstance(rec["about"],list):
+                for n,elem in enumerate(rec["about"]):
+                    if "keywords" in elem:
+                        if isinstance(elem["keywords"],list):
+                            for m,elen in enumerate(elem["keywords"]):
+                                if isinstance(elen,str):
+                                    del rec["about"][n]["keywords"][m]
+                        elif isinstance(elem["keywords"],dict):
+                            continue
+                        elif isinstance(elem["keywords"],str):
+                            rec["about"][n].pop("keywords")
+        return rec
+    
 def FuckUpWithRVKs(tree):
     if "notation" in tree:
         yield tree["benennung"], str("https://rvk.uni-regensburg.de/api/json/ancestors/" + tree["notation"])
@@ -19,19 +43,32 @@ def FuckUpWithRVKs(tree):
 
 def enrichrecord(record):
     change=False
-    for n,rvk in enumerate(record.get("about")):
-        if rvk.get("identifier").get("propertyID")=="RVK":
-            rvktree=requests.get(rvk.get("@id"))
-            if rvktree.ok:
-                change=True
-                record["about"][n]["keywords"]=[]
-                for name, uri in FuckUpWithRVKs(rvktree.json()):
-                    if uri!=rvk.get("@id"):
-                        record["about"][n]["keywords"].append({"name":name,
-                                     "@id":uri
-                                     })
-    if change:
-        print(json.dumps(record))
+    if record.get("about") and isinstance(record["about"],list):
+        for n,rvk in enumerate(record.get("about")):
+            if rvk and isinstance(rvk,dict) and rvk.get("identifier") and rvk["identifier"].get("propertyID") and rvk["identifier"]["propertyID"]=="RVK":
+                rvktree=requests.get("http://194.95.145.44:9200/rvk/tree/"+rvk.get("@id").split("/")[-1])
+#                rvktree=requests.get(rvk.get("@id"))
+                if rvktree.ok:
+                    change=True
+                    record["about"][n]["keywords"]=[]
+                    for name, uri in FuckUpWithRVKs(rvktree.json().get("_source")):
+                        if uri!=rvk.get("@id"):
+                            record["about"][n]["keywords"].append({"name":name,
+                                        "@id":uri
+                                        })
+        for n,rvk in enumerate(record.get("about")):
+            if rvk and isinstance(rvk,str):
+                eprint(record)
+                record["about"][n]={}
+                record["about"][n]["keywords"]=[rvk]
+        for n,rvk in enumerate(record.get("about")):
+            if rvk and isinstance(rvk,dict) and rvk.get("keywords"):
+                if isinstance(rvk["keywords"],list):
+                    for m,elem in enumerate(rvk["keywords"]):
+                        if isinstance(elem,str):
+                            record["about"][n]["keywords"][m]={"name":elem}
+                            change=True
+    print(json.dumps(cleanup_rec(record))
                 
                     
     
@@ -70,13 +107,8 @@ if __name__ == "__main__":
     else:
         search_host=args.host
         search_port=args.port
-    searchbody={
-  "query": {
-    "match": {
-      "about.identifier.propertyID": "RVK"
-    }
-  }
-}
-    for rec in esgenerator(host=args.host,port=args.port,index=args.index,body=searchbody,id=args.id,type=args.type,headless=True):
-            enrichrecord(rec)
-            
+    searchbody={"query":{"match":{"about.identifier.propertyID":"RVK"}}}
+    #for rec in esidfileconsumegenerator(idfile="fidmove_ids_rvk.txt",host=args.host,port=args.port,index=args.index,body=searchbody,type=args.type,headless=True):
+    #        enrichrecord(rec)
+    for rec in esgenerator(host=args.host,port=args.port,index=args.index,body=None,id=args.id,type=args.type,headless=True,verbose=True):
+        enrichrecord(rec)
