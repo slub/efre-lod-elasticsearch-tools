@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime,date,timedelta
 from dateutil import parser
-from requests import get,head,put
+from requests import get,head,put,delete
 from time import sleep
 import os
 import shutil
@@ -15,7 +15,7 @@ import luigi
 import luigi.contrib.esindex
 from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
-from es2json import put_dict, esidfilegenerator
+from es2json import put_dict, esidfilegenerator, esgenerator
 
 def get_bzipper():
     """Check whether we can parallize bzip2"""
@@ -226,6 +226,13 @@ class LODTITUpdate(LODTITTask):
         #    cmd+="esbulk -verbose -server {rawdata_host} -w {workers} -index {index} -type schemaorg -id identifier".format(**self.config,index="resources-fidmove")
         #    output=shellout(cmd)
         put_dict("{host}/date/actual/4".format(**self.config),{"date":str(self.now)})
+        with gzip.open("slub_resources_sourceid0.ldj","wt") as outp:
+            for record in esgenerator(host="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="resources",type="schemaorg",body={"query":{"bool":{"must":[{"match":{"offers.offeredBy.branchCode.keyword":"DE-14"}},{"match":{"_sourceID.keyword":"0"}}]}}},headless=True):
+                print(json.dumps(record),file=outp)
+        delete("{host}/slub-resources/schemaorg".format(**self.config))
+        put_dict("{host}/slub-resources".format(**self.config),{"mappings":{"schemaorg":{"date_detection":False}}})
+        cmd="esbulk -z -verbose -server {host} -w {workers} -index slub-resources -type schemaorg -id identifier slub_resources_sourceid0.ldj".format(**self.config)
+        output=shellout(cmd)
             
     def complete(self):
         try:
@@ -233,7 +240,6 @@ class LODTITUpdate(LODTITTask):
             if lastUpdateRequest.ok:
                 lu=lastUpdateRequest.json().get("_source").get("date")
             r=get("{server}/select?fl=fullrecord%2Cid%2Crecordtype&q=last_indexed:[{last}%20TO%20{now}]&wt=json&fl=id".format(server=self.config.get("url"),last=lu,now=self.now))
-            print(r.json())
             if r.ok and r.json().get("response") and r.json().get("response").get("numFound")==0 or ( lu==self.now and os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0):
                 return True
             if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
