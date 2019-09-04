@@ -117,6 +117,7 @@ class getDelPPNs(DeleteTask):
                     if d_type == 'A':
                         for url,conf in self.config.get("getstrings").items():
                             if conf.get("method")=="GET":
+                                print(__xpn.strip())
                                 r=get(url+__xpn.strip())
                                 if r.ok and r.json()["found"]:
                                     outputset.add(url[:25]+"/"+r.json()["_index"]+"/"+r.json()["_type"]+"/"+r.json()["_id"])
@@ -142,7 +143,8 @@ class DeletePPNsByFile(DeleteTask):
     def run(self):
         with open("{date}-toDelete.txt".format(date=self.date),"r") as inp:
             for url in inp:
-                delete(url.strip())
+                print(url.strip())
+                #delete(url.strip())
                 
     def complete(self):
         try:

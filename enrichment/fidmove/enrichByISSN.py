@@ -73,7 +73,7 @@ if __name__ == "__main__":
     else:
         search_host=args.host
         search_port=args.port
-    for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,id=args.id,headless=True,body={"query": {"exists":{"field": "partOfSeries.@id"}}}):
+    for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,id=args.id,headless=True,body={"query": {"exists":{"field": "partOfSeries.@id"}}},timeout=60):
         for seriesAttr in rec.get("partOfSeries"):
             if "@id" in seriesAttr:
                 series=requests.get("http://{host}:{port}/resources/schemaorg/{_id}".format(host=args.host,port=args.port,_id=seriesAttr.get("@id").split("/")[-1]))

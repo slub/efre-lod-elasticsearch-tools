@@ -322,7 +322,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,sourc
     progress=1000
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port,timeout=timeout)
+    es=Elasticsearch([{'host':host}],port=port,timeout=timeout,max_retries=10,retry_on_timeout=True)
     try:
         if id:
             record=es.get(index=index,doc_type=type,id=id)

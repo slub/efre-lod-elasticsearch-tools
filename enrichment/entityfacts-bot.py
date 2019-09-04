@@ -80,7 +80,7 @@ if __name__ == "__main__":
             if record or args.pipeline:
                 print(json.dumps(rec,indent=None))
     else:
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}},verbose=True):
             gnd=None
             if rec.get("sameAs"):
                 if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" in x for x in rec.get("sameAs")):

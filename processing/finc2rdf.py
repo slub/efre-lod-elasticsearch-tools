@@ -343,6 +343,18 @@ def process_line(record):
         with lock:
             sys.stdout.write(json.dumps(mapline,indent=None)+"\n")
             sys.stdout.flush()
+
+def gen_solrdump_cmd(host):
+    fl=set()
+    for k,v in mapping.items():
+        if not callable(v):
+            for c,w in v.items():
+                if isinstance(w,str):
+                    fl.add(w)
+                elif isinstance(w,list):
+                    for elem in w:
+                        fl.add(elem)
+    return "solrdump -verbose -server {} -fl {}".format(host,','.join(fl))
     
 def main():
     parser=argparse.ArgumentParser(description='Entitysplitting/Recognition of MARC-Records')
@@ -350,16 +362,7 @@ def main():
     parser.add_argument('-server',type=str,help="which server to use for harvest, only used for cmd prompt definition")
     args=parser.parse_args()
     if args.gen_cmd:
-        fl=set()
-        for k,v in mapping.items():
-            if not callable(v):
-                for c,w in v.items():
-                    if isinstance(w,str):
-                        fl.add(w)
-                    elif isinstance(w,list):
-                        for elem in w:
-                            fl.add(elem)
-        print("solrdump -verbose -server {} -q institution:DE-15 -fl {}".format(args.server,','.join(fl)))
+        print(gen_solrdump_cmd(args.server))
         quit()
     p=Pool(4)
     for line in sys.stdin:

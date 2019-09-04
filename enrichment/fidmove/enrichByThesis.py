@@ -55,6 +55,6 @@ if __name__ == "__main__":
     else:
         search_host=args.host
         search_port=args.port
-    for rec in esgenerator(host=args.host,port=args.port,index=args.index,id=args.id,type=args.type,headless=True,body={"query": {"exists":{"field": "Thesis"}}}):
+    for rec in esgenerator(host=args.host,port=args.port,index=args.index,id=args.id,type=args.type,headless=True,body={"query": {"exists":{"field": "Thesis"}}},timeout=60):
             enrichrecord(rec,args.host,args.port)
             

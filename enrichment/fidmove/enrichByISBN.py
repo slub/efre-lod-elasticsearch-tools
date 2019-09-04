@@ -126,7 +126,7 @@ if __name__ == "__main__":
             if record or args.pipeline:
                 print(json.dumps(rec,indent=None))
     else:                                                                                                   
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query": {"bool": {"filter": {"exists": {"field": "relatedEvent"}},"must":{"exists":{"field": "isbn"}}}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query": {"bool": {"filter": {"exists": {"field": "relatedEvent"}},"must":{"exists":{"field": "isbn"}}}}},timeout=60):
             isbn10=None
             isbn13=None
             if rec.get("isbn"):

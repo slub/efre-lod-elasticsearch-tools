@@ -31,9 +31,9 @@ mapping={"author":{         "fields":["hasOccupation","about","workLocation","sa
          }
 
 generic_mapping={"author":{ "fields":["hasOccupation","about","workLocation","sameAs","birthPlace","deathPlace"],
-                            "index":["persons","organizations","fidmove-enriched-aut"]},
+                            "index":["persons","organizations","fidmove-extended-aut"]},
          "contributor":{    "fields":["hasOccupation","about","workLocation","geo","adressRegion","sameAs"],
-                            "index":["persons","organizations","fidmove-enriched-aut"]},
+                            "index":["persons","organizations","fidmove-extended-aut"]},
          "workLocation":{   "fields":["geo","adressRegion","sameAs"],
                             "index":["geo"]},
          "birthPlace":{   "fields":["geo","adressRegion","sameAs"],
@@ -45,7 +45,7 @@ generic_mapping={"author":{ "fields":["hasOccupation","about","workLocation","sa
          "mentions":{       "fields":["geo","adressRegion","sameAs"],
                             "index":["geo"]},
          "relatedEvent":{   "fields":["adressRegion","location","geo","sameAs"],
-                            "index":["fidmove-enriched-aut"]}
+                            "index":["fidmove-extended-aut"]}
          }
 
 

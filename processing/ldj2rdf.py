@@ -55,16 +55,16 @@ def init(l,c,m,i,f):
     global mp
     global name
     global format
-    if len(i["host"])<0:
-        name=str("-".join(["triples",i["host"],i["index"],i["type"],str(current_process().name)]))+".n3"
-    else:
-        name=str(current_process().name)+".n3"
-    if i["compression"]:
-        name+=".bz2"
     mp=m
     con = c
     lock = l
     format = f
+    if len(i["host"])<0:
+        name=str("-".join(["triples",i["host"],i["index"],i["type"],str(current_process().name)]))+"."+format
+    else:
+        name=str(current_process().name)+"."+format
+    if i["compression"]:
+        name+=".bz2"
     
 def adjust_or_get_context_elasticsearchScroll(doc):
     context_included=False
@@ -190,7 +190,7 @@ if  __name__ == "__main__":
             args.port=args.server.split(":")[2].split("/")[0]
         args.index=args.server.split("/")[3]
         if len(slashsplit)>4:
-            args.scroll=True
+            args.scroll=True 
             args.type=slashsplit[4]
         if len(slashsplit)>5 and slashsplit[5]:
             args.scroll=False

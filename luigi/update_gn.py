@@ -4,6 +4,7 @@ from gluish.task import BaseTask,ClosestDateParameter
 from gluish.utils import shellout
 from es2json import put_dict
 import luigi
+import gzip
 import os
 from dateutil import parser
 
@@ -13,7 +14,7 @@ class GNTask(BaseTask):
     config={
         "url":"http://download.geonames.org/export/dump/",
         "file":"allCountries",
-        "server":"http://127.0.0.1:9200",
+        "server":"http://194.95.145.24:9201",
         "index":"geonames",
         "type":"record",
         "workers":8
@@ -65,13 +66,13 @@ class GNtsv2json(GNTask):   # we inherit from GNDownload instead of the super-pa
         return [GNDownload()]
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/tsv2json.py {file}.txt > {file}.ldj".format(**self.config)
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/tsv2json.py {file}.txt | gzip > {file}.ldj.gz".format(**self.config)
         output=shellout(cmd)
     
     def complete(self):
         try:
             i=0
-            with open(self.config.get("file")+".ldj") as f:
+            with gzip.open(self.config.get("file")+".ldj.gz") as f:
                 for i,l in enumerate(f):
                     pass
             if i==GNTask.txt:
@@ -88,7 +89,7 @@ class GNIngest(GNTask):
     def run(self):
         r=delete("{server}/{index}".format(**self.config))
         put_dict("{server}/{index}".format(**self.config),{"mappings":{"{type}".format(**self.config):{"properties":{"location":{"type":"geo_point"}}}}})
-        cmd="esbulk -server {server} -index {index} -type {type} -w {workers} -id id -verbose {file}.ldj".format(**self.config)
+        cmd="esbulk -z -server {server} -index {index} -type {type} -w {workers} -id id -verbose {file}.ldj.gz".format(**self.config)
         output=shellout(cmd)
         
     def complete(self):     

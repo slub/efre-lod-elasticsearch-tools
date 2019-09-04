@@ -85,7 +85,7 @@ class LODTransform2ldj(LODTask):
         return LODExtract()
 
     def run(self):
-        cmdstring="zcat {date}-norm.mrc.gz | marc2jsonl  | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        cmdstring="zcat {date}-norm.mrc.gz | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py  | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmdstring)
         with open("{date}-norm-aut-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"w") as outp,gzip.open("{date}-norm-aut.ldj.gz".format(**self.config,date=self.yesterday.strftime("%y%m%d")),"rt") as inp:
             for rec in inp:
@@ -166,9 +166,9 @@ class LODUpdate(LODTask):
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):                                        ### doing several enrichment things before indexing the data
                 cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && zcat {fd} | ".format(fd=path+"/"+index+"/"+f)#with -pipeline, all the data get's thru, not only enriched docs
-                #cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host}  | ".format(**self.config)
+                #cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
-                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -searchserver {host}  | ".format(**self.config)
+                cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
                 cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
                 if index=="geo":
                     cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)

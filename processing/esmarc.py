@@ -809,7 +809,7 @@ def getpublisher(record,key,entity):
                 data["name"]=pub_name
             data["@type"]="Organization"
         if pub_place:
-            if pub_place[-1] in [".",",",";",":"]:
+            if pub_place[-1] in [".",",",";",":"] and isinstance(pub_place,str):
                 data["location"]={"name":pub_place[:-1].strip(),
                               "type":"Place"}
             else:
