@@ -196,7 +196,7 @@ class LODKXPUpdate(LODKXPTask):
         newconfig=None
         with open('lodkxp_config.json') as data_file:    
             newconfig = json.load(data_file)
-        newconfig["lastupdate"]=str(self.yesterday.strftime("%Y%m%d"))
+        newconfig["lastupdate"]=str(self.yesterday.strftime("%y%m%d"))
         with open('lodkxp_config.json','w') as data_file:
             json.dump(newconfig,data_file)
     
@@ -204,33 +204,22 @@ class LODKXPUpdate(LODKXPTask):
         return luigi.LocalTarget(path=self.path())
 
     def complete(self):
-        yesterday = date.today() - timedelta(1)
-        now=yesterday.strftime("%Y-%m-%d")
-        with open('lodkxp_config.json') as inp:
-            lu=json.load(inp).get("lastupdate")
-        if not lu==now:
-            return False
-        map_entities={
-            "p":"persons",      #Personen, individualisiert
-            "n":"persons",      #Personen, namen, nicht individualisiert
-            "s":"topics",        #Schlagwörter/Berufe
-            "b":"organizations",         #Organisationen
-            "g":"geo",          #Geographika
-            "u":"works",     #Werktiteldaten
-            "f":"events"
-            }   
-
-        person_count_raw=0
-        person_count_map=0
-        for k,v in map_entities.items():
-            result_raw=es.count(index="kxp-de14",doc_type="mrc",body={"query":{"match":{"079.__.b.keyword":k}}})
-            result_map=es.count(index=v,doc_type="schemaorg")
-            if v=="persons":
-                person_count_raw+=result_raw.get("count")
-                person_count_map=result_map.get("count")
-            else:
-                if result_raw.get("count") != result_map.get("count") or result_map.get("count")==0:
-                    return False
-        if person_count_raw == 0 or person_count_raw != person_count_map:
-            return False
-        return True
+        path="{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
+        ids=set()
+        for index in os.listdir(path):
+            for f in os.listdir(path+"/"+index):
+                with gzip.open("{fd}".format(fd=path+"/"+index+"/"+f),"rt") as inp:
+                    for line in inp:
+                        ids.add(json.loads(line).get("identifier"))
+                cmd="zcat {fd} | jq -rc .identifier >> schemaorg-ids-{date}.txt".format(fd=path+"/"+index+"/"+f,date=self.yesterday.strftime("%y%m%d"))
+                output=shellout(cmd)
+        es_ids=set()
+        for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
+                                        port="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[1],
+                                        index="slub-resources",type="schemaorg",idfile="schemaorg-ids-{date}.txt".format(date=self.yesterday.strftime("%y%m%d")),
+                                        source=False):
+            es_ids.add(record.get("_id"))
+        if len(es_ids)==len(ids) and len(es_ids)>0:
+            return True
+        return False
+        
