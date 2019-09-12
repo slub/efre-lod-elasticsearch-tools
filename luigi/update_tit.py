@@ -229,10 +229,10 @@ class LODTITUpdate(LODTITTask):
         with gzip.open("slub_resources_sourceid0.ldj","wt") as outp:
             for record in esgenerator(host="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[0],port="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[1],index="resources",type="schemaorg",body={"query":{"bool":{"must":[{"match":{"offers.offeredBy.branchCode.keyword":"DE-14"}},{"match":{"_sourceID.keyword":"0"}}]}}},headless=True):
                 print(json.dumps(record),file=outp)
-        delete("{host}/slub-resources/schemaorg".format(**self.config))
-        put_dict("{host}/slub-resources".format(**self.config),{"mappings":{"schemaorg":{"date_detection":False}}})
-        cmd="esbulk -z -verbose -server {host} -w {workers} -index slub-resources -type schemaorg -id identifier slub_resources_sourceid0.ldj".format(**self.config)
-        output=shellout(cmd)
+        #delete("{host}/slub-resources/schemaorg".format(**self.config))
+        #put_dict("{host}/slub-resources".format(**self.config),{"mappings":{"schemaorg":{"date_detection":False}}})
+        #cmd="esbulk -z -verbose -server {host} -w {workers} -index slub-resources -type schemaorg -id identifier slub_resources_sourceid0.ldj".format(**self.config)
+        #output=shellout(cmd)
             
     def complete(self):
         try:
