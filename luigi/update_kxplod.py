@@ -206,6 +206,8 @@ class LODKXPUpdate(LODKXPTask):
     def complete(self):
         path="{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
         ids=set()
+        if not os.path.exists(path):
+            return False
         for index in os.listdir(path):
             for f in os.listdir(path+"/"+index):
                 with gzip.open("{fd}".format(fd=path+"/"+index+"/"+f),"rt") as inp:
