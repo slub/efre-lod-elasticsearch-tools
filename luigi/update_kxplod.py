@@ -104,9 +104,9 @@ class LODKXPFillRawdataIndex(LODKXPTask):
     
     def run(self):
         for typ in ["tit","lok"]:
-            put_dict("{rawdata_host}/kxp-{typ}-{date}".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
-            put_dict("{rawdata_host}/kxp-{typ}-{date}/_settings".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
-            cmd="esbulk -z -verbose -server {rawdata_host} -w {workers} -index kxp-{typ}-{date} -type mrc -id 001 {date}-{typ}.ldj.gz""".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d"))
+            #put_dict("{rawdata_host}/kxp-{typ}".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
+            #put_dict("{rawdata_host}/kxp-{typ}/_settings".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
+            cmd="esbulk -z -verbose -server {rawdata_host} -w {workers} -index kxp-{typ} -type mrc -id 001 {date}-{typ}.ldj.gz""".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d"))
             output=shellout(cmd)
 
     def complete(self):
@@ -116,7 +116,7 @@ class LODKXPFillRawdataIndex(LODKXPTask):
         es_ids=set()
         for record in esidfilegenerator(host="{rawdata_host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
                                         port="{rawdata_host}".format(**self.config).rsplit("/")[-1].rsplit(":")[1],
-                                        index="kxp-lok-{date}".format(date=self.yesterday.strftime("%y%m%d")),
+                                        index="kxp-lok".format(date=self.yesterday.strftime("%y%m%d")),
                                         type="mrc",idfile="{date}-lok-ppns.txt".format(**self.config,date=self.yesterday.strftime("%y%m%d")),
                                         source="False"):
             es_ids.add(record.get("_id"))
@@ -129,7 +129,6 @@ class LODKXPFillRawdataIndex(LODKXPTask):
                     jline=json.loads(line)
                     ids.add(jline.get("001"))
             file_recordcount=len(ids)
-            print(file_recordcount)
         except FileNotFoundError:
             return False
         
@@ -142,8 +141,7 @@ class LODKXPMerge(LODKXPTask):
         return LODKXPFillRawdataIndex()
     
     def run(self):
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/merge_lok_with_tit.py -title_server {rawdata_host}/kxp-tit-{date}/mrc -local_server {rawdata_host}/kxp-lok-{date}/mrc | tee data.ldj | esbulk -server {rawdata_host} -index kxp-de14 -type mrc -id 001 -w 1 -verbose && jq -rc \'.\"001\"' data.ldj > ids.txt && rm data.ldj".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
-        output=shellout(cmd)
+        shellout(""". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/merge_lok_with_tit.py -selectbody \'{{\"query\": {{\"match\": {{\"852.__.a.keyword\": \"DE-14\"}}}}}}\' -title_server {rawdata_host}/kxp-tit/mrc -local_server {rawdata_host}/kxp-lok/mrc -idfile {date}-lok-ppns.txt | tee data.ldj | esbulk -server {rawdata_host} -index kxp-de14 -type mrc -id 001 -w 1 -verbose && jq -rc \'.\"001\"' data.ldj > ids.txt && rm data.ldj""", rawdata_host=self.config.get("rawdata_host"),date=self.yesterday.strftime("%y%m%d"))
     
     def complete(self):
         ids=set()
@@ -164,9 +162,9 @@ class LODKXPProcessFromRdi(LODKXPTask):
         return LODKXPFillRawdataIndex()
     
     def run(self):
-        delete("{rawdata_host}/kxp-tit-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
-        delete("{rawdata_host}/kxp-lok-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
-        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
+        #delete("{rawdata_host}/kxp-tit-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
+        #delete("{rawdata_host}/kxp-lok-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
+        cmd=". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py  -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(**self.config,date=self.yesterday.strftime("%y%m%d"))
         output=shellout(cmd)
         sleep(5)
         
