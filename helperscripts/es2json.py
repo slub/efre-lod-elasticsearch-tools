@@ -211,6 +211,52 @@ def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=Tru
 #   returns records which have a certain ID from an ID-File from an elasticsearch-index
 #   IDs in the ID-File shall be non-quoted, newline-seperated
 #
+
+def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False,timeout=10,verbose=False):
+    progress=1000
+    if not source:
+        source=True
+    es=Elasticsearch([{'host':host}],port=port,timeout=timeout,max_retries=10,retry_on_timeout=True)
+    try:
+        if id:
+            record=es.get(index=index,doc_type=type,id=id)
+            if headless:
+                yield record["_source"]
+            else:
+                yield record
+            return
+        page = es.search(
+            index = index,
+            doc_type = type,
+            scroll = '12h',
+            size = 1000,
+            body = body,
+            _source=source,
+            _source_exclude=source_exclude,
+            _source_include=source_include)
+    except exceptions.NotFoundError:
+        sys.stderr.write("not found: "+host+":"+str(port)+"/"+index+"/"+type+"/_search\n")
+        exit(-1)
+    sid = page['_scroll_id']
+    scroll_size = page['hits']['total']
+    for hits in page['hits']['hits']:
+        if headless:
+            yield hits['_source']
+        else:
+            yield hits
+    while (scroll_size > 0):
+        pages = es.scroll(scroll_id = sid, scroll='12h')
+        sid = pages['_scroll_id']
+        scroll_size = len(pages['hits']['hits'])
+        if verbose:
+            eprint("{}/{}".format(progress,pages['hits']['total']))
+            progress+=1000
+        for hits in pages['hits']['hits']:
+            if headless:
+                yield hits['_source']
+            else:
+                yield hits
+
 def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,idfile=None,headless=False,chunksize=1000,timeout=10):
     if os.path.isfile(idfile):
         if not source:
@@ -220,30 +266,58 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
         tracer.addHandler(logging.FileHandler('errors.txt'))
         es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
         ids=set()
+        
+            
         with open(idfile,"r") as inp:
             for ppn in inp:
                 _id=ppn.rstrip()
                 ids.add(_id)
                 if len(ids)>=chunksize:
-                    try:
-                        for doc in es.mget(index=index,doc_type=type,body={'ids':list(ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
-                            if headless:
-                                yield doc.get("_source")
-                            else:
-                                yield doc
+                    if body and "query" in body and "match" in body["query"]:
+                        searchbody={"query":{"bool":{"must":[{"match":body["query"]["match"]},{}]}}}
+                        for _id in ids:
+                            searchbody["query"]["bool"]["must"][1]={"match":{"_id":_id}}
+                            #eprint(json.dumps(searchbody))
+                            for doc in esgenerator(host=host,port=port,index=index,type=type,body=searchbody,source=source,source_exclude=source_exclude,source_include=source_include,headless=False,timeout=timeout,verbose=False):
+                                if headless:
+                                    yield doc.get("_source")
+                                else:
+                                    yield doc
                         ids.clear()
-                    except exceptions.NotFoundError:
-                        continue
-        if len(ids)>0:
-            try:
-                for doc in es.mget(index=index,doc_type=type,body={'ids':list(ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
-                    if headless:
-                        yield doc.get("_source")
                     else:
-                        yield doc
+                        searchbody={'ids':list(ids)}
+                        try:
+                            for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                                if headless:
+                                    yield doc.get("_source")
+                                else:
+                                    yield doc
+                            ids.clear()
+                        except exceptions.NotFoundError:
+                            continue
+        if len(ids)>0:
+            if body and "query" in body and "match" in body["query"]:
+                searchbody={"query":{"bool":{"must":[{"match":body["query"]["match"]},{}]}}}
+                for _id in ids:
+                    searchbody["query"]["bool"]["must"][1]={"match":{"_id":_id}}
+                    #eprint(json.dumps(searchbody))
+                    for doc in esgenerator(host=host,port=port,index=index,type=type,body=searchbody,source=source,source_exclude=source_exclude,source_include=source_include,headless=False,timeout=timeout,verbose=False):
+                        if headless:
+                            yield doc.get("_source")
+                        else:
+                            yield doc
                 ids.clear()
-            except exceptions.NotFoundError:
-                pass
+            else:
+                searchbody={'ids':list(ids)}
+                try:
+                    for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                        if headless:
+                            yield doc.get("_source")
+                        else:
+                            yield doc
+                    ids.clear()
+                except exceptions.NotFoundError:
+                    pass
 
 #   returns records which have a certain ID from an ID-File from an elasticsearch-index
 #   IDs in the ID-File shall be non-quoted, newline-seperated
@@ -318,51 +392,6 @@ def litter(lst, elm):
         else:
             return lst
 
-def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,source=True,source_exclude=None,source_include=None,headless=False,timeout=10,verbose=False):
-    progress=1000
-    if not source:
-        source=True
-    es=Elasticsearch([{'host':host}],port=port,timeout=timeout,max_retries=10,retry_on_timeout=True)
-    try:
-        if id:
-            record=es.get(index=index,doc_type=type,id=id)
-            if headless:
-                yield record["_source"]
-            else:
-                yield record
-            return
-        page = es.search(
-            index = index,
-            doc_type = type,
-            scroll = '12h',
-            size = 1000,
-            body = body,
-            _source=source,
-            _source_exclude=source_exclude,
-            _source_include=source_include)
-    except exceptions.NotFoundError:
-        sys.stderr.write("not found: "+host+":"+str(port)+"/"+index+"/"+type+"/_search\n")
-        exit(-1)
-    sid = page['_scroll_id']
-    scroll_size = page['hits']['total']
-    for hits in page['hits']['hits']:
-        if headless:
-            yield hits['_source']
-        else:
-            yield hits
-    while (scroll_size > 0):
-        pages = es.scroll(scroll_id = sid, scroll='12h')
-        sid = pages['_scroll_id']
-        scroll_size = len(pages['hits']['hits'])
-        if verbose:
-            eprint("{}/{}".format(progress,pages['hits']['total']))
-            progress+=1000
-        for hits in pages['hits']['hits']:
-            if headless:
-                yield hits['_source']
-            else:
-                yield hits
-
 def isint(num):
     try: 
         int(num)
@@ -395,7 +424,7 @@ if __name__ == "__main__":
     parser.add_argument("-exclude",type=str,help="exclude following _source field(s)")
     parser.add_argument("-id",type=str,help="retrieve single document (optional)")
     parser.add_argument("-headless",action="store_true",default=False,help="don't include Elasticsearch Metafields")
-    parser.add_argument('-body',type=str,help='Searchbody')
+    parser.add_argument('-body',type=json.loads,help='Searchbody')
     parser.add_argument('-server',type=str,help="use http://host:port/index/type/id?pretty. overwrites host/port/index/id/pretty") #no, i don't steal the syntax from esbulk...
     parser.add_argument('-idfile',type=str,help="path to a file with newline-delimited IDs to process")
     parser.add_argument('-idfile_consume',type=str,help="path to a file with newline-delimited IDs to process")

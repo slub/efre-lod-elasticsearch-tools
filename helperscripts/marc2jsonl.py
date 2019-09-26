@@ -24,8 +24,8 @@ def transpose_to_ldj(record):
                         ind = ind.replace(".","_")
                     if "." in k or k.isspace():
                         k="_"
-                    if v:
-                        fd[k]=litter(fd.get(k),v)
+                    fd[k]=litter(fd.get(k),v)
+                    fd["_order_"]="".join([field.subfields[x] for x in range(0,len(field.subfields),2)])
                 ind_obj=[]
                 for k,v in sorted(fd.items()):
                     ind_obj.append({k:v})
@@ -35,9 +35,13 @@ def transpose_to_ldj(record):
     return json_record
 
 def main():
-    for record in MARCReader(sys.stdin.buffer.read(), to_unicode=True):
-        sys.stdout.write(json.dumps(transpose_to_ldj(record))+"\n")
-        sys.stdout.flush()
+    try:
+        for record in MARCReader(sys.stdin.buffer.read(), to_unicode=True):
+            sys.stdout.write(json.dumps(transpose_to_ldj(record))+"\n")
+            sys.stdout.flush()
+    except UnicodeDecodeError as e:
+        eprint("unicode decode error: {}".format(e))
+        eprint(record)
 
 if __name__ == "__main__":
     main()

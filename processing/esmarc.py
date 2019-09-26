@@ -594,10 +594,10 @@ def get_subfield(jline,key,entity):
                         node["identifier"]=None
                         for elem in uri:
                             if isinstance(elem,str) and elem.startswith(base_id):
-                                if key=="830":  #Dirty Workaround for k10plus finc id
-                                    rsplit=elem.rsplit("=")
-                                    rsplit[-1]="0-"+rsplit[-1]
-                                    elem='='.join(rsplit)
+                                #if key=="830":  #Dirty Workaround for finc id
+                                    #rsplit=elem.rsplit("=")
+                                    #rsplit[-1]="0-"+rsplit[-1]
+                                    #elem='='.join(rsplit)
                                 node["@id"]=id2uri(elem,entityType)
                             elif isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
                                 node["sameAs"]=litter(node["sameAs"],elem)
@@ -1018,7 +1018,7 @@ entities = {
 #       "single:offers"                    :{getav:["852..a","980..a"]}, for SLUB and UBL via broken UBL DAIA-API
         "single:offers"                    :{getav_katalogbeta:["852..a","001"]}, #for SLUB via katalogbeta
         "single:_isil"                     :{getisil:["003","852..a","924..b"]},
-        "single:_ppn"                      :{getmarc:"980..a"},
+        "single:_ppn"                      :{getmarc:"001"},
         "single:_sourceID"                 :{getmarc:"980..b"},
         "single:dateModified"              :{getdateModified:"005"},
         "multi:sameAs"                     :{getsameAs:["035..a","670..u"]},
