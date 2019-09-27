@@ -308,7 +308,7 @@ def getmarc(record,regex,entity):
                     sset={}
                     for subfield in v:
                         for subfield_code in subfield:
-                            sset[subfield_code]=subfield[subfield_code]
+                            sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                     fullstr=""
                     for sf in subfields:
                         if sf in sset:
@@ -399,7 +399,7 @@ def handle_single_rvk(data):
     if "rv" in data:
         for subfield in data.get("rv"):
             for k,v in subfield.items():
-                sset[k]=v
+                sset[k]=litter(sset.get(k),v)
         if "0" in sset and isinstance(sset["0"],str):
             sset["0"]=[sset.get("0")]
         if "0" in sset and isinstance(sset["0"],list):
@@ -430,7 +430,7 @@ def relatedTo(jline,key,entity):
                 sset={}
                 for subfield in v:
                     for subfield_code in subfield:
-                        sset[subfield_code]=subfield[subfield_code]
+                        sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                 if isinstance(sset.get("9"),str) and sset.get("9") in marc2relation:
                     node={}
                     node["_key"]=marc2relation[sset["9"]]
@@ -507,7 +507,7 @@ def get_subfield_if_4(jline,key,entity):
                 sset={}
                 for subfield in v:
                     for subfield_code in subfield:
-                        sset[subfield_code]=subfield[subfield_code]
+                        sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                 if sset.get("4") and subfield4 in sset.get("4"):
                     newrecord=copy.deepcopy(jline)
                     for i,subtype in enumerate(newrecord[marcfield]):
@@ -553,7 +553,7 @@ def get_subfield(jline,key,entity):
                 sset={}
                 for subfield in v:
                     for subfield_code in subfield:
-                        sset[subfield_code]=subfield[subfield_code]
+                        sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                 node={}
                 for typ in ["D","d"]:
                     if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
@@ -670,7 +670,7 @@ def marc_dates(record,event):
                 for sf_elem in indicator_level.get(subfield):
                     for k,v in sf_elem.items():
                         if k=="a" or k=="4":
-                            sset[k]=v
+                            sset[k]=litter(sset.get(k),v)
                 if isinstance(sset.get("4"),str):
                     sset["4"]=[sset.get("4")]
                 if isinstance(sset.get("4"),list):
