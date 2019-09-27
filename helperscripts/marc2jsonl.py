@@ -18,16 +18,12 @@ def transpose_to_ldj(record):
                 json_record[field.tag]=[field.data]
             else:
                 ind="".join(field.indicators).replace(" ","_")
-                fd={}
+                ind_obj=[]
                 for k,v in izip_longest(*[iter(field.subfields)] * 2):
                     if "." in ind:
                         ind = ind.replace(".","_")
                     if "." in k or k.isspace():
                         k="_"
-                    fd[k]=litter(fd.get(k),v)
-                    fd["_order_"]="".join([field.subfields[x] for x in range(0,len(field.subfields),2)])
-                ind_obj=[]
-                for k,v in sorted(fd.items()):
                     ind_obj.append({k:v})
                 if not field.tag in json_record:
                     json_record[field.tag]=[]
