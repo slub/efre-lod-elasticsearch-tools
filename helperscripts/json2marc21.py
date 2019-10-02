@@ -37,15 +37,16 @@ def transpose_to_marc21(record):
     return Mrecord.as_marc()
 
 def main():
-    try:
-        for line in sys.stdin:
+    for line in sys.stdin:
+        try:
             record=json.loads(line,encoding='utf-8')
             transpose_to_marc21(record)
             sys.stdout.buffer.write(transpose_to_marc21(record))
             #sys.stdout.flush()
-    except UnicodeDecodeError as e:
-        eprint("unicode decode error: {}".format(e))
-        eprint(record)
+        except UnicodeDecodeError as e:
+            eprint("unicode decode error: {}".format(e))
+            eprint(record)
+            continue
 
 if __name__ == "__main__":
     main()
