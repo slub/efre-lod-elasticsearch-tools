@@ -33,7 +33,7 @@ def transpose_to_ldj(record):
 def main():
     try:
         for record in MARCReader(sys.stdin.buffer.read(), to_unicode=True):
-            sys.stdout.write(json.dumps(transpose_to_ldj(record))+"\n")
+            sys.stdout.write(json.dumps(transpose_to_ldj(record),sort_keys=True)+"\n")
             sys.stdout.flush()
     except UnicodeDecodeError as e:
         eprint("unicode decode error: {}".format(e))

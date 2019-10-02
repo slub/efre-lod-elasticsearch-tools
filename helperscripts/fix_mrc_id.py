@@ -35,6 +35,6 @@ if __name__ == "__main__":
         jline=fix_mrc_id(jline)
         jline=valid_mrc_fields(jline)
         if jline:
-            sys.stdout.write(json.dumps(jline)+"\n")
+            sys.stdout.write(json.dumps(jline,sort_keys=True)+"\n")
             sys.stdout.flush()
 
