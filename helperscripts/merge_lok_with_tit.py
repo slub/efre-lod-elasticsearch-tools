@@ -50,7 +50,7 @@ def main():
     else:
         eprint("no server for title data submitted. exiting.")
         exit(-1)
-    if args.local_server or (args.local_host and args.local_port ) and args.idfile:
+    if (args.local_server or (args.local_host and args.local_port )) and args.idfile:
         ids=dict()
         for i,record in enumerate(esidfilegenerator(host=args.local_host,port=args.local_port,index=args.local_index,type=args.local_type,body=args.selectbody,source="852,004,938",idfile=args.idfile)):
             ids[record["_source"]["004"][0]]={"852":record["_source"]["852"],"938":record["_source"]["852"]}
@@ -62,7 +62,7 @@ def main():
                 print(dumps(record["_source"]))
             else:
                 eprint(dumps(record))
-    elif not args.idfile and args.local_server or (args.local_host and args.local_port ):
+    elif not args.idfile and (args.local_server or (args.local_host and args.local_port)):
         for records in esfatgenerator(host=args.local_host,port=args.local_port,index=args.local_index,type=args.local_type,body=args.selectbody,source="852,004,938"):
             ids=dict()
             for record in records:
