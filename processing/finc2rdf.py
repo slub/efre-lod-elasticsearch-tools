@@ -92,23 +92,23 @@ def getFormatRdfType(record,prop):
                         "Manuscript":"bibo:Manuscript",
                         "Map":"bibo:Map",
                         "Thesis":"bibo:Thesis",
-                        "Unknown Format":"bibo:Document",
                         "Video":"bibo:AudioVisualDocument"
                             }
     value=getformat(record,prop,formatmapping)
     if value:
         return {"@id":value}
+    else:
+        return {"@id":"bibo:Document"}
                    
 
 def getFormatDctMedium(record,prop):
     formatmapping={"Audio":"rdamt:1001",
-                         "Microform":"rdamt:1002",
-                         "Notated Music":"rdau:P60488"
+                   "Microform":"rdamt:1002",
+                   "Notated Music":"rdau:P60488"
                              }
     value=getformat(record,prop,formatmapping)
-    if value:
-        return value
-
+    return value if value else None 
+    
 def getOfferedBy(record,prop):
         if record.get(prop):
             return {

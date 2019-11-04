@@ -410,7 +410,7 @@ def handle_single_rvk(data):
                     if sameAs:
                         record["sameAs"].append(sameAs)
         if "a" in sset:
-            record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a")
+            record["@id"]="https://rvk.uni-regensburg.de/api/json/ancestors/"+sset.get("a").replace(" ","%20")
             record["identifier"]={  "@type"     :"PropertyValue",
                                 "propertyID":"RVK",
                                 "value"     :sset.get("a")}
