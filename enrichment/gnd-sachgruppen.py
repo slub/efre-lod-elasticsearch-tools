@@ -5,7 +5,7 @@ import requests
 import argparse
 from es2json import eprint,litter,isint,esgenerator
 
-map=["gndSubjectCategory","fieldOfStudy","fieldOfActivity","biographicalOrHistoricalInformation"]
+map=["https://d-nb.info/standards/elementset/gnd#gndSubjectCategory","https://d-nb.info/standards/elementset/gnd#fieldOfStudy","https://d-nb.info/standards/elementset/gnd#fieldOfActivity","https://d-nb.info/standards/elementset/gnd#biographicalOrHistoricalInformation"]
 
 
 
@@ -19,15 +19,15 @@ def process(record,dnb_uri,server):
                     newabout={"identifier":{"propertyID":gndItem,"@type":"PropertyValue","value": elem.split("/")[-1]}}
                     if elem.startswith("http"):
                         newabout["@id"]=elem
-                    if gndItem=="fieldOfStudy":
+                    if gndItem=="https://d-nb.info/standards/elementset/gnd#fieldOfStudy":
                         fos=requests.get(server+"/gnd-records/record/"+elem.split("/")[-1])
-                        if fos.ok and fos.json().get("_source").get("relatedDdcWithDegreeOfDeterminacy3"):
+                        if fos.ok and fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3"):
                             newabout["identifier"]=[newabout.pop("identifier")]
-                            newabout["identifier"].append({"@type":"PropertyValue","propertyID":"DDC","value":fos.json().get("_source").get("relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]})
-                            if fos.json().get("_source").get("preferredNameForTheSubjectHeading"):
-                                newabout["name"]=fos.json().get("_source").get("preferredNameForTheSubjectHeading")[0]
-                            newabout["@id"]="http://purl.org/NET/decimalised#c"+fos.json().get("_source").get("relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]
-                    elif gndItem=="gndSubjectCategory":
+                            newabout["identifier"].append({"@type":"PropertyValue","propertyID":"DDC","value":fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]})
+                            if fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#preferredNameForTheSubjectHeading"):
+                                newabout["name"]=fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#preferredNameForTheSubjectHeading")[0]
+                            newabout["@id"]="http://purl.org/NET/decimalised#c"+fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]
+                    elif gndItem=="https://d-nb.info/standards/elementset/gnd#gndSubjectCategory":
                         url=server+"/gnd-subjects/subject/_search"
                         gsc=requests.post(url,json={"query":{"match":{"@id.keyword":elem}}})
                         if gsc.ok and gsc.json().get("hits").get("total")==1:
