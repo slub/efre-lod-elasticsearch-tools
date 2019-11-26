@@ -74,7 +74,7 @@ class EFFixIDs(EFTask):
                 for line in f:
                     try:
                         record=json.loads(line)
-                        record["@id"]=record["@id"].split("http://d-nb.info/gnd/")[1] #make "d-nb.info/gnd/081547-11" to "081547-11"
+                        record["@id"]=record["@id"].split("/")[-1] #make "d-nb.info/gnd/081547-11" to "081547-11"
                     except: #bad json or missing "@id"
                         continue
                     print(json.dumps(record,indent=None),file=out)
