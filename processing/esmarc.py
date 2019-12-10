@@ -44,7 +44,7 @@ def main():
     parser.add_argument('-idfile',type=str,help="path to a file with IDs to process")
     parser.add_argument('-query',type=str,default={},help='prefilter the data based on an elasticsearch-query')
     parser.add_argument('-base_id_src',type=str,default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",help="set up which base_id to use for sameAs. e.g. http://d-nb.info/gnd/xxx")
-    parser.add_argument('-target_id',type=str,default="http://data.slub-dresden.de/",help="set up which target_id to use for @id. e.g. http://data.finc.info")
+    parser.add_argument('-target_id',type=str,default="https://data.slub-dresden.de/",help="set up which target_id to use for @id. e.g. http://data.finc.info")
 #    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
     args=parser.parse_args()
     if args.help:
@@ -529,6 +529,63 @@ def get_subfields(jline,key,entity):
     else:
         return
 
+def handleHasPart(jline,keys,entity):
+    data=[]
+    for key in keys:
+        if key=="700" and key in jline:
+            for array in jline[key]:
+                for k,v in array.items():
+                    sset={}
+                    for subfield in v:
+                        for subfield_code in subfield:
+                            sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
+                    node={}
+                    if sset.get("t"):
+                        entityType="resources"
+                        node["name"]=sset["t"]
+                        node["author"]=sset["a"]
+                        if entityType=="resources" and sset.get("w") and not sset.get("0"):
+                            sset["0"]=sset.get("w")
+                        if sset.get("0"):
+                            if isinstance(sset["0"],list) and entityType=="persons":
+                                for n,elem in enumerate(sset["0"]):
+                                    if elem and "DE-576" in elem:
+                                        sset["0"].pop(n)
+                            uri=gnd2uri(sset.get("0"))
+                            if isinstance(uri,str) and uri.startswith(base_id) and not entityType=="resources":
+                                node["@id"]=id2uri(uri,entityType)
+                            elif isinstance(uri,str) and uri.startswith(base_id) and entityType=="resources":
+                                node["sameAs"]=base_id+id2uri(uri,entityType).split("/")[-1]
+                            elif isinstance(uri,str) and uri.startswith("http") and not uri.startswith(base_id):
+                                node["sameAs"]=uri
+                            elif isinstance(uri,str):
+                                node["identifier"]=uri
+                            elif isinstance(uri,list):
+                                node["sameAs"]=None
+                                node["identifier"]=None
+                                for elem in uri:
+                                    if isinstance(elem,str) and elem.startswith(base_id):
+                                        #if key=="830":  #Dirty Workaround for finc id
+                                            #rsplit=elem.rsplit("=")
+                                            #rsplit[-1]="0-"+rsplit[-1]
+                                            #elem='='.join(rsplit)
+                                        node["@id"]=id2uri(elem,entityType)
+                                    elif isinstance(elem,str) and elem.startswith("http") and not elem.startswith(base_id):
+                                        node["sameAs"]=litter(node["sameAs"],elem)
+                                    elif elem:
+                                        node["identifier"]=litter(node["identifier"],elem)
+                            
+                    if node:
+                        data=litter(data,node)
+                        #data.append(node)
+        else:
+            node=getmarc(jline,key,entity)
+            if node:
+                data=litter(data,node)
+    if data:
+        return  ArrayOrSingleValue(data)
+                    
+        
 
 #whenever you call get_subfield add the MARC21 field to the if/elif/else switch/case thingy with the correct MARC21 field->entity mapping
 def get_subfield(jline,key,entity):
@@ -555,6 +612,8 @@ def get_subfield(jline,key,entity):
                     for subfield_code in subfield:
                         sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                 node={}
+                if sset.get("t"):
+                    continue
                 for typ in ["D","d"]:
                     if sset.get(typ):   #http://www.dnb.de/SharedDocs/Downloads/DE/DNB/wir/marc21VereinbarungDatentauschTeil1.pdf?__blob=publicationFile Seite 14
                         node["@type"]="http://schema.org/"
@@ -715,7 +774,7 @@ def getav_katalogbeta(record,key,entity):#key should be a string: 001
                 retOffers.append({
            "@type": "Offer",
            "offeredBy": {
-                "@id": "http://data.slub-dresden.de/organizations/191800287",
+                "@id": "https://data.slub-dresden.de/organizations/191800287",
                 "@type": "Library",
                 "name": isil2sameAs.get(bc),
                 "branchCode": "DE-14"
@@ -1035,7 +1094,7 @@ entities = {
         "multi:issn"                       :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
         "multi:isbn"                       :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "multi:genre"                      :{getgenre:"655..a"},
-        "multi:hasPart"                    :{getmarc:"773..g"},
+        "multi:hasPart"                    :{handleHasPart:["700","773..g"]},
         "multi:isPartOf"                   :{getmarc:["773..t","773..s","773..a"]}, 
         "multi:partOfSeries"               :{get_subfield:"830"},
         "single:license"                   :{getmarc:"540..a"},
