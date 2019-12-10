@@ -16,20 +16,35 @@ def process(record,dnb_uri,server):
         for gndItem in map:
             if r.json().get("_source").get(gndItem):
                 for elem in r.json().get("_source").get(gndItem):
-                    newabout={"identifier":{"propertyID":gndItem,"@type":"PropertyValue","value": elem.split("/")[-1]}}
-                    if elem.startswith("http"):
-                        newabout["@id"]=elem
+                    value=elem
+                    if isinstance(elem,str):
+                        continue
+                    elif isinstance(elem,dict):
+                        if "id" in elem:
+                            newvalue=elem.get("id").split("/")[-1]
+                            value=elem.get("id")
+                        else:
+                            continue
+                    newabout={"identifier":{"propertyID":gndItem,"@type":"PropertyValue","value": newvalue}}
+                    if value.startswith("http"):
+                        newabout["@id"]=value
                     if gndItem=="https://d-nb.info/standards/elementset/gnd#fieldOfStudy":
-                        fos=requests.get(server+"/gnd-records/record/"+elem.split("/")[-1])
+                        fos=requests.get(server+"/gnd-records/record/"+newvalue)
                         if fos.ok and fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3"):
                             newabout["identifier"]=[newabout.pop("identifier")]
-                            newabout["identifier"].append({"@type":"PropertyValue","propertyID":"DDC","value":fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]})
+                            ddcs=fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3")
+                            if isinstance(ddcs,dict):
+                                newabout["identifier"].append({"@type":"PropertyValue","propertyID":"DDC","value":ddcs.get("id").split("/")[-2][:3]})
+                                newabout["@id"]=ddcs.get("id")
+                            elif isinstance(ddcs,list):
+                                for ddc in ddcs:
+                                    newabout["identifier"].append({"@type":"PropertyValue","propertyID":"DDC","value":ddc.get("id").split("/")[-2][:3]})
+                                    newabout["@id"]=ddc.get("id")
                             if fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#preferredNameForTheSubjectHeading"):
-                                newabout["name"]=fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#preferredNameForTheSubjectHeading")[0]
-                            newabout["@id"]="http://purl.org/NET/decimalised#c"+fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#relatedDdcWithDegreeOfDeterminacy3")[0].split("/")[-2][:3]
+                                newabout["name"]=fos.json().get("_source").get("https://d-nb.info/standards/elementset/gnd#preferredNameForTheSubjectHeading")
                     elif gndItem=="https://d-nb.info/standards/elementset/gnd#gndSubjectCategory":
                         url=server+"/gnd-subjects/subject/_search"
-                        gsc=requests.post(url,json={"query":{"match":{"@id.keyword":elem}}})
+                        gsc=requests.post(url,json={"query":{"match":{"@id.keyword":value}}})
                         if gsc.ok and gsc.json().get("hits").get("total")==1:
                             for hit in gsc.json().get("hits").get("hits"):
                                 newabout["name"]=" ".join(hit.get("_source").get("skos:prefLabel").get("@value").replace("\n","").split())
@@ -39,15 +54,15 @@ def process(record,dnb_uri,server):
                     else:
                         plzAdd=True
                         #print(elem,record.get("about"))
-                        if isinstance(record.get("about"),dict) and record.get("about").get("@id") and elem not in record.get("about").get("@id"):
+                        if isinstance(record.get("about"),dict) and record.get("about").get("@id") and value not in record.get("about").get("@id"):
                             record["about"]=[record.pop("about")]
                         elif isinstance(record.get("about"),list):
                             for item in record.get("about"):
-                                if item.get("@id") and elem in item.get("@id"):
+                                if item.get("@id") and value in item.get("@id"):
                                     plzAdd=False
                                 elif isinstance(item.get("identifier"),list):
                                     for ident_list_elem in item.get("identifier"):
-                                        if ident_list_elem.get("@id") and elem in ident_list_elem.get("@id"):
+                                        if ident_list_elem.get("@id") and value in ident_list_elem.get("@id"):
                                             plzAdd=False
                         if plzAdd:
                             change=True
