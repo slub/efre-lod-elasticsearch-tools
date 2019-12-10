@@ -541,7 +541,7 @@ def handleHasPart(jline,keys,entity):
                             sset[subfield_code]=litter(sset.get(subfield_code),subfield[subfield_code])
                     node={}
                     if sset.get("t"):
-                        entityType="resources"
+                        entityType="works"
                         node["name"]=sset["t"]
                         node["author"]=sset["a"]
                         if entityType=="resources" and sset.get("w") and not sset.get("0"):
@@ -1094,7 +1094,7 @@ entities = {
         "multi:issn"                       :{getmarc:["022..a","022..y","022..z","029..a","490..x","730..x","773..x","776..x","780..x","785..x","800..x","810..x","811..x","830..x"]},
         "multi:isbn"                       :{getisbn:["020..a","022..a","022..z","776..z","780..z","785..z"]},
         "multi:genre"                      :{getgenre:"655..a"},
-        "multi:hasPart"                    :{handleHasPart:["700","773..g"]},
+        "multi:hasPart"                    :{handleHasPart:["700"]},
         "multi:isPartOf"                   :{getmarc:["773..t","773..s","773..a"]}, 
         "multi:partOfSeries"               :{get_subfield:"830"},
         "single:license"                   :{getmarc:"540..a"},
