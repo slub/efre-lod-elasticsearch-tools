@@ -3,7 +3,7 @@
 from datetime import datetime
 import json
 from pprint import pprint
-from elasticsearch import Elasticsearch, exceptions
+import elasticsearch
 import argparse
 import logging
 import sys, os, time, atexit
@@ -184,19 +184,30 @@ def eprintjs(*args, **kwargs):
 def esfatgenerator(host=None,port=9200,index=None,type=None,body=None,source=True,source_exclude=None,source_include=None,timeout=10):
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port)
+    es=elasticsearch.Elasticsearch([{'host':host}],port=port)
     try:
-        page = es.search(
-            index = index,
-            doc_type = type,
-            scroll = '12h',
-            size = 1000,
-            body = body,
-            _source=source,
-            _source_exclude=source_exclude,
-            _source_include=source_include,
-            request_timeout=timeout)
-    except exceptions.NotFoundError:
+        if elasticsearch.VERSION<(7,0,0):
+            page = es.search(
+                index = index,
+                doc_type = type,
+                scroll = '12h',
+                size = 1000,
+                body = body,
+                _source=source,
+                _source_exclude=source_exclude,
+                _source_include=source_include,
+                request_timeout=timeout)
+        elif elasticsearch.VERSION>=(7,0,0):
+            page = es.search(
+                index = index,
+                scroll = '12h',
+                size = 1000,
+                body = body,
+                _source=source,
+                _source_excludes=source_exclude,
+                _source_includes=source_include,
+                request_timeout=timeout)
+    except elasticsearch.exceptions.NotFoundError:
         sys.stderr.write("aborting.\n")
         exit(-1)
     sid = page['_scroll_id']
@@ -216,25 +227,38 @@ def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,sourc
     progress=1000
     if not source:
         source=True
-    es=Elasticsearch([{'host':host}],port=port,timeout=timeout,max_retries=10,retry_on_timeout=True)
+    es=elasticsearch.Elasticsearch([{'host':host}],port=port,timeout=timeout,max_retries=10,retry_on_timeout=True)
     try:
         if id:
-            record=es.get(index=index,doc_type=type,id=id)
+            if elasticsearch.VERSION<(7,0,0):
+                record=es.get(index=index,doc_type=type,id=id)
+            elif elasticsearch.VERSION>=(7,0,0): 
+                record=es.get(index=indeex,id=id)
             if headless:
                 yield record["_source"]
             else:
                 yield record
             return
-        page = es.search(
-            index = index,
-            doc_type = type,
-            scroll = '12h',
-            size = 1000,
-            body = body,
-            _source=source,
-            _source_exclude=source_exclude,
-            _source_include=source_include)
-    except exceptions.NotFoundError:
+        if elasticsearch.VERSION<(7,0,0):
+            page = es.search(
+                index = index,
+                doc_type = type,
+                scroll = '12h',
+                size = 1000,
+                body = body,
+                _source=source,
+                _source_exclude=source_exclude,
+                _source_include=source_include)
+        elif elasticsearch.VERSION>=(7,0,0): # no doc_type and slightly different _source parameters in elasticsearch7
+            page = es.search(
+                index = index,
+                scroll = '12h',
+                size = 1000,
+                body = body,
+                _source=source,
+                _source_excludes=source_exclude,
+                _source_includes=source_include)
+    except elasticsearch.exceptions.NotFoundError:
         sys.stderr.write("not found: "+host+":"+str(port)+"/"+index+"/"+type+"/_search\n")
         exit(-1)
     sid = page['_scroll_id']
@@ -264,7 +288,7 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
         tracer = logging.getLogger('elasticsearch')
         tracer.setLevel(logging.WARNING)
         tracer.addHandler(logging.FileHandler('errors.txt'))
-        es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
+        es=elasticsearch.Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
         ids=set()
         
             
@@ -287,13 +311,20 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
                     else:
                         searchbody={'ids':list(ids)}
                         try:
-                            for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
-                                if headless:
-                                    yield doc.get("_source")
-                                else:
-                                    yield doc
+                            if elasticsearch.VERSION<(7,0,0):
+                                for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                                    if headless:
+                                        yield doc.get("_source")
+                                    else:
+                                        yield doc
+                            elif elasticsearch.VERSION>=(7,0,0): # no doc_type and slightly different _source parameters in elasticsearch7
+                                for doc in es.mget(index=index,body=searchbody,_source_includes=source_include,_source_excludes=source_exclude,_source=source).get("docs"):
+                                    if headless:
+                                        yield doc.get("_source")
+                                    else:
+                                        yield doc
                             ids.clear()
-                        except exceptions.NotFoundError:
+                        except elasticsearch.exceptions.NotFoundError:
                             continue
         if len(ids)>0:
             if body and "query" in body and "match" in body["query"]:
@@ -310,13 +341,20 @@ def esidfilegenerator(host=None,port=9200,index=None,type=None,body=None,source=
             else:
                 searchbody={'ids':list(ids)}
                 try:
-                    for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
-                        if headless:
-                            yield doc.get("_source")
-                        else:
-                            yield doc
-                    ids.clear()
-                except exceptions.NotFoundError:
+                    if elasticsearch.VERSION<(7,0,0):
+                        for doc in es.mget(index=index,doc_type=type,body=searchbody,_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                            if headless:
+                                yield doc.get("_source")
+                            else:
+                                yield doc
+                    elif elasticsearch.VERSION>=(7,0,0): # no doc_type and slightly different _source parameters in elasticsearch7
+                        for doc in es.mget(index=index,body=searchbody,_source_includes=source_include,_source_excludes=source_exclude,_source=source).get("docs"):
+                            if headless:
+                                yield doc.get("_source")
+                            else:
+                                yield doc
+                    ids.clear() 
+                except elasticsearch.exceptions.NotFoundError:
                     pass
 
 #   returns records which have a certain ID from an ID-File from an elasticsearch-index
@@ -336,28 +374,42 @@ def esidfileconsumegenerator(host=None,port=9200,index=None,type=None,body=None,
         tracer = logging.getLogger('elasticsearch')
         tracer.setLevel(logging.WARNING)
         tracer.addHandler(logging.FileHandler('errors.txt'))
-        es=Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
+        es=elasticsearch.Elasticsearch([{'host':host}],port=port,timeout=timeout, max_retries=10, retry_on_timeout=True)
         success=False
         _ids=set()
         try:
             for _id in ids:
                 _ids.add(ids.pop())
                 if len(_ids)>=chunksize:
+                    if elasticsearch.VERSION<(7,0,0):
+                        for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
+                            if headless:
+                                yield doc.get("_source")
+                            else:
+                                yield doc
+                    elif elasticsearch.VERSION>=(7,0,0): # no doc_type and slightly different _source parameters in elasticsearch7
+                        for doc in es.mget(index=index,body={'ids':list(_ids)},_source_includes=source_include,_source_excludes=source_exclude,_source=source).get("docs"):
+                            if headless:
+                                yield doc.get("_source")
+                            else:
+                                yield doc
+                    _ids.clear()
+            if len(_ids)>0:
+                if elasticsearch.VERSION<(7,0,0):
                     for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
                         if headless:
                             yield doc.get("_source")
                         else:
                             yield doc
-                    _ids.clear()
-            if len(_ids)>0:
-                for doc in es.mget(index=index,doc_type=type,body={'ids':list(_ids)},_source_include=source_include,_source_exclude=source_exclude,_source=source).get("docs"):
-                    if headless:
-                        yield doc.get("_source")
-                    else:
-                        yield doc
+                elif elasticsearch.VERSION>=(7,0,0): # no doc_type and slightly different _source parameters in elasticsearch7
+                    for doc in es.mget(index=index,body={'ids':list(_ids)},_source_includes=source_include,_source_excludes=source_exclude,_source=source).get("docs"):
+                        if headless:
+                            yield doc.get("_source")
+                        else:
+                            yield doc
                 _ids.clear()
                 ids.clear()
-        except exceptions.NotFoundError:
+        except elasticsearch.exceptions.NotFoundError:
             notfound_ids.add(_ids)
         else:
             os.remove(idfile)
@@ -458,12 +510,16 @@ if __name__ == "__main__":
         for json_record in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,body=args.body,source=args.source,headless=args.headless,source_exclude=args.exclude,source_include=args.include,verbose=True):
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
     else:
-        es=Elasticsearch([{"host":args.host}],port=args.port)
+        es=elasticsearch.Elasticsearch([{"host":args.host}],port=args.port)
         json_record=None
-        if not args.headless:
+        if not args.headless and elasticsearch.VERSION<(7,0,0):
             json_record=es.get(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
-        else:
+        elif not args.headless and elasticsearch.VERSION>(7,0,0):
+            json_record=es.get(index=args.index,_source=True,_source_excludes=args.exclude,_source_includes=args.include,id=args.id)
+        elif elasticsearch.VERSION<(7,0,0):
             json_record=es.get_source(index=args.index,doc_type=args.type,_source=True,_source_exclude=args.exclude,_source_include=args.include,id=args.id)
+        elif elasticsearch.VERSION>(7,0,0):
+            json_record=es.get_source(index=args.index,_source=True,_source_excludes=args.exclude,_source_includes=args.include,id=args.id)
         if json_record:
             sys.stdout.write(json.dumps(json_record,indent=tabbing)+"\n")
             
