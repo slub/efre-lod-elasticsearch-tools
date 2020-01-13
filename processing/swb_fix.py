@@ -1,3 +1,17 @@
+isil2sameAs = {
+    "(DE-627)": "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "DE-627": "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    # "DE-576":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    # "(DE-576)":"http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
+    "DE-588": "http://d-nb.info/gnd/",
+    "(DE-588)": "http://d-nb.info/gnd/",
+    "DE-601": "http://gso.gbv.de/PPN?PPN=",
+    "(DE-601)": "http://gso.gbv.de/PPN?PPN=",
+    "DE-15": "Univeristätsbibliothek Leipzig",
+    "DE-14": "Sächsische Landesbibliothek – Staats- und Universitätsbibliothek Dresden",
+}
+
+
 marc2relation = {
     "VD-16 Mitverf": "contributor",
     "v:Mitverf": "contributor",
@@ -108,6 +122,8 @@ marc2relation = {
     "affi":"knows",
     "aut1":"author",
 }
+
+
 rolemapping={
 "abr":"KürzendeR",
 "acp":"HerstellerIn von Nachbildungen",
