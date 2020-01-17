@@ -15,7 +15,7 @@ def cleanup_rec(rec):
                             if isinstance(elem,str):
                                 del rec["about"]["keywords"][n]
                     elif isinstance(rec["about"]["keywords"],dict):
-                        continue
+                        pass
                     elif isinstance(rec["about"]["keywords"],str):
                         rec["about"].pop("keywords")
             elif isinstance(rec["about"],list):
@@ -68,7 +68,7 @@ def enrichrecord(record):
                         if isinstance(elem,str):
                             record["about"][n]["keywords"][m]={"name":elem}
                             change=True
-    print(json.dumps(cleanup_rec(record))
+    print(json.dumps(cleanup_rec(record)))
                 
                     
     

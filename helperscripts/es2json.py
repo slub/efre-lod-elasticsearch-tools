@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 import json
-from pprint import pprint
 import elasticsearch
 import argparse
 import logging
