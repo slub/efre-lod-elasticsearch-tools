@@ -17,6 +17,7 @@ lookup_table_wdProperty = {"https://d-nb.info/gnd": "P227",
                            "http://filmportal.de/person": "P2639",
                            "http://orcid.org": "P496"}
 
+
 def get_wdid(_id, rec):
     changed = False
 
@@ -37,7 +38,7 @@ def get_wdid(_id, rec):
             WHERE {{
                 ?person wdt:{prop}  "{value}" .
             SERVICE wikibase:label {{ bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }}
-            }}'''.format(prop=lookup_property,value=lookup_value)
+            }}'''.format(prop=lookup_property, value=lookup_value)
         try:
             data = requests.get(
                 url, params={'query': query, 'format': 'json'}).json()
@@ -105,9 +106,11 @@ if __name__ == "__main__":
             if (record or args.pipeline) and rec:
                 print(json.dumps(rec, indent=None))
     else:
-        body={ "query": {"bool": {"filter": {"bool": {"should": [], "must_not": [{"prefix": {"sameAs.keyword": "http://www.wikidata.org"}}]}}}}}
+        body = {"query": {"bool": {"filter": {"bool": {"should": [], "must_not": [
+            {"prefix": {"sameAs.keyword": "http://www.wikidata.org"}}]}}}}}
         for key in lookup_table_wdProperty:
-            body["query"]["bool"]["filter"]["bool"]["should"].append({"prefix": {"sameAs.keyword": key}})
+            body["query"]["bool"]["filter"]["bool"]["should"].append(
+                {"prefix": {"sameAs.keyword": key}})
         for rec in esgenerator(host=args.host, port=args.port, index=args.index, type=args.type, headless=True, body=body):
             record = None
             if rec.get("sameAs"):
