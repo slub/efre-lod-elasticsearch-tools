@@ -93,16 +93,15 @@ if __name__ == "__main__":
             gnd = None
             record = None
             if rec and rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"), list) and any("https://d-nb.info" for x in rec.get("sameAs")):
+                if isinstance(rec.get("sameAs"), list):
                     for item in rec.get("sameAs"):
-                        if "https://d-nb.info" in item and len(item.split("/")) > 4:
-                            gnd = item
-                elif isinstance(rec.get("sameAs"), str) and "https://d-nb.info" in rec.get("sameAs"):
-                    gnd = rec.get("sameAs")
-            if gnd:
-                record = get_wdid(gnd, rec)
-                if record:
-                    rec = record
+                        record = get_wdid(item, rec)
+                        if record:
+                            break
+                elif isinstance(rec.get("sameAs"), str):
+                    record = get_wdid(item, rec)
+            if record:
+                rec = record
             if (record or args.pipeline) and rec:
                 print(json.dumps(rec, indent=None))
     else:
