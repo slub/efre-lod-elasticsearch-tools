@@ -824,18 +824,19 @@ def getsameAs(jline, keys, entity):
             for elem in data:
                 if not "DE-576" in elem:  # ignore old SWB id for root SameAs
                     data = gnd2uri(elem)
-                    if isinstance(data, str):
+                    if data and isinstance(data, str):
                         data=[data]
-                    for elem in data:
-                        if elem and elem.startswith("http"):
-                            sameAs.append({"@id": data,
-                                            "publisher": {
-                                                "@id": "data.slub-dresden.de",},
-                                            "isBasedOn": {
-                                                "@type": "Dataset",
-                                                "@id": "",
-                                            }
-                                        })
+                    if isinstance(data,list):
+                        for elem in data:
+                            if elem and elem.startswith("http"):
+                                sameAs.append({"@id": data,
+                                                "publisher": {
+                                                    "@id": "data.slub-dresden.de",},
+                                                "isBasedOn": {
+                                                    "@type": "Dataset",
+                                                    "@id": "",
+                                                }
+                                            })
     for n,item in enumerate(sameAs):
         if "d-nb.info" in item["@id"]:
             sameAs[n]["publisher"]["preferredName"]="Deutsche Nationalbibliothek"
@@ -1214,6 +1215,9 @@ def process_line(jline, host, port, index, type):
             if index:
                 mapline["isBasedOn"] = target_id+"source/" + \
                     index+"/"+getmarc(jline, "001", None)
+            if isinstance(mapline.get("sameAs"),list):
+                for n,sameAs in enumerate(mapline["sameAs"]):
+                    mapline["sameAs"][n]["isBasedOn"]["@id"]=mapline["isBasedOn"]
             return {entity: single_or_multi(removeNone(removeEmpty(mapline)), entity)}
 
 
