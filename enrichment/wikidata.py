@@ -7,32 +7,47 @@ import requests
 from es2json import esgenerator, isint, litter, eprint
 
 
-def get_wdid(gnd, rec):
+lookup_table_wdProperty = {"https://d-nb.info/gnd": "P227",
+                           "http://viaf.og/viaf": "P214",
+                           "http://isni.org": "P213",
+                           "http://id.loc.gov/authorities": "P244",
+                           "https://deutsche-digitale-bibliothek.de/entity": "P4948",
+                           "http://catalogue.bnf.fr/ark": "P268",
+                           "http://geonames.org": "P1566",
+                           "http://filmportal.de/person": "P2639",
+                           "http://orcid.org": "P496"}
+
+def get_wdid(_id, rec):
     changed = False
 
     url = "https://query.wikidata.org/bigdata/namespace/wdq/sparql"
-
-    query = '''
+    lookup_value = _id.split("/")[-1]
+    lookup_property = ""
+    for key, value in lookup_table_wdProperty.items():
+        if _id.startswith(key):
+            lookup_property = value
+    if lookup_value and lookup_property:
+        query = '''
             PREFIX wikibase: <http://wikiba.se/ontology#>
             PREFIX wd: <http://www.wikidata.org/entity/>
             PREFIX wdt: <http://www.wikidata.org/prop/direct/>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             
             SELECT ?person
-            WHERE {
-                ?person wdt:P227  "'''+str(gnd)+'''" .
-            SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
-            }'''
-    try:
-        data = requests.get(
-            url, params={'query': query, 'format': 'json'}).json()
-        if len(data.get("results").get("bindings")) > 0:
-            for item in data.get("results").get("bindings"):
-                rec["sameAs"] = litter(
-                    rec["sameAs"], item.get("person").get("value"))
-                changed = True
-    except:
-        pass
+            WHERE {{
+                ?person wdt:{prop}  "{value}" .
+            SERVICE wikibase:label {{ bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }}
+            }}'''.format(prop=lookup_property,value=lookup_value)
+        try:
+            data = requests.get(
+                url, params={'query': query, 'format': 'json'}).json()
+            if len(data.get("results").get("bindings")) > 0:
+                for item in data.get("results").get("bindings"):
+                    rec["sameAs"] = litter(
+                        rec["sameAs"], item.get("person").get("value"))
+                    changed = True
+        except:
+            pass
     if changed:
         return rec
 
@@ -80,9 +95,9 @@ if __name__ == "__main__":
                 if isinstance(rec.get("sameAs"), list) and any("https://d-nb.info" for x in rec.get("sameAs")):
                     for item in rec.get("sameAs"):
                         if "https://d-nb.info" in item and len(item.split("/")) > 4:
-                            gnd = item.rstrip().split("/")[4]
+                            gnd = item
                 elif isinstance(rec.get("sameAs"), str) and "https://d-nb.info" in rec.get("sameAs"):
-                    gnd = rec.get("sameAs").split("/")[4]
+                    gnd = rec.get("sameAs")
             if gnd:
                 record = get_wdid(gnd, rec)
                 if record:
@@ -90,18 +105,20 @@ if __name__ == "__main__":
             if (record or args.pipeline) and rec:
                 print(json.dumps(rec, indent=None))
     else:
-        for rec in esgenerator(host=args.host, port=args.port, index=args.index, type=args.type, headless=True, body={"query": {"bool": {"must": {"prefix": {"sameAs.keyword": "https://d-nb.info"}}, "must_not": {"prefix": {"sameAs.keyword": "http://www.wikidata.org/"}}}}}):
-            gnd = None
+        body={ "query": {"bool": {"filter": {"bool": {"should": [], "must_not": [{"prefix": {"sameAs.keyword": "http://www.wikidata.org"}}]}}}}}
+        for key in lookup_table_wdProperty:
+            body["query"]["bool"]["filter"]["bool"]["should"].append({"prefix": {"sameAs.keyword": key}})
+        for rec in esgenerator(host=args.host, port=args.port, index=args.index, type=args.type, headless=True, body=body):
+            record = None
             if rec.get("sameAs"):
                 if isinstance(rec.get("sameAs"), list):
                     for item in rec.get("sameAs"):
-                        if "http://d-nb.info" in item and len(item.split("/")) > 4:
-                            gnd = item.split("/")[4]
+                        record = get_wdid(item, rec)
+                        if record:
+                            break
                 elif isinstance(rec.get("sameAs"), str):
-                    gnd = rec.get("sameAs").split("/")[4]
-            if gnd:
-                record = get_wdid(gnd, rec)
-                if record:
-                    rec = record
+                    record = get_wdid(rec.get("sameAs"), rec)
+            if record:
+                rec = record
             if record or args.pipeline:
                 print(json.dumps(rec, indent=None))
