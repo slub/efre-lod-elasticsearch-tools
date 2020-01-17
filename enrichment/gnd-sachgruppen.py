@@ -3,7 +3,7 @@ import sys
 import json
 import requests
 import argparse
-from es2json import eprint,litter,isint,esgenerator
+from es2json import litter,isint,esgenerator
 
 map=["https://d-nb.info/standards/elementset/gnd#gndSubjectCategory","https://d-nb.info/standards/elementset/gnd#fieldOfStudy","https://d-nb.info/standards/elementset/gnd#fieldOfActivity","https://d-nb.info/standards/elementset/gnd#biographicalOrHistoricalInformation"]
 
@@ -102,11 +102,11 @@ if __name__ == "__main__":
             gnd=None
             record=None
             if rec and rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"),list) and any("http://d-nb.info" for x in rec.get("sameAs")):
+                if isinstance(rec.get("sameAs"),list) and any("https://d-nb.info" for x in rec.get("sameAs")):
                     for item in rec.get("sameAs"):
-                        if "http://d-nb.info" in item and len(item.split("/"))>4:
+                        if "https://d-nb.info" in item and len(item.split("/"))>4:
                             gnd=item.rstrip().split("/")[-1]
-                elif isinstance(rec.get("sameAs"),str) and "http://d-nb.info" in rec.get("sameAs"):
+                elif isinstance(rec.get("sameAs"),str) and "https://d-nb.info" in rec.get("sameAs"):
                     gnd=rec.get("sameAs").split("/")[-1]
             if gnd:
                 record=process(rec,gnd,args.searchserver)
@@ -115,11 +115,11 @@ if __name__ == "__main__":
             if (record or args.pipeline) and rec:
                 print(json.dumps(rec,indent=None))
     else:                                                                                                   
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"http://d-nb.info"}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"prefix":{"sameAs.keyword":"https://d-nb.info"}}}):
             gnd=None
             if isinstance(rec.get("sameAs"),list):
                 for item in rec.get("sameAs"):
-                    if "http://d-nb.info" in item and len(item.split("/"))>4:
+                    if "https://d-nb.info" in item and len(item.split("/"))>4:
                         gnd=item.split("/")[-1]
             elif isinstance(rec.get("sameAs"),str):
                     gnd=rec.get("sameAs").split("/")[-1]
