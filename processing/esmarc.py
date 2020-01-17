@@ -812,6 +812,7 @@ def get_subfield(jline, key, entity):
             return ArrayOrSingleValue(data)
 
 
+
 def getsameAs(jline, keys, entity):
     """
     produces sameAs information out of the record
@@ -824,12 +825,24 @@ def getsameAs(jline, keys, entity):
                 if not "DE-576" in elem:  # ignore old SWB id for root SameAs
                     data = gnd2uri(elem)
                     if isinstance(data, str):
-                        if data.startswith("http"):
-                            sameAs.append(data)
-                    elif isinstance(data, list):
-                        for elem in data:
-                            if elem and elem.startswith("http"):
-                                sameAs.append(data)
+                        data=[data]
+                    for elem in data:
+                        if elem and elem.startswith("http"):
+                            sameAs.append({"@id": data,
+                                            "publisher": {
+                                                "@id": "data.slub-dresden.de",},
+                                            "isBasedOn": {
+                                                "@type": "Dataset",
+                                                "@id": "",
+                                            }
+                                        })
+    for n,item in enumerate(sameAs):
+        if "d-nb.info" in item["@id"]:
+            sameAs[n]["publisher"]["preferredName"]="Deutsche Nationalbibliothek"
+            sameAs[n]["publisher"]["@id"]="https://data.slub-dresden.de/organizations/514366265"
+        elif "swb.bsz-bw.de" in item["@id"]:
+            sameAs[n]["publisher"]["preferredName"]="K10Plus"
+            sameAs[n]["publisher"]["@id"]="https://data.slub-dresden.de/organizations/103302212"
     return sameAs
 
 
