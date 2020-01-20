@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 import requests
-from es2json import esgenerator, isint, litter, eprint
+from es2json import esgenerator, isint, litter
 
 
 lookup_table_wdProperty = {"http://viaf.org": {"property": "P214",
@@ -24,10 +24,18 @@ lookup_table_wdProperty = {"http://viaf.org": {"property": "P214",
                            "http://filmportal.de/person": {"property": "P2639",
                                                            "delim": "/"},
                            "http://orcid.org": {"property": "P496",
-                                                "delim": "/"}}
+                                                "delim": "/"},
+                           "http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=": {"property": "P1044",
+                                                                       "delim": "="}
+                           }
 
 
 def get_wdid(_ids, rec):
+    """
+    gets an list of sameAs Links, e.g. ['https://d-nb.info/gnd/118827545', 'http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=035143010', 'http://catalogue.bnf.fr/ark:/12148/cb119027159', 'http://id.loc.gov/rwo/agents/n50002729', 'http://isni.org/isni/0000000120960218', 'http://viaf.org/viaf/44298691']
+    """
+    if not isinstance(_ids, list):
+        return None
     changed = False
     url = "https://query.wikidata.org/bigdata/namespace/wdq/sparql"
 
@@ -35,14 +43,15 @@ def get_wdid(_ids, rec):
     for _id in _ids:
         for key, value in lookup_table_wdProperty.items():
             if _id.startswith(key):
-                or_mapping.append("?item wdt:{Property} \"{value}\"".format(Property=value["property"],value=_id.split(value["delim"])[-1]))
+                or_mapping.append("?item wdt:{Property} \"{value}\"".format(
+                    Property=value["property"], value=_id.split(value["delim"])[-1]))
                 break
 
     if or_mapping:
         # BUILD an SPARQL OR Query with an UNION Operator.
         # Still builds an normal query without UNION when or_mapping List only contains one element
-        query = '''SELECT DISTINCT ?item \nWHERE {{\n\t{{ {UNION} }}\n}}'''.format(UNION="} UNION\n\t\t {".join(or_mapping))
-        eprint(query)
+        query = '''SELECT DISTINCT ?item \nWHERE {{\n\t{{ {UNION} }}\n}}'''.format(
+            UNION="} UNION\n\t\t {".join(or_mapping))
         data = requests.get(url, params={'query': query, 'format': 'json'})
         if data.ok and len(data.json().get("results").get("bindings")) > 0:
             for item in data.json().get("results").get("bindings"):
