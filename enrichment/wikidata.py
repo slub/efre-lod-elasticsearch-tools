@@ -7,54 +7,55 @@ import requests
 from es2json import esgenerator, isint, litter, eprint
 
 
-lookup_table_wdProperty = {"https://d-nb.info/gnd": "P227",
-                           "http://viaf.og/viaf": "P214",
-                           "http://isni.org": "P213",
-                           "http://id.loc.gov/authorities": "P244",
-                           "https://deutsche-digitale-bibliothek.de/entity": "P4948",
-                           "http://catalogue.bnf.fr/ark": "P268",
-                           "http://geonames.org": "P1566",
-                           "http://filmportal.de/person": "P2639",
-                           "http://orcid.org": "P496"}
+lookup_table_wdProperty = {"http://viaf.org": {"property": "P214",
+                                               "delim": "/"},
+                           "https://d-nb.info/gnd": {"property": "P227",
+                                                     "delim": "/"},
+                           "http://isni.org": {"property": "P213",
+                                               "delim": "/"},
+                           "http://id.loc.gov": {"property": "P244",
+                                                 "delim": "/"},
+                           "https://deutsche-digitale-bibliothek.de": {"property": "P4948",
+                                                                       "delim": "/"},
+                           "http://catalogue.bnf.fr/ark": {"property": "P268",
+                                                           "delim": "/cb"},
+                           "http://geonames.org": {"property": "P1566",
+                                                   "delim": "/"},
+                           "http://filmportal.de/person": {"property": "P2639",
+                                                           "delim": "/"},
+                           "http://orcid.org": {"property": "P496",
+                                                "delim": "/"}}
 
 
-def get_wdid(_id, rec):
+def get_wdid(_ids, rec):
     changed = False
-
     url = "https://query.wikidata.org/bigdata/namespace/wdq/sparql"
-    lookup_value = _id.split("/")[-1]
-    lookup_property = ""
-    for key, value in lookup_table_wdProperty.items():
-        if _id.startswith(key):
-            lookup_property = value
-    if lookup_value and lookup_property:
-        query = '''
-            PREFIX wikibase: <http://wikiba.se/ontology#>
-            PREFIX wd: <http://www.wikidata.org/entity/>
-            PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            
-            SELECT ?person
-            WHERE {{
-                ?person wdt:{prop}  "{value}" .
-            SERVICE wikibase:label {{ bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }}
-            }}'''.format(prop=lookup_property, value=lookup_value)
-        try:
-            data = requests.get(
-                url, params={'query': query, 'format': 'json'}).json()
-            if len(data.get("results").get("bindings")) > 0:
-                for item in data.get("results").get("bindings"):
-                    rec["sameAs"] = litter(
-                        rec["sameAs"], {"@id": item.get("person").get("value"),
-                                        "publisher": {
-                            "@id": "https://www.wikidata.org/wiki/Q2013",
-                            "name": "Wikidata"},
-                            "isBasedOn": {
+
+    or_mapping = []
+    for _id in _ids:
+        for key, value in lookup_table_wdProperty.items():
+            if _id.startswith(key):
+                or_mapping.append("?item wdt:{Property} \"{value}\"".format(Property=value["property"],value=_id.split(value["delim"])[-1]))
+                break
+
+    if or_mapping:
+        # BUILD an SPARQL OR Query with an UNION Operator.
+        # Still builds an normal query without UNION when or_mapping List only contains one element
+        query = '''SELECT DISTINCT ?item \nWHERE {{\n\t{{ {UNION} }}\n}}'''.format(UNION="} UNION\n\t\t {".join(or_mapping))
+        eprint(query)
+        data = requests.get(url, params={'query': query, 'format': 'json'})
+        if data.ok and len(data.json().get("results").get("bindings")) > 0:
+            for item in data.json().get("results").get("bindings"):
+                rec["sameAs"] = litter(
+                    rec["sameAs"], {"@id": item.get("item").get("value"),
+                                    "publisher": {
+                        "@id": "https://www.wikidata.org/wiki/Q2013",
+                        "abbr": "WIKIDATA",
+                        "name": "Wikidata"},
+                        "isBasedOn": {
                             "@type": "Dataset",
-                            "@id": item.get("person").get("value")}})
-                    changed = True
-        except:
-            pass
+                            "@id": item.get("item").get("value")}})
+                changed = True
     if changed:
         return rec
 
@@ -96,37 +97,24 @@ if __name__ == "__main__":
     if args.stdin:
         for line in sys.stdin:
             rec = json.loads(line)
-            gnd = None
             record = None
-            if rec and rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"), list):
-                    for item in rec.get("sameAs"):
-                        record = get_wdid(item, rec)
-                        if record:
-                            break
-                elif isinstance(rec.get("sameAs"), str):
-                    record = get_wdid(item, rec)
-            if record:
-                rec = record
+            if rec and isinstance(rec.get("sameAs"), list):
+                record = get_wdid([x["@id"] for x in rec["sameAs"]], rec)
+                if record:
+                    rec = record
             if (record or args.pipeline) and rec:
                 print(json.dumps(rec, indent=None))
     else:
         body = {"query": {"bool": {"filter": {"bool": {"should": [], "must_not": [
-            {"prefix": {"sameAs.keyword": "http://www.wikidata.org"}}]}}}}}
+            {"prefix": {"sameAs.@id.keyword": "http://www.wikidata.org"}}]}}}}}
         for key in lookup_table_wdProperty:
             body["query"]["bool"]["filter"]["bool"]["should"].append(
-                {"prefix": {"sameAs.keyword": key}})
-        for rec in esgenerator(host=args.host, port=args.port, index=args.index, type=args.type, headless=True, body=body):
+                {"prefix": {"sameAs.@id.keyword": key}})
+        for rec in esgenerator(host=args.host, port=args.port, index=args.index, type=args.type, id=args.id, headless=True, body=body):
             record = None
-            if rec.get("sameAs"):
-                if isinstance(rec.get("sameAs"), list):
-                    for item in rec.get("sameAs"):
-                        record = get_wdid(item, rec)
-                        if record:
-                            break
-                elif isinstance(rec.get("sameAs"), str):
-                    record = get_wdid(rec.get("sameAs"), rec)
-            if record:
-                rec = record
+            if rec.get("sameAs") and isinstance(rec.get("sameAs"), list):
+                record = get_wdid([x["@id"] for x in rec["sameAs"]], rec)
+                if record:
+                    rec = record
             if record or args.pipeline:
                 print(json.dumps(rec, indent=None))
