@@ -841,9 +841,11 @@ def getsameAs(jline, keys, entity):
         if "d-nb.info" in item["@id"]:
             sameAs[n]["publisher"]["preferredName"]="Deutsche Nationalbibliothek"
             sameAs[n]["publisher"]["@id"]="https://data.slub-dresden.de/organizations/514366265"
+            sameAs[n]["publisher"]["abbr"]="DNB"
         elif "swb.bsz-bw.de" in item["@id"]:
             sameAs[n]["publisher"]["preferredName"]="K10Plus"
             sameAs[n]["publisher"]["@id"]="https://data.slub-dresden.de/organizations/103302212"
+            sameAs[n]["publisher"]["abbr"]="KXP"
     return sameAs
 
 
