@@ -829,7 +829,7 @@ def getsameAs(jline, keys, entity):
                     if isinstance(data,list):
                         for elem in data:
                             if elem and elem.startswith("http"):
-                                sameAs.append({"@id": data,
+                                sameAs.append({"@id": elem,
                                                 "publisher": {
                                                     "@id": "data.slub-dresden.de",},
                                                 "isBasedOn": {
