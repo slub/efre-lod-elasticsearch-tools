@@ -232,7 +232,7 @@ def esgenerator(host=None,port=9200,index=None,type=None,id=None,body=None,sourc
             if elasticsearch.VERSION<(7,0,0):
                 record=es.get(index=index,doc_type=type,id=id)
             elif elasticsearch.VERSION>=(7,0,0): 
-                record=es.get(index=indeex,id=id)
+                record=es.get(index=index,id=id)
             if headless:
                 yield record["_source"]
             else:
