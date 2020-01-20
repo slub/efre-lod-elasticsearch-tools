@@ -46,11 +46,12 @@ def get_wdid(_id, rec):
                 for item in data.get("results").get("bindings"):
                     rec["sameAs"] = litter(
                         rec["sameAs"], {"@id": item.get("person").get("value"),
-                                            "publisher": {
-                                                "@id": "https://www.wikidata.org/wiki/Q2013",},
-                                            "isBasedOn": {
-                                                "@type": "Dataset",
-                                                "@id": item.get("person").get("value")}})
+                                        "publisher": {
+                            "@id": "https://www.wikidata.org/wiki/Q2013",
+                            "name": "Wikidata"},
+                            "isBasedOn": {
+                            "@type": "Dataset",
+                            "@id": item.get("person").get("value")}})
                     changed = True
         except:
             pass
