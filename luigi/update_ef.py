@@ -20,18 +20,18 @@ class EFTask(BaseTask):
     with open('ef_config.json') as data_file:
         config = json.load(data_file)
 
-    def closest(self):
-        return daily(date=self.date)
-
 
 class EFDownload(EFTask):
+    """
+    downloads, uncompresses and transforms the record.
+    from this special DNB flavoured json to line-delimited json.
+    e.g.
+    [{<record/>}
+    ,{<record/>}
+    ]
+    if you delete the first character on the line by cut -c2-, you get ldj
+    """
 
-    # downloads, uncompresses and transforms the record. from this special DNB flavoured json to line-delimited json.
-    # e.g.
-    # [{<record/>}
-    # ,{<record/>}
-    # ]
-    # if you delete the first character on the line by cut -c2-, you already got line-delimited json.
     def run(self):
         cmdstring = "wget --user {username} --password {password} -O - {url} | gunzip -c | cut -c2- | gzip > {file} ".format(
             **self.config)
@@ -61,6 +61,9 @@ class EFDownload(EFTask):
 
 class EFFixIDs(EFTask):
     def requires(self):
+        """
+        requires EFDownload.complete()
+        """
         return EFDownload()
 
     def run(self):
@@ -89,21 +92,32 @@ class EFFillEsIndex(EFTask):
     files = None
 
     def requires(self):
+        """
+        requires EFFixIDs.output()
+        """
         return EFFixIDs()
 
     def run(self):
+        """
+        load Fixed Data into elasticsearch with help of esbulk
+        """
         cmd = "esbulk -z -purge -verbose -server http://{host}:{port} -index {index} -w {workers} -type {type} -id @id {fixfile}""".format(
             **self.config)
         shellout(cmd)
         pass
 
     def complete(self):
+        """
+        check if the data in elasticsearch is the same as the data on disc
+        """
         self.es = elasticsearch.Elasticsearch(
             [{'host': self.config.get("host")}], port=self.config.get("port"))
         cmd = "http://{host}:{port}/{index}/{type}/_search?size=0".format(
             **self.config)
         uniq = set()
         r = get(cmd)
+        if r.ok:
+            hits=r.json()
         # result=self.es.search(index=self.config["index"],doc_type=typ,size=0)
         if os.path.exists(self.config["fixfile"]):
             with gzip.open(self.config["fixfile"], "rt") as f:
@@ -113,7 +127,7 @@ class EFFillEsIndex(EFTask):
                         uniq.add(record["@id"])
                     except:
                         continue
-            if isinstance(r.json(), dict) and r.json().get("hits") and len(uniq) == r.json().get("hits").get("total"):
+            if hits.get("hits") and len(uniq) == hits["hits"].get("total"):
                 return True
         else:
             return False
