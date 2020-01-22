@@ -127,15 +127,22 @@ class GNDDownload(GNDTask):
     files = []
 
     def run(self):
+        """
+        Downloads the GND Data from the dnb opendata server
+        adapts the encoding to utf-8
+        """
         for url in self.config.get("urls"):
             fd = url.split("/")[-1]
             cmdstring = "wget --user {username} --password {password} -O - {url} | gunzip -c | uconv -x any-nfc | gzip > {file} ".format(
                 **self.config, url=url, file=fd)
             self.files.append(luigi.LocalTarget(fd))
-            output = shellout(cmdstring)
+            shellout(cmdstring)
         return 0
 
     def complete(self):
+        """
+        checks whether the timestamp of the local data is the same or newer than the timestamp of the data on the D-NB Server
+        """
         for url in self.config["urls"]:
             fd = url.split("/")[-1]
             r = head(url, auth=(
@@ -157,26 +164,20 @@ class GNDDownload(GNDTask):
         return self.files
 
 
-class CleanWorkspace(GNDTask):
-
-    def complete(self):
-        if os.path.exists("chunks") and os.listdir("chunks") == []:
-            return True
-        else:
-            return False
-
-    def run(self):
-        if os.path.exists("chunks"):
-            shutil.rmtree("chunks")
-
-
 class GNDcompactedJSONdata(GNDTask):
 
     def requires(self):
+        """
+        requires GNDDownload
+        """
         return [GNDDownload()]
 
     def run(self):
-        CleanWorkspace().run()
+        """
+        compacts the JSON-LD
+        """
+        if os.path.exists("chunks"):
+            shutil.rmtree("chunks")
         os.mkdir("chunks")
         # for url in self.config.get("urls"):
         #    process(url.split("/")[-1],None,self.config.get("context"),"chunks/",True,28)
@@ -189,9 +190,15 @@ class GNDcompactedJSONdata(GNDTask):
 
 class GNDconcatChunks(GNDTask):
     def requires(self):
+        """
+        requires GNDcompactedJSONdata
+        """
         return [GNDcompactedJSONdata()]
 
     def run(self):
+        """"
+        concatenates the chunks and process data-sanitizing
+        """
         with gzip.open("records.ldj.gz", "wt") as records, gzip.open("bnodes.ldj.gz", "wt") as bnodes:
             for f in os.listdir("chunks/"):
                 with gzip.open("chunks/" + f, "rt") as chunk:
@@ -224,18 +231,21 @@ class GNDconcatChunks(GNDTask):
 
 
 class GNDUpdate(GNDTask):
-    """
-    Loads processed GND data into a given ElasticSearch index (with help of esbulk)
-    """
     date = datetime.today()
     es = None
 
     files = None
 
     def requires(self):
+        """
+        requires GNDconcatChunks
+        """
         return GNDconcatChunks()
 
     def run(self):
+        """
+        Loads processed GND data into a given ElasticSearch index (with help of esbulk)
+        """
         cmd = "esbulk -z -verbose -server http://{host}:{port} -w {workers}""".format(
             **self.config)
         for k, v in self.config.get("indices").items():
@@ -247,6 +257,9 @@ class GNDUpdate(GNDTask):
                 cmd+""" -index {index} -type {type} -id id {type}s.ldj.gz""".format(index=v, type=k))
 
     def complete(self):
+        """
+        checks whether all the data has managed it to get into the elasticsearch-index
+        """
         self.es = elasticsearch.Elasticsearch(
             [{'host': self.config.get("host")}], port=self.config.get("port"))
         fail = 0

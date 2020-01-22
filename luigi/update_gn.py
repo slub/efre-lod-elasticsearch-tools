@@ -20,7 +20,7 @@ class GNTask(BaseTask):
     config = {
         "url": "http://download.geonames.org/export/dump/",
         "file": "allCountries",
-        "server": "http://194.95.145.24:9201",
+        "server": "http://127.0.0.1:9200",
         "index": "geonames",
         "type": "record",
         "workers": 8
