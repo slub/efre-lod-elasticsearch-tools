@@ -19,6 +19,10 @@ from gluish.utils import shellout
 class LODTask(BaseTask):
     """
     Just a base class for LOD
+    -initializes the Base for all Luigi Task
+    -loads configuration
+    -gets the timestamp from {host}/date/actual/1
+    -calculates which days are missing and should be updated from the SWB FTP Server
     """
     with open('lod_config.json') as data_file:
         config = json.load(data_file)
@@ -43,6 +47,9 @@ class LODTask(BaseTask):
 class LODDownload(LODTask):
 
     def run(self):
+        """
+        iterates over the in LODTask defined days (in self.config["dates"]) and downloads those day-deltas from the SWB FTP
+        """
         for n, dat in enumerate(self.config.get("dates")):
             cmdstring = "wget --user {username} --password {password} {url}TA-MARC-norm-{date}.tar.gz".format(
                 **self.config, date=dat)
@@ -53,6 +60,9 @@ class LODDownload(LODTask):
         return 0
 
     def complete(self):
+        """
+        checks if the download is complete
+        """
         for n, day in enumerate(self.config.get("dates")):
             if os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config, date=day)):
                 return True
@@ -62,9 +72,16 @@ class LODDownload(LODTask):
 class LODExtract(LODTask):
 
     def requires(self):
+        """
+        requires LODDownload
+        """
         return LODDownload()
 
     def run(self):
+        """
+        iterates over the in LODTask defined days (in self.config["dates"]) and extract those day-deltas
+        concatenates the extracted data and gzips them to {yesterday}-norm.mrc.gz
+        """
         for day in self.config.get("dates"):
             if os.path.exists("TA-MARC-norm-{date}.tar.gz".format(**self.config, date=day)):
                 cmdstring = "tar xvzf TA-MARC-norm-{date}.tar.gz && gzip < norm-aut.mrc >> {yesterday}-norm.mrc.gz && rm norm-*.mrc".format(
@@ -79,9 +96,18 @@ class LODExtract(LODTask):
 class LODTransform2ldj(LODTask):
 
     def requires(self):
+        """
+        requires LODExtract
+        """
         return LODExtract()
 
     def run(self):
+        """
+        extracts the {yesterday}-norm.mrc.gz, transforms it to line-delimited-json
+        fixes the MARC PPN  from e.g. 001: ["123ImAMarcID"] to 001:"123ImAMarcID"
+        gzips that stuff to {date}-norm-aut.ldj.gz
+        also prints out every MARC PPN from that file to an TXT file for further reference
+        """
         cmdstring = "zcat {date}-norm.mrc.gz | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py  | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-norm-aut.ldj.gz".format(
             **self.config, date=self.yesterday.strftime("%y%m%d"))
         shellout(cmdstring)
@@ -100,9 +126,16 @@ class LODFillRawdataIndex(LODTask):
     """
 
     def requires(self):
+        """
+        requires LODTransform2ldj
+        """
         return LODTransform2ldj()
 
     def run(self):
+        """
+        uploads the {date}-norm-aut.ldj.gz to an elasticsearch node via esbulk
+        """
+        
         # put_dict("{host}/swb-aut".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
         # put_dict("{host}/swb-aut/_settings".format(**self.config,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
 
@@ -111,6 +144,9 @@ class LODFillRawdataIndex(LODTask):
         shellout(cmd)
 
     def complete(self):
+        """
+        takes all the IDS from the in LODTransform2ldj created TXT file and checks whether those are in the elasticsearch node  
+        """
         es_recordcount = 0
         file_recordcount = 0
         es_ids = set()
@@ -136,15 +172,26 @@ class LODFillRawdataIndex(LODTask):
 
 class LODProcessFromRdi(LODTask):
     def requires(self):
+        """
+        requires LODFillRawdataIndex
+        """
         return LODFillRawdataIndex()
 
     def run(self):
+        """
+        takes the in LODTransform2ldj created TXT file and gets those records from the elasticsearch node
+        transforms them to JSON-Linked Data with esmarc.py, gzips the files
+        """
         cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(
             **self.config, date=self.yesterday.strftime("%y%m%d"))
         shellout(cmd)
         sleep(5)
 
     def complete(self):
+        """
+        checks whether all the files are there
+        complete test for consistency in LODUpdate.complete()
+        """
         path = "{date}-aut-data".format(date=self.yesterday.strftime("%y%m%d"))
         try:
             for index in os.listdir(path):
@@ -158,9 +205,20 @@ class LODProcessFromRdi(LODTask):
 
 class LODUpdate(LODTask):
     def requires(self):
+        """
+        requires LODProcessFromRdi
+        """
         return LODProcessFromRdi()
 
     def run(self):
+        """
+        itereates over the in LODProcessFromRdi generated JSON-Linked-Data
+        enriches them with identifier from entityfacts
+        enriches them with subjects from the GND
+        enriches them with identifier from wikidata
+        enriches them with identifier from geonames, if its a geographic Place
+        ingests them into a elasticsearch node
+        """
         path = "{date}-aut-data".format(date=self.yesterday.strftime("%y%m%d"))
         for index in os.listdir(path):
             # doing several enrichment things before indexing the data
@@ -182,10 +240,10 @@ class LODUpdate(LODTask):
         put_dict("{host}/date/actual/1".format(**self.config),
                  {"date": str(self.yesterday.strftime("%Y-%m-%d"))})
 
-    def output(self):
-        return luigi.LocalTarget(path=self.path())
-
     def complete(self):
+        """
+        compares the count of entity-types in the source-data elasticsearch and the target-data elasticsearch
+        """
         es = elasticsearch.Elasticsearch([{"host": self.config.get("host").split(
             ":")[1][2:]}], port=int(self.config.get("host").split(":")[2]))
         yesterday = date.today() - timedelta(1)
@@ -203,7 +261,16 @@ class LODUpdate(LODTask):
             "u": "works",  # Werktiteldaten
             "f": "events"
         }
-
+        """
+        TODO: 
+        change to one single search. query body = {
+                                                    "aggs" : {
+                                                            "genres" : {
+                                                                    "terms" : { "field" : "079.__.b.keyword" } 
+                                                                        }
+                                                            }
+                                                    }
+        """
         person_count_raw = 0
         person_count_map = 0
         for k, v in map_entities.items():
