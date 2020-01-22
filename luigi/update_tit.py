@@ -264,7 +264,7 @@ class LODTITUpdate(LODTITTask):
     def run(self):
         """
         ingests the data processed in LODTITProcessFromRdi into an elasticsearch-index
-        saves the date of the update into the config file
+        saves the date of the update into the config file if this was successfull
         """
 
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
