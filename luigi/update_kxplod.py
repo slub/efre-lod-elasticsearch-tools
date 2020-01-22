@@ -221,14 +221,13 @@ class LODKXPProcessFromRdi(LODKXPTask):
         # delete("{rawdata_host}/kxp-lok-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
         cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py  -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(
             **self.config, date=self.yesterday.strftime("%y%m%d"))
-        output = shellout(cmd)
+        shellout(cmd)
         sleep(5)
 
     def complete(self):
         """
         checks whether all the data is in the file
         """
-        returnarray = []
         path = "{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
         try:
             for index in os.listdir(path):
@@ -253,13 +252,12 @@ class LODKXPUpdate(LODKXPTask):
         saves the date of the update into the config file
         """
         path = "{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
-        enrichmentstr = []
         for index in os.listdir(path):
             # doing several enrichment things before indexing the data
             for f in os.listdir(path+"/"+index):
                 cmd = "esbulk -z -verbose -server {host} -w {workers} -index slub-{index} -type schemaorg -id identifier {fd}".format(
                     **self.config, index=index, fd=path+"/"+index+"/"+f)
-                output = shellout(cmd)
+                shellout(cmd)
         newconfig = None
         with open('lodkxp_config.json') as data_file:
             newconfig = json.load(data_file)
@@ -282,7 +280,7 @@ class LODKXPUpdate(LODKXPTask):
                         ids.add(json.loads(line).get("identifier"))
                 cmd = "zcat {fd} | jq -rc .identifier >> schemaorg-ids-{date}.txt".format(
                     fd=path+"/"+index+"/"+f, date=self.yesterday.strftime("%y%m%d"))
-                output = shellout(cmd)
+                shellout(cmd)
         es_ids = set()
         for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
                                         port="{host}".format(
