@@ -36,11 +36,12 @@ class LODTITTask(BaseTask):
         config = json.load(data_file)
 
     TAG = 'lodtit'
-# deprecated
 
 
 class LODTITSolrHarvesterMakeConfig(LODTITTask):
-
+"""
+DEPRECATED
+"""
     def run(self):
         r = get("{host}/date/actual/4".format(**self.config))
         lu = r.json().get("_source").get("date")
@@ -55,6 +56,9 @@ class LODTITSolrHarvesterMakeConfig(LODTITTask):
 
 
 class LODTITDownload(LODTITTask):
+"""
+DEPRECATED
+"""
     def requires(self):
         return LODTITSolrHarvesterMakeConfig()
 
@@ -79,6 +83,11 @@ class LODTITDownload(LODTITTask):
 
 class LODTITDownloadSolrHarvester(LODTITTask):
     def run(self):
+        """
+        downloads the data from the solr from last update to now
+        transforms it to MARC21
+        saves it bzip2 compressed
+        """
         r = get("{host}/date/actual/4".format(**self.config))
         lu = r.json().get("_source").get("date")
         cmdstring = "solrdump -verbose -server {host} -fl 'fullrecord,id,recordtype' -q 'last_indexed:[{last} TO {now}]' | ~/git/efre-lod-elasticsearch-tools/helperscripts/fincsolr2marc.py -valid | {bzip} > {date}.mrc.bz2".format(
@@ -93,10 +102,17 @@ class LODTITDownloadSolrHarvester(LODTITTask):
 class LODTITTransform2ldj(LODTITTask):
 
     def requires(self):
-        # return LODTITDownload()
+        """
+        requires LODTITDownloadSolrHarvester
+        """
         return LODTITDownloadSolrHarvester()
 
     def run(self):
+        """
+        uncompresses the Data from LODTITDownloadSolrHarvester, transforms it to line-delimited json, fixes the ID from e.g. 001:["0-12223123"] to 001: "0-12223123"
+        saves the IDs in a ID file
+        gzips it
+        """
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
             cmdstring = "{bzip} -dc {date}.mrc.bz2 | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip >> {date}.ldj.gz".format(
                 bzip=get_bzipper(), date=self.date)
@@ -115,9 +131,16 @@ class LODTITTransform2ldj(LODTITTask):
         return 0
 
     def output(self):
+        """
+        returns the ID File
+        """
         return luigi.LocalTarget("{date}-ppns.txt".format(date=self.date))
 
     def complete(self):
+        """
+        checks whether the ID file and the line-delimited JSON file are there ant not empty
+        
+        """
         try:
             filesize = os.stat("{date}.mrc.bz2".format(date=self.date)).st_size
         except FileNotFoundError:
@@ -135,14 +158,17 @@ class LODTITTransform2ldj(LODTITTask):
 
 
 class LODTITFillRawdataIndex(LODTITTask):
-    """
-    Loads raw data into a given ElasticSearch index (with help of esbulk)
-    """
 
     def requires(self):
+        """
+        requires LODTITTransform2ldj()
+        """
         return LODTITTransform2ldj()
 
     def run(self):
+        """
+        Loads raw data into a given ElasticSearch index (with help of esbulk)
+        """
         # put_dict("{host}/finc-main-{date}".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
         # put_dict("{host}/finc-main-{date}/_settings".format(**self.config,date=datetime.today().strftime("%Y%m%d")),{"index.mapping.total_fields.limit":20000})
 
@@ -152,6 +178,9 @@ class LODTITFillRawdataIndex(LODTITTask):
             shellout(cmd)
 
     def complete(self):
+        """
+        checks whether all the IDs are in the raw-data-index
+        """
         fail = 0
         es_recordcount = 0
         file_recordcount = 0
@@ -192,9 +221,15 @@ class LODTITFillRawdataIndex(LODTITTask):
 class LODTITProcessFromRdi(LODTITTask):
 
     def requires(self):
+        """
+        requires LODTITFillRawdataIndex
+        """
         return LODTITFillRawdataIndex()
 
     def run(self):
+        """
+        calls esmarc with the idfile created in LODTITTransform2ldj
+        """
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
             cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(
                 **self.config, date=self.date)
@@ -221,9 +256,16 @@ class LODTITProcessFromRdi(LODTITTask):
 class LODTITUpdate(LODTITTask):
 
     def requires(self):
+        """
+        requires LODTITProcessFromRdi.complete()
+        """
         return LODTITProcessFromRdi()
 
     def run(self):
+        """
+        ingests the data processed in LODTITProcessFromRdi into an elasticsearch-index
+        saves the date of the update into the config file
+        """
 
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
             path = "{date}-data".format(date=self.date)
@@ -240,9 +282,9 @@ class LODTITUpdate(LODTITTask):
         #    output=shellout(cmd)
         put_dict("{host}/date/actual/4".format(**self.config),
                  {"date": str(self.now)})
-        with gzip.open("slub_resources_sourceid0.ldj", "wt") as outp:
-            for record in esgenerator(host="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[0], port="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[1], index="resources", type="schemaorg", body={"query": {"bool": {"must": [{"match": {"offers.offeredBy.branchCode.keyword": "DE-14"}}, {"match": {"_sourceID.keyword": "0"}}]}}}, headless=True):
-                print(json.dumps(record), file=outp)
+        #with gzip.open("slub_resources_sourceid0.ldj", "wt") as outp:
+            #for record in esgenerator(host="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[0], port="{host}".format(**self.config).rsplit("/")[2].rsplit(":")[1], index="resources", type="schemaorg", body={"query": {"bool": {"must": [{"match": {"offers.offeredBy.branchCode.keyword": "DE-14"}}, {"match": {"_sourceID.keyword": "0"}}]}}}, headless=True):
+                #print(json.dumps(record), file=outp)
         # delete("{host}/slub-resources/schemaorg".format(**self.config))
         # put_dict("{host}/slub-resources".format(**self.config),{"mappings":{"schemaorg":{"date_detection":False}}})
         # cmd="esbulk -z -verbose -server {host} -w {workers} -index slub-resources -type schemaorg -id identifier slub_resources_sourceid0.ldj".format(**self.config)

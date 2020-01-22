@@ -18,6 +18,9 @@ from gluish.utils import shellout
 class LODKXPTask(BaseTask):
     """
     Just a base class for LOD
+    -initializes the Base for all Luigi Task
+    -loads configuration
+    -calculates which days are missing and should be updated from the directoy, where /data1/ongoing/kxp/kxp_source/lftp_kxp.pl copies the data to
     """
     with open('lodkxp_config.json') as data_file:
         config = json.load(data_file)
@@ -38,6 +41,9 @@ class LODKXPTask(BaseTask):
 class LODKXPCopy(LODKXPTask):
 
     def run(self):
+        """
+        copies per day in config["dates"] the day delta to the working directoy
+        """
         for n, dat in enumerate(self.config.get("dates")):
             cmdstring = "cp {path}/TA-MARCVBFL-006-{date}.tar.gz ./".format(
                 **self.config, date=dat)
@@ -48,6 +54,9 @@ class LODKXPCopy(LODKXPTask):
         return 0
 
     def complete(self):
+        """
+        checks whether all the day deltas which are needed are there
+        """
         for n, day in enumerate(self.config.get("dates")):
             if os.path.exists("TA-MARCVBFL-006-{date}.tar.gz".format(**self.config, date=day)):
                 return True
@@ -57,9 +66,17 @@ class LODKXPCopy(LODKXPTask):
 class LODKXPExtract(LODKXPTask):
 
     def requires(self):
+        """
+        requires LODKXPCopy
+        """
         return LODKXPCopy()
 
     def run(self):
+        """
+        iterates over the days stated in LODKXPTask
+        extracts the daily deltas according to the days
+        returns a marc.gz file for the title data and one for the local data
+        """
         for day in self.config.get("dates"):
             if os.path.exists("TA-MARCVBFL-006-{_date}.tar.gz".format(**self.config, _date=day)):
                 cmdstring = "tar xvzf TA-MARCVBFL-006-{_date}.tar.gz && gzip < 006-tit.mrc >> {yesterday}-tit.mrc.gz  && gzip < 006-lok.mrc >> {yesterday}-lok.mrc.gz && rm 006-tit.mrc 006-lok.mrc".format(
@@ -68,15 +85,27 @@ class LODKXPExtract(LODKXPTask):
         return 0
 
     def output(self):
+        """
+        returns the title data 
+        """
         return luigi.LocalTarget("{yesterday}-tit.mrc.gz".format(yesterday=self.yesterday.strftime("%y%m%d")))
 
 
 class LODKXPTransform2ldj(LODKXPTask):
 
     def requires(self):
+        """
+        requires LODKXPExtract
+        """
         return LODKXPExtract()
 
     def run(self):
+        """
+        concatenates the marc.gz title data, transforms it to line-delimited json marc
+        fixes the MARC PPN  from e.g. 001: ["123ImAMarcID"] to 001:"123ImAMarcID"
+        same for local data
+
+        """
         for typ in ["tit", "lok"]:
             cmdstring = "zcat {date}-{typ}.mrc.gz | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py  | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | gzip > {date}-{typ}.ldj.gz".format(
                 **self.config, typ=typ, date=self.yesterday.strftime("%y%m%d"))
@@ -87,6 +116,9 @@ class LODKXPTransform2ldj(LODKXPTask):
         return 0
 
     def output(self):
+        """
+        returns a list of PPNS of the local data as TXT
+        """
         return luigi.LocalTarget("{date}-lok-ppns.txt".format(**self.config, date=self.yesterday.strftime("%y%m%d")))
 
 
@@ -96,9 +128,15 @@ class LODKXPFillRawdataIndex(LODKXPTask):
     """
 
     def requires(self):
+        """
+        requires LODKXPTransform2ldj
+        """
         return LODKXPTransform2ldj()
 
     def run(self):
+        """
+        fills the local data index and the source title data index with the data transformed in LODKXPTransform2ldj
+        """
         for typ in ["tit", "lok"]:
             # put_dict("{rawdata_host}/kxp-{typ}".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"mappings":{"mrc":{"date_detection":False}}})
             # put_dict("{rawdata_host}/kxp-{typ}/_settings".format(**self.config,typ=typ,date=self.yesterday.strftime("%y%m%d")),{"index.mapping.total_fields.limit":5000})
@@ -137,13 +175,22 @@ class LODKXPFillRawdataIndex(LODKXPTask):
 
 class LODKXPMerge(LODKXPTask):
     def requires(self):
+        """
+        requires LODKXPFillRawdataIndex.complete()
+        """
         return LODKXPFillRawdataIndex()
 
     def run(self):
+        """
+        iterates over the id-file from LODKXPTransform2ldj, searches for the right titledata (de-14) and merges them with the merge_lok_with_tit script. finally, the data gets loaded into the kxp-de14 index
+        """
         shellout(""". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/merge_lok_with_tit.py -selectbody \'{{\"query\": {{\"match\": {{\"852.__.a.keyword\": \"DE-14\"}}}}}}\' -title_server {rawdata_host}/kxp-tit/mrc -local_server {rawdata_host}/kxp-lok/mrc -idfile {date}-lok-ppns.txt | tee data.ldj | esbulk -server {rawdata_host} -index kxp-de14 -type mrc -id 001 -w 1 -verbose && jq -rc \'.\"001\"' data.ldj > ids.txt && rm data.ldj""", rawdata_host=self.config.get(
             "rawdata_host"), date=self.yesterday.strftime("%y%m%d"))
 
     def complete(self):
+        """
+        checks whether all the records from the idfile from LODKXPTransform2ldj are in the kxp-de14 index
+        """
         ids = set()
         es_ids = set()
         with open("ids.txt") as inp:
@@ -161,9 +208,15 @@ class LODKXPMerge(LODKXPTask):
 
 class LODKXPProcessFromRdi(LODKXPTask):
     def requires(self):
+        """
+        requires LODKXPMerge.complete()
+        """
         return LODKXPFillRawdataIndex()
 
     def run(self):
+        """
+        iterates over the id-file from LODKXPTransform2ldj, gets this set of records from the kxp-de14 index, transforms them to JSON-Linked-Data
+        """
         # delete("{rawdata_host}/kxp-tit-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
         # delete("{rawdata_host}/kxp-lok-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
         cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py  -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(
@@ -172,6 +225,9 @@ class LODKXPProcessFromRdi(LODKXPTask):
         sleep(5)
 
     def complete(self):
+        """
+        checks whether all the data is in the file
+        """
         returnarray = []
         path = "{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
         try:
@@ -186,9 +242,16 @@ class LODKXPProcessFromRdi(LODKXPTask):
 
 class LODKXPUpdate(LODKXPTask):
     def requires(self):
+        """
+        requires LODKXPProcessFromRdi.complete()
+        """
         return LODKXPProcessFromRdi()
 
     def run(self):
+        """
+        ingests the data processed in LODKXPProcessFromRdi into an elasticsearch-index
+        saves the date of the update into the config file
+        """
         path = "{date}-kxp".format(date=self.yesterday.strftime("%y%m%d"))
         enrichmentstr = []
         for index in os.listdir(path):
