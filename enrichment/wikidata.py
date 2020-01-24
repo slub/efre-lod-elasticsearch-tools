@@ -60,7 +60,7 @@ def get_wdid(_ids, rec):
                                     "publisher": {
                         "@id": "https://www.wikidata.org/wiki/Q2013",
                         "abbr": "WIKIDATA",
-                        "name": "Wikidata"},
+                        "preferredName": "Wikidata"},
                         "isBasedOn": {
                             "@type": "Dataset",
                             "@id": item.get("item").get("value")}})
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         for line in sys.stdin:
             rec = json.loads(line)
             record = None
-            if rec and isinstance(rec.get("sameAs"), list):
+            if rec and isinstance(rec.get("sameAs"), list) and not "wikidata.org" in str(record["sameAs"]):
                 record = get_wdid([x["@id"] for x in rec["sameAs"]], rec)
                 if record:
                     rec = record

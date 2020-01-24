@@ -56,7 +56,7 @@ def main():
     parser.add_argument('-query', type=str, default={},
                         help='prefilter the data based on an elasticsearch-query')
     parser.add_argument('-base_id_src', type=str, default="http://swb.bsz-bw.de/DB=2.1/PPNSET?PPN=",
-                        help="set up which base_id to use for sameAs. e.g. http://d-nb.info/gnd/xxx")
+                        help="set up which base_id to use for sameAs. e.g. https://d-nb.info/gnd/xxx")
     parser.add_argument('-target_id', type=str, default="https://data.slub-dresden.de/",
                         help="set up which target_id to use for @id. e.g. http://data.finc.info")
 #    parser.add_argument('-lookup_host',type=str,help="Target or Lookup Elasticsearch-host, where the result data is going to be ingested to. Only used to lookup IDs (PPN) e.g. http://192.168.0.4:9200")
@@ -1345,7 +1345,7 @@ entities = {
         "single:_isil": {getisil: "003"},
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
-        "multi:preferredName": {getmarc: ["100..t", "110..t", "130..t", "111..t"]},
+        "single:preferredName": {getName: ["100..t", "110..t", "130..t", "111..t"]},
         "single:alternativeHeadline": {getmarc: ["245..c"]},
         "multi:alternateName": {getmarc: ["400..t", "410..t", "411..t", "430..t", "240..a", "240..p", "246..a", "246..b", "245..p", "249..a", "249..b", "730..a", "730..p", "740..a", "740..p", "920..t"]},
         "multi:author": {get_subfield: "500"},
@@ -1376,7 +1376,7 @@ entities = {
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
 
-        "single:preferredName": {getmarc: "100..a"},
+        "single:preferredName": {getName: "100..a"},
         "single:gender": {handlesex: "375..a"},
         "multi:alternateName": {getmarc: ["400..a", "400..c"]},
         "multi:relatedTo": {relatedTo: "500..0"},
@@ -1399,7 +1399,7 @@ entities = {
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
 
-        "single:preferredName": {getmarc: "110..a+b"},
+        "single:preferredName": {getName: "110..a+b"},
         "multi:alternateName": {getmarc: "410..a+b"},
 
         "single:additionalType": {get_subfield_if_4: "550^obin"},
@@ -1418,7 +1418,7 @@ entities = {
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
 
-        "single:preferredName": {getmarc: "151..a"},
+        "single:preferredName": {getName: "151..a"},
         "multi:alternateName": {getmarc: "451..a"},
         "single:description": {get_subfield: "551"},
         "single:geo": {getGeoCoordinates: {"longitude": ["034..d", "034..e"], "latitude": ["034..f", "034..g"]}},
@@ -1433,7 +1433,7 @@ entities = {
         "single:_isil": {getisil: "003"},
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
-        "single:preferredName": {getmarc: "150..a"},
+        "single:preferredName": {getName: "150..a"},
         "multi:alternateName": {getmarc: "450..a+x"},
         "single:description": {getmarc: "679..a"},
         "multi:additionalType": {get_subfield: "550"},
@@ -1454,7 +1454,7 @@ entities = {
         "single:dateModified": {getdateModified: "005"},
         "multi:sameAs": {getsameAs: ["035..a", "670..u"]},
 
-        "single:preferredName": {getmarc: ["111..a"]},
+        "single:preferredName": {getName: ["111..a"]},
         "multi:alternateName": {getmarc: ["411..a"]},
         "single:location": {get_subfield_if_4: "551^ortv"},
         "single:startDate": {birthDate: "548"},

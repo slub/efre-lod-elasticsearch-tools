@@ -50,7 +50,15 @@ def get_gnid_by_es(rec,host,port,index,typ):
             for record in records:
                 if record.get("name") in rec.get("name") or rec.get("name") in record.get("name") or len(records)==1 or rec.get("name") in record.get("alternateName"):
                 #eprint(rec.get("name"),record.get("name"),record.get("id"),record.get("location"))
-                    rec["sameAs"]=litter(rec.get("sameAs"),"http://www.geonames.org/"+str(record.get("id"))+"/")
+                    newSameAs={'@id': "https://sws.geonames.org/"+str(record.get("id"))+"/",
+                                       'publisher': {'abbr': "geonames",
+                                                     'preferredName': "GeoNames",
+                                       "isBasedOn": {"@type": "Dataset",
+                                                     "@id": "https://sws.geonames.org/"+str(record.get("id"))+"/"
+                                                     }
+                                       }
+                                }
+                    rec["sameAs"]=litter(rec.get("sameAs"),newSameAs)
                     changed=True
         if changed:
             return rec
@@ -98,14 +106,15 @@ if __name__ == "__main__":
     if args.stdin:
         for line in sys.stdin:
             rec=json.loads(line)
-            if rec.get("geo"):
+            newrec=None
+            if rec.get("geo") and not "geonames" in str(rec["sameAs"]):
                 newrec=get_gnid_by_es(rec,search_host,search_port,search_index,search_type)
                 if newrec:
                     rec=newrec
             if args.pipeline or newrec:
                 print(json.dumps(rec,indent=tabbing))
     else:
-        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"bool":{"must":{"exists":{"field":"geo"}},"must_not":{"prefix":{"sameAs.keyword":"http://www.geonames.org/"}}}}}):
+        for rec in esgenerator(host=args.host,port=args.port,index=args.index,type=args.type,headless=True,body={"query":{"bool":{"filter":{"bool":{"must_not":[{"prefix":{"sameAs.@id.keyword":"https://sws.geonames.org"}},{"prefix":{"sameAs.@id.keyword":"http://sws.geonames.org"}},{"prefix":{"sameAs.@id.keyword":"https://www.geonames.org"}},{"prefix":{"sameAs.@id.keyword":"http://www.geonames.org"}}]}},"must":{"exists":{"field":"geo"}}}}}):
             #newrec=get_gnid(rec)
             newrec=get_gnid_by_es(rec,search_host,search_port,search_index,search_type)
             if newrec:
