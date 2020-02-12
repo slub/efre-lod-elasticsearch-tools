@@ -38,6 +38,9 @@ def main():
     except UnicodeDecodeError as e:
         eprint("unicode decode error: {}".format(e))
         eprint(record)
+    except pymarc.exceptions.RecordLengthInvalid as e:
+        eprint("Invalid Record Length error: {}".format(e))
+        eprint(record)
 
 if __name__ == "__main__":
     main()
