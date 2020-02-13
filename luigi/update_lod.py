@@ -226,7 +226,7 @@ class LODUpdate(LODTask):
                 cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && zcat {fd} | ".format(
                     fd=path+"/"+index+"/"+f)  # with -pipeline, all the data get's thru, not only enriched docs
                 # cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} | ".format(**self.config)
-                cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host} | ".format(
+                cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(
                     **self.config)
                 cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(
                     **self.config)
