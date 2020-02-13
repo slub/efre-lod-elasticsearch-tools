@@ -182,7 +182,7 @@ class LODProcessFromRdi(LODTask):
         takes the in LODTransform2ldj created TXT file and gets those records from the elasticsearch node
         transforms them to JSON-Linked Data with esmarc.py, gzips the files
         """
-        cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(
+        cmd = "esmarc -z -server {host}/swb-aut/mrc -idfile {date}-norm-aut-ppns.txt -prefix {date}-aut-data".format(
             **self.config, date=self.yesterday.strftime("%y%m%d"))
         shellout(cmd)
         sleep(5)

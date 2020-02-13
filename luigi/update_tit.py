@@ -231,7 +231,7 @@ class LODTITProcessFromRdi(LODTITTask):
         calls esmarc with the idfile created in LODTITTransform2ldj
         """
         if os.stat("{date}.mrc.bz2".format(date=self.date)).st_size > 0:
-            cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(
+            cmd = "esmarc -z -server {rawdata_host}/finc-main-k10plus/mrc -idfile {date}-ppns.txt -prefix {date}-data".format(
                 **self.config, date=self.date)
             shellout(cmd)
             sleep(5)

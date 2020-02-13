@@ -219,7 +219,7 @@ class LODKXPProcessFromRdi(LODKXPTask):
         """
         # delete("{rawdata_host}/kxp-tit-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
         # delete("{rawdata_host}/kxp-lok-{date}".format(**self.config,date=self.yesterday.strftime("%y%m%d")))
-        cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/processing/esmarc.py  -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(
+        cmd = "esmarc  -z -server {rawdata_host}/kxp-de14/mrc -idfile ids.txt -prefix {date}-kxp".format(
             **self.config, date=self.yesterday.strftime("%y%m%d"))
         shellout(cmd)
         sleep(5)
