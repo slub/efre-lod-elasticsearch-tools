@@ -39,9 +39,9 @@ class LODTITTask(BaseTask):
 
 
 class LODTITSolrHarvesterMakeConfig(LODTITTask):
-"""
-DEPRECATED
-"""
+    """
+    DEPRECATED
+    """
     def run(self):
         r = get("{host}/date/actual/4".format(**self.config))
         lu = r.json().get("_source").get("date")
@@ -56,9 +56,9 @@ DEPRECATED
 
 
 class LODTITDownload(LODTITTask):
-"""
-DEPRECATED
-"""
+    """
+    DEPRECATED
+    """
     def requires(self):
         return LODTITSolrHarvesterMakeConfig()
 
@@ -271,7 +271,7 @@ class LODTITUpdate(LODTITTask):
             path = "{date}-data".format(date=self.date)
             for index in os.listdir(path):
                 for f in os.listdir(path+"/"+index):
-                    cmd = "esbulk -z -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier {fd}".format(
+                    cmd = "esbulk -z -verbose -server {host} -w {workers} -index kxp-resources -type schemaorg -id identifier {fd}".format(
                         **self.config, index=index, fd=path+"/"+index+"/"+f)
                     shellout(cmd)
         # for f in os.listdir(path+"/resources"):

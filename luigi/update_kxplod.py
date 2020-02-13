@@ -255,7 +255,7 @@ class LODKXPUpdate(LODKXPTask):
         for index in os.listdir(path):
             # doing several enrichment things before indexing the data
             for f in os.listdir(path+"/"+index):
-                cmd = "esbulk -z -verbose -server {host} -w {workers} -index slub-{index} -type schemaorg -id identifier {fd}".format(
+                cmd = "esbulk -z -verbose -server {host} -w {workers} -index {index} -type schemaorg -id identifier {fd}".format(
                     **self.config, index=index, fd=path+"/"+index+"/"+f)
                 shellout(cmd)
         newconfig = None
@@ -285,7 +285,7 @@ class LODKXPUpdate(LODKXPTask):
         for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
                                         port="{host}".format(
                                             **self.config).rsplit("/")[-1].rsplit(":")[1],
-                                        index="slub-resources", type="schemaorg", idfile="schemaorg-ids-{date}.txt".format(date=self.yesterday.strftime("%y%m%d")),
+                                        index="resources", type="schemaorg", idfile="schemaorg-ids-{date}.txt".format(date=self.yesterday.strftime("%y%m%d")),
                                         source=False):
             es_ids.add(record.get("_id"))
         if len(es_ids) == len(ids) and len(es_ids) > 0:
