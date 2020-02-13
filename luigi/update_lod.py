@@ -223,19 +223,13 @@ class LODUpdate(LODTask):
         for index in os.listdir(path):
             # doing several enrichment things before indexing the data
             for f in os.listdir(path+"/"+index):
-                cmd = ". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && zcat {fd} | ".format(
-                    fd=path+"/"+index+"/"+f)  # with -pipeline, all the data get's thru, not only enriched docs
-                # cmd+="~/git/efre-lod-elasticsearch-tools/enrichment/sameAs2id.py         -pipeline -stdin -searchserver {host} | ".format(**self.config)
-                cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/entityfacts-bot.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(
-                    **self.config)
-                cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/gnd-sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(
-                    **self.config)
-                cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/wikidata.py          -pipeline -stdin | "
+                cmd = "zcat {fd} | ".format(fd=path+"/"+index+"/"+f)  # with -pipeline, all the data get's thru, not only enriched docs
+                cmd += "entityfacts-bot.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(**self.config)
+                cmd += "gnd-sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                cmd += "wikidata.py          -pipeline -stdin | "
                 if index == "geo":
-                    cmd += "~/git/efre-lod-elasticsearch-tools/enrichment/geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(
-                        **self.config)
-                cmd += "esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(
-                    **self.config, index=index)
+                    cmd += "geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)
+                cmd += "esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(**self.config, index=index)
                 shellout(cmd)
         put_dict("{host}/date/actual/1".format(**self.config),
                  {"date": str(self.yesterday.strftime("%Y-%m-%d"))})
