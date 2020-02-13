@@ -224,8 +224,8 @@ class LODUpdate(LODTask):
             # doing several enrichment things before indexing the data
             for f in os.listdir(path+"/"+index):
                 cmd = "zcat {fd} | ".format(fd=path+"/"+index+"/"+f)  # with -pipeline, all the data get's thru, not only enriched docs
-                cmd += "entityfacts-bot.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(**self.config)
-                cmd += "gnd-sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                cmd += "entityfacts.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(**self.config)
+                cmd += "gnd_sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
                 cmd += "wikidata.py          -pipeline -stdin | "
                 if index == "geo":
                     cmd += "geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)
