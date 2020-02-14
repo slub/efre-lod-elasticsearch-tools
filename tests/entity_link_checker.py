@@ -4,9 +4,10 @@ import sys
 import json
 import argparse
 import requests
-from es2json import esgenerator
+from es2json import esfatgenerator
 from es2json import eprint
 from es2json import isint
+from es2json import litter
 
 
 def traverse(dict_or_list, path):
@@ -56,13 +57,30 @@ def run():
             _id = slashsplit[5].rsplit("?")[0]
         else:
             _id = slashsplit[5]
-
-    for record in esgenerator(host=host, port=port, index=index, type=doc_type, id=_id, headless=True):
-        for key, value in traverse(record, ""):
-            if isinstance(value, str) and value.startswith(args.base_uri):
-                r = requests.get(value)
-                if not r.ok:
-                    eprint(record["@id"], "has an", r.status_code, "in",  key, value)
+    
+    header = {"Content-type": "Application/json"}
+    for records in esfatgenerator(host=host, port=port, index=index, type=doc_type):
+        mget_body = {"docs": []}
+        target_source_map = {}
+        for record in records:
+            for key, value in traverse(record["_source"], ""):
+                if isinstance(value, str) and value.startswith(args.base_uri):
+                    if not "source" in value:
+                        mget_body["docs"].append({"_index":value.split("/")[-2],"_id":value.split("/")[-1]})
+                        if not value in target_source_map:
+                            target_source_map[value]=[]
+                        target_source_map[value].append({key: record["_source"]["@id"]})
+        r = requests.post("http://{host}:{port}/_mget".format(host=host,port=port), json=mget_body, headers=header)
+        for doc in r.json()["docs"]:
+            if doc["found"]:
+                continue
+            else:
+                for obj in target_source_map[args.base_uri+"/"+doc["_index"]+"/"+doc["_id"]]:
+                    for key, base in obj.items():
+                        print(base, "has an 404 in", key, args.base_uri+"/"+doc["_index"]+"/"+doc["_id"])
+                #r = requests.get(value)
+                #if not r.ok:
+                    #eprint(record["@id"], "has an", r.status_code, "in",  key, value)
 
 
 if __name__ == "__main__":
