@@ -94,7 +94,7 @@ class getDelPPNs(DeleteTask):
                     elif d_type in ("B", "C", "D"):
                         norm_ppns.add(__xpn)
 
-                    # everything else is not in our interest
+                    #associated-tit everything else is not in our interest
                     else:
                         continue
 
@@ -145,6 +145,10 @@ class getDelPPNs(DeleteTask):
             return False
         if not os.path.isfile("{date}-delPPN/associated-tit".format(date=self.today)):
             return False
+<<<<<<< HEAD
+=======
+
+>>>>>>> f2c28feff863a26b7023730d60813b11edb51dc4
         return True
 
 
