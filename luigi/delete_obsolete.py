@@ -50,8 +50,8 @@ class getDelList(DeleteTask):
         """
         we download the deleteLists from the FTP with the correct credentials and save them to our working-directory
         """
-        cmdstring="wget -P {date}-delPPN -rnd --user {username} --password {password} {url}".format(**self.config,date=self.today)
-        output=shellout(cmdstring)
+        cmdstring = "wget -P {date}-delPPN -rnd --user {username} --password {password} {url}".format(**self.config,date=self.today)
+        output = shellout(cmdstring)
         return 0
 
     def output(self):
@@ -143,11 +143,12 @@ class getDelPPNs(DeleteTask):
             return False
         if not os.path.isfile("{date}-delPPN/kxp-norm".format(date=self.today)):
             return False
-
+        if not os.path.isfile("{date}-delPPN/associated-tit".format(date=self.today)):
+            return False
         return True
 
 
-class deletePPNs(DeleteTask):
+class deletePPNsFirstHand(DeleteTask):
     def requires(self):
         return getDelPPNs()
 
@@ -155,15 +156,18 @@ class deletePPNs(DeleteTask):
         """
         we iterate over the files/indices described in the config and delete all the PPNs
         """
+        header = {"Content-type": "application/x-ndjson"}
         for _file in self.config["indices"]:
             with open("{date}-delPPN/{infile}".format(date=self.today, infile=_file)) as inFile:
-                for line in inFile:
-                    ppn = line.strip()
-                    if ppn:  # avoid empty ppn which would delete whole index
-                        for index in self.config["indices"][_file]:
-                            url = "http://{host}:{port}/{_index}/{_doc_type}/{_id}".format(**index, _id=ppn)
-                            response = requests.delete(url)
-                            print(url, response.json().get("result"))
+                for index in self.config["indices"][_file]:
+                    bulk = ""
+                    for line in inFile:
+                        ppn = line.strip()
+                        if ppn:  # avoid empty ppn
+                            bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
+                    if bulk:
+                        url = "http://{host}:{port}/{_index}/_bulk".format(**index)
+                        response = requests.post(url, data=bulk, headers=header)
 
     def complete(self):
         """
@@ -172,40 +176,84 @@ class deletePPNs(DeleteTask):
         for _file in self.config["indices"]:
             for index in self.config["indices"][_file]:
                 for response in esidfilegenerator(host=index["host"], port=index["port"], index=index["_index"], type=index["_doc_type"], idfile="{date}-delPPN/{fd}".format(date=self.today, fd=_file), headless=False):
-                    if response["found"]:
+                    if response.get("error"):
+                        print(response["error"])
+                    elif response["found"]:
                         return False
+                    else:
+                        continue
+
         return True
 
 
-class deleteAssociatedTitlePPNs(DeleteTask):
+class getAssociatedDelPPNs(DeleteTask):
     def requires(self):
-        return deletePPNs()
+        return [deletePPNsFirstHand(), getDelPPNs()]
 
     def run(self):
         """
-        here we take care of the associated PPNs, we take the saved IDs and search in the local data index if there are still records refering to them, if not: we can delete them in our raw- and linked datahub
+        here we take care of the associated PPNs, we take the saved IDs and search in the local data index if there are still records refering to them, if not: we write them out into a deathList
         """
         header = {"Content-type": "Application/json"}
-        params = {'size': 0}
+        params = {"size": 0}
         
         deathList = set()
-        with open("{date}-delPPN/associated-tit".format(date=self.today)) as inp:
+        with open("{date}-delPPN/associated-tit".format(date=self.today), "r") as inp:
             for line in inp:
                 ppn = line.strip()
                 if ppn:  # avoid empty ppn
                     url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["kxp-lok"][0])
                     query = {"query": {"bool": {"must": [{"match": {"004.keyword": ppn}}, {"match": {"852.__.a.keyword": self.config["ISIL"]}}]}}}
                     response = requests.post(url, json=query, headers=header, params=params)
-                    if response.json()["hits"]["total"]>0:
+                    if response.json()["hits"]["total"] > 0:
                         continue  # there are still other local data records pointing to that epn, so you live
-                    elif response.json()["hits"]["total"]==0:
+                    elif response.json()["hits"]["total"] == 0:
                         deathList.add(ppn)
 
-        for index in self.config["indices"]["kxp-tit"]:
+        with open("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today), "w") as inp:
             for ppn in deathList:
-                url = "http://{host}:{port}/{_index}/{_doc_type}/{_id}".format(**index, _id=ppn)
-                response = requests.delete(url)
-                print(url, response.json().get("result"))
+                print(ppn, file=inp)
+
+    #def output(self):
+        #return luigi.LocalTarget("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today))
 
     def complete(self):
-        return False
+        if not os.path.isfile("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today)):
+            return False
+        return True
+
+class delAssociatedDelPPNs(DeleteTask):
+
+    def requires(self):
+        return [getAssociatedDelPPNs(),deletePPNsFirstHand()]
+
+    def run(self):
+        """
+        here we iterate over the deathList file and delete those PPNs out of our title indices
+        """
+        with open("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today), "r") as inp:
+            for index in self.config["indices"]["kxp-tit"]:
+                bulk = ""
+                for ppn in inp:
+                    ppn = line.strip()
+                    if ppn:  # avoid empty ppn
+                        bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
+                if bulk:
+                    url = "http://{host}:{port}/{_index}/_bulk".format(**index)
+                    response = requests.post(url, data=bulk, headers=header)
+                
+                #    url = "http://{host}:{port}/{_index}/{_doc_type}/{_id}".format(**index, _id=ppn)
+                #    response = requests.delete(url)
+                #    print(url, response.json().get("result"))
+
+    def complete(self):
+        """
+        here we check if there is an file at all and if all the PPNs are deleted tho
+        """
+        if not os.path.isfile("{date}-delPPN/associated-DELETIONS".format(date=self.today)):
+            return False
+        for index in self.config["indices"]["kxp-tit"]:
+            for response in esidfilegenerator(host=index["host"], port=index["port"], index=index["_index"], type=index["_doc_type"], idfile="{date}-delPPN/associated-DELETIONS".format(date=self.today), headless=False):
+                if response["found"]:
+                    return False
+        return True
