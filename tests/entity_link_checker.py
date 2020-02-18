@@ -63,19 +63,21 @@ def traverse(dict_or_list, path):
 def run():
     parser = argparse.ArgumentParser(description='Test your internal open data links!')
     parser.add_argument(
-        '-server', type=str, help="use http://host:port/index/type/id, id and type are optional, point to your local backend elasticsearch index")
+        '-server', type=str, required=True,
+        help="use http://host:port/index/type/id, id and type are optional, "
+             "point to your local backend elasticsearch index")
     parser.add_argument(
-        '-base_uri', type=str, help="use http://opendata.yourinstitution.org, determinate which base_uri should be tested.")
+        '-base_uri', type=str, required=True,
+        help="use http://opendata.yourinstitution.org, determinate which base_uri should be "
+             "tested.")
     args = parser.parse_args()
     
-    if not args.server:
-        eprint("error, -server argument missing!")
-        exit(-1)
     slashsplit = args.server.split("/")
     host = slashsplit[2].rsplit(":")[0]
     if isint(args.server.split(":")[2].rsplit("/")[0]):
         port = args.server.split(":")[2].split("/")[0]
     index = args.server.split("/")[3]
+    doc_type=None
     if len(slashsplit) > 4:
         doc_type = slashsplit[4]
         _id = None
