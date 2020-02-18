@@ -145,10 +145,6 @@ class getDelPPNs(DeleteTask):
             return False
         if not os.path.isfile("{date}-delPPN/associated-tit".format(date=self.today)):
             return False
-<<<<<<< HEAD
-=======
-
->>>>>>> f2c28feff863a26b7023730d60813b11edb51dc4
         return True
 
 
@@ -204,7 +200,6 @@ class getAssociatedDelPPNs(DeleteTask):
         deathList = set()
         with open("{date}-delPPN/associated-tit".format(date=self.today), "r") as inp:
             for line in inp:
-                ppn = line.strip()
                 if ppn:  # avoid empty ppn
                     url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["kxp-lok"][0])
                     query = {"query": {"bool": {"must": [{"match": {"004.keyword": ppn}}, {"match": {"852.__.a.keyword": self.config["ISIL"]}}]}}}
@@ -254,7 +249,7 @@ class delAssociatedDelPPNs(DeleteTask):
         """
         here we check if there is an file at all and if all the PPNs are deleted tho
         """
-        if not os.path.isfile("{date}-delPPN/associated-DELETIONS".format(date=self.today)):
+        if not os.path.isfile("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today)):
             return False
         for index in self.config["indices"]["kxp-tit"]:
             for response in esidfilegenerator(host=index["host"], port=index["port"], index=index["_index"], type=index["_doc_type"], idfile="{date}-delPPN/associated-DELETIONS".format(date=self.today), headless=False):
