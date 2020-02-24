@@ -26,11 +26,14 @@ import luigi
 import json
 import time
 import requests
+from ftplib import FTP
 import os
 from gluish.task import BaseTask
 from gluish.utils import shellout
 from es2json import esidfilegenerator
+from es2json import esgenerator
 from datetime import date
+from datetime import datetime
 
 
 class DeleteTask(BaseTask):
@@ -42,217 +45,209 @@ class DeleteTask(BaseTask):
         config = json.load(data_file)
 
 
-class getDelList(DeleteTask):
+class getDelPPNs(DeleteTask):
     """
     we get the DeleteLists.
     """
-    def run(self):
-        """
-        we download the deleteLists from the FTP with the correct credentials and save them to our working-directory
-        """
-        cmdstring = "wget -P {date}-delPPN -rnd --user {username} --password {password} {url}".format(**self.config,date=self.today)
-        output = shellout(cmdstring)
-        return 0
-
-    def output(self):
-        return luigi.LocalTarget("{date}-delPPN".format(date=self.today))
-
-    def complete(self):
-        return True if os.path.exists("{date}-delPPN".format(date=self.today)) else False
-
-
-class getDelPPNs(DeleteTask):
-    def requires(self):
-        return getDelList()
+    delete_lines = set()
 
     def run(self):
         """
-        we iterate thru all the deleteLists and extract the correct PPNs and put them into the correct files, which are line-delimited PPNs
+        we download the deleteLines from the FTP with the correct credentials and save them to our set
         """
-        lok_epns = set()  # 3 sets for deduplication
-        tit_ppns = set()
-        norm_ppns = set()
+        with FTP(self.config["ftp"]) as ftp:
+            ftp.login(self.config["username"], self.config["password"])
+            for data in ftp.nlst(self.config["filename_pattern"]):
+                ftp.retrlines('RETR ' + data, self.delete_lines.add)
         
-        for f in os.listdir(self.today+"-delPPN/"):
-            with open("{date}-delPPN/{file}".format(date=self.today, file=f)) as handle:
-                for line in handle:
-                    # dissect line
-                    __date = line[0:5]  # YYDDD, WTF
-                    __time = line[5:11]  # HHMMSS
-                    d_type = line[11:12]  # epn = 9, titledata = A, normdata = B|C|D
-                    __xpn = line[12:22]
-                    __iln = line[22:26]  # only in epns
-                    # __xpn is an EPN and the trailing ILN is our configured ILN
-                    if d_type == "9" and __iln == self.config["ILN"]:
-                        lok_epns.add(__xpn)
-
-                    #  __xpn is an PPN for title data 
-                    elif d_type == "A":
-                        tit_ppns.add(__xpn)
-
-                    # __xpn is a authority data
-                    elif d_type in ("B", "C", "D"):
-                        norm_ppns.add(__xpn)
-
-                    #associated-tit everything else is not in our interest
-                    else:
-                        continue
-
-        with open("{date}-delPPN/kxp-lok".format(date=self.today), "w") as lok:
-            for epn in lok_epns:
-                print(epn, file=lok)
-
-        with open("{date}-delPPN/kxp-tit".format(date=self.today), "w") as tit:
-            for ppn in tit_ppns:
-                print(ppn, file=tit)
-
-        with open("{date}-delPPN/kxp-norm".format(date=self.today), "w") as norm:
-            for ppn in norm_ppns:
-                print(ppn, file=norm)
-
-        associated_ppns = set()
         """
-        we iterate thru the epns and ther corresponding local data records, save the associated PPNs which are in field 004,
-        if no local data record is refering to the associated ppn, then we call it a day or abgesigelt and delete it in all our title and resources indices
+        we iterate thru the set and extract the correct PPNs and put them into the correct files, which are line-delimited PPNs
         """
-        for lok_record in esidfilegenerator(host=self.config["indices"]["kxp-lok"][0]["host"],
-                                            port=self.config["indices"]["kxp-lok"][0]["port"],
-                                            index=self.config["indices"]["kxp-lok"][0]["_index"],
-                                            type=self.config["indices"]["kxp-lok"][0]["_doc_type"],
-                                            idfile="{date}-delPPN/kxp-lok".format(date=self.today),
-                                            headless=True):
-            if lok_record and "004" in lok_record:
-                associated_ppns.add(lok_record["004"][0])
+        ppns = set()
+        for line in self.delete_lines:
+            # dissect line
+            del_record = {}
+            ts = line[0:11].replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
+            del_record["ts"] = datetime.strptime(ts, "%y%j%H%M%S").isoformat()
 
-        with open("{date}-delPPN/associated-tit".format(date=self.today), "w") as assoc_tit:
-            for ppn in associated_ppns:
-                print(ppn, file=assoc_tit)
+            del_record["d_type"] = line[11:12]
+            del_record["xpn"] = line[12:22].strip()
+            if del_record["d_type"] == '9':
+                del_record["type"] = "local"
+                del_record["iln"] = line[22:26]
+            if del_record["d_type"] == "9" and del_record["iln"] == self.config["ILN"]:
+                ppns.add(json.dumps(del_record))  # converting this already to a string because a dict would be unhashable and we need a set for deduplication
+
+            #  __xpn is an PPN for title data 
+            elif del_record["d_type"] == "A":
+                del_record["type"] = "title"
+                ppns.add(json.dumps(del_record))
+
+            # __xpn is a authority data
+            elif del_record["d_type"] in ("B", "C", "D"):
+                del_record["type"] = "authority"
+                ppns.add(json.dumps(del_record))
+
+            # everything else is not in our interest
+            else:
+                continue
+
+        with open("delete_records-{date}.ldj".format(date=self.today), "w") as outp:
+            for record in ppns:
+                print(record, file=outp)
 
     def output(self):
-        return [
-            luigi.LocalTarget("{date}-delPPN/kxp-lok".format(date=self.today)),
-            luigi.LocalTarget("{date}-delPPN/kxp-tit".format(date=self.today)),
-            luigi.LocalTarget("{date}-delPPN/kxp-norm".format(date=self.today)),
-            luigi.LocalTarget("{date}-delPPN/associated-tit".format(date=self.today))
-                ]
+        return luigi.LocalTarget("delete_records-{date}.ldj".format(date=self.today))
+
+
+class ingest_dellist(DeleteTask):
+    """
+    we ingest the created Dellists into our deletions index"
+    """
+    def requires(self):
+        return getDelPPNs()
+
+    def run(self):
+        shellout("esbulk -server http://{host}:{port} -index delete_ppns -type ppn -id xpn -verbose -w 1 delete_records-{date}.ldj".format(**self.config, date=self.today))
 
     def complete(self):
-        if not os.path.isfile("{date}-delPPN/kxp-lok".format(date=self.today)):
+        es_ids = set()
+        file_ids = set()
+        try:
+            with open("delete_records-{date}.ldj".format(date=self.today)) as inp:
+                for line in inp:
+                    record = json.loads(line)
+                    file_ids.add(record["xpn"])
+            shellout("jq .xpn -rc < delete_records-{date}.ldj > ids.txt".format(date=self.today))
+            for record in esidfilegenerator(host=self.config["host"], port=self.config["port"], index="delete_ppns", type="ppn", idfile="ids.txt", source="False"):
+                if not record.get("found"):
+                    return False
+                es_ids.add(record.get("_id"))
+        except FileNotFoundError:
             return False
-        if not os.path.isfile("{date}-delPPN/kxp-tit".format(date=self.today)):
-            return False
-        if not os.path.isfile("{date}-delPPN/kxp-norm".format(date=self.today)):
-            return False
-        if not os.path.isfile("{date}-delPPN/associated-tit".format(date=self.today)):
-            return False
+        for _id in file_ids:
+            if _id not in es_ids:
+                return False
         return True
 
 
 class deletePPNsFirstHand(DeleteTask):
     def requires(self):
-        return getDelPPNs()
+        return ingest_dellist()
 
     def run(self):
         """
         we iterate over the files/indices described in the config and delete all the PPNs
         """
         header = {"Content-type": "application/x-ndjson"}
-        for _file in self.config["indices"]:
-            with open("{date}-delPPN/{infile}".format(date=self.today, infile=_file)) as inFile:
-                for index in self.config["indices"][_file]:
-                    bulk = ""
-                    for line in inFile:
-                        ppn = line.strip()
-                        if ppn:  # avoid empty ppn
-                            bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
-                    if bulk:
-                        url = "http://{host}:{port}/{_index}/_bulk".format(**index)
-                        response = requests.post(url, data=bulk, headers=header)
+        for _type in self.config["indices"]:
+            for index in self.config["indices"][_type]:
+                bulk = ""
+                for delPPN in esgenerator(host=self.config["host"], port=self.config["port"],index="delete_ppns", type="ppn", source="False",body={"query": {"match": {"type.keyword": _type}}}):
+                    bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": delPPN["_id"]}}) + "\n"
+                if bulk:
+                    url = "http://{host}:{port}/{_index}/_bulk".format(**index)
+                    response = requests.post(url, data=bulk, headers=header)
 
     def complete(self):
         """
         just a check if there are still records described by those PPNs
         """
-        for _file in self.config["indices"]:
-            for index in self.config["indices"][_file]:
-                for response in esidfilegenerator(host=index["host"], port=index["port"], index=index["_index"], type=index["_doc_type"], idfile="{date}-delPPN/{fd}".format(date=self.today, fd=_file), headless=False):
+        for _type in self.config["indices"]:
+            query = {"query": {"match": {"type.keyword": _type}}}
+            iterable = [x["_id"] for x in esgenerator(host=self.config["host"],
+                                                      port=self.config["port"],
+                                                      index="delete_ppns",
+                                                      type="ppn",
+                                                      source="False",
+                                                      body=query)]
+            if not iterable:
+                return False
+            for index in self.config["indices"][_type]:
+                for response in esidfilegenerator(host=index["host"],
+                                                  port=index["port"],
+                                                  index=index["_index"],
+                                                  type=index["_doc_type"],
+                                                  source=None,
+                                                  headless=False,
+                                                  idfile=iterable):
                     if response.get("error"):
                         print(response["error"])
                     elif response["found"]:
                         return False
                     else:
                         continue
-
         return True
 
 
 class getAssociatedDelPPNs(DeleteTask):
-    def requires(self):
-        return [deletePPNsFirstHand(), getDelPPNs()]
+    header = {"Content-type": "Application/json"}
 
-    def run(self):
-        """
-        here we take care of the associated PPNs, we take the saved IDs and search in the local data index if there are still records refering to them, if not: we write them out into a deathList
-        """
-        header = {"Content-type": "Application/json"}
-        params = {"size": 0}
-        
+    def requires(self):
+        return deletePPNsFirstHand()
+
+    def get_ass_ppns(self):
+
+        ass_ppns = set()
+        query = {"query": {"match": {"type.keyword": "local"}}}
+        iterable = [x["_id"] for x in esgenerator(host=self.config["host"],
+                                                  port=self.config["port"],
+                                                  index="delete_ppns",
+                                                  type="ppn",
+                                                  source="False",
+                                                  body=query)]
+        if not iterable:
+            return False
+        for lok_record in esidfilegenerator(host=self.config["indices"]["local"][0]["host"],
+                                            port=self.config["indices"]["local"][0]["port"],
+                                            index=self.config["indices"]["local"][0]["_index"],
+                                            type=self.config["indices"]["local"][0]["_doc_type"],
+                                            idfile=iterable,
+                                            headless=True):
+            if lok_record and "004" in lok_record:
+                ass_ppns.add(lok_record["004"][0])
+
         deathList = set()
-        with open("{date}-delPPN/associated-tit".format(date=self.today), "r") as inp:
-            for line in inp:
-                if ppn:  # avoid empty ppn
-                    url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["kxp-lok"][0])
-                    query = {"query": {"bool": {"must": [{"match": {"004.keyword": ppn}}, {"match": {"852.__.a.keyword": self.config["ISIL"]}}]}}}
-                    response = requests.post(url, json=query, headers=header, params=params)
-                    if response.json()["hits"]["total"] > 0:
-                        continue  # there are still other local data records pointing to that epn, so you live
-                    elif response.json()["hits"]["total"] == 0:
-                        deathList.add(ppn)
-
-        with open("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today), "w") as inp:
-            for ppn in deathList:
-                print(ppn, file=inp)
-
-    #def output(self):
-        #return luigi.LocalTarget("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today))
-
-    def complete(self):
-        if not os.path.isfile("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today)):
-            return False
-        return True
-
-class delAssociatedDelPPNs(DeleteTask):
-
-    def requires(self):
-        return [getAssociatedDelPPNs(),deletePPNsFirstHand()]
+        for ppn in ass_ppns:
+            url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["local"][0])
+            query = {"query": {"bool": {"must": [{"match": {"004.keyword": ppn}}, {"match": {"852.__.a.keyword": self.config["ISIL"]}}]}}}
+            response = requests.post(url, json=query, headers=self.header, params={"size": 0})
+            if response.json()["hits"]["total"] > 0:
+                continue  # there are still other local data records pointing to that epn, so you live
+            elif response.json()["hits"]["total"] == 0:
+                deathList.add(ppn)
+        return deathList
 
     def run(self):
-        """
-        here we iterate over the deathList file and delete those PPNs out of our title indices
-        """
-        with open("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today), "r") as inp:
-            for index in self.config["indices"]["kxp-tit"]:
-                bulk = ""
-                for ppn in inp:
-                    ppn = line.strip()
-                    if ppn:  # avoid empty ppn
-                        bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
-                if bulk:
-                    url = "http://{host}:{port}/{_index}/_bulk".format(**index)
-                    response = requests.post(url, data=bulk, headers=header)
-                
-                #    url = "http://{host}:{port}/{_index}/{_doc_type}/{_id}".format(**index, _id=ppn)
-                #    response = requests.delete(url)
-                #    print(url, response.json().get("result"))
+        deathList = self.get_ass_ppns()
+        for index in self.config["indices"]["title"]:
+            bulk = ""
+            for ppn in deathList:
+                if ppn:  # avoid empty ppn
+                    bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
+            if bulk:
+                print(bulk)
+                url = "http://{host}:{port}/{_index}/_bulk".format(**index)
+                response = requests.post(url, data=bulk, headers=self.header)
 
     def complete(self):
-        """
-        here we check if there is an file at all and if all the PPNs are deleted tho
-        """
-        if not os.path.isfile("{date}-delPPN/associated-tit-DELETIONS".format(date=self.today)):
+        deathList = self.get_ass_ppns()
+        if deathList == "False":
             return False
-        for index in self.config["indices"]["kxp-tit"]:
-            for response in esidfilegenerator(host=index["host"], port=index["port"], index=index["_index"], type=index["_doc_type"], idfile="{date}-delPPN/associated-DELETIONS".format(date=self.today), headless=False):
-                if response["found"]:
+        if not deathList:
+            return True
+        for index in self.config["indices"]["title"]:
+            for response in esidfilegenerator(host=index["host"],
+                                              port=index["port"],
+                                              index=index["_index"],
+                                              type=index["_doc_type"],
+                                              source=None,
+                                              headless=False,
+                                              idfile=deathList):
+                if response.get("error"):
+                    print(response["error"])
+                elif response["found"]:
                     return False
+                else:
+                    continue
         return True
