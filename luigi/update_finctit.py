@@ -91,7 +91,7 @@ class LODTITFillFINCIndex(LODFINCTITTask):
         Loads mapped data into a given ElasticSearch index (with help of esbulk)
         """
         if os.stat("{date}-finc-fixed.ldj.gz".format(date=self.date)).st_size > 0:
-            cmd = "esbulk -z -verbose -server {host} -w {workers} -index finc-resources -type schemaorg -id _id {date}-finc-fixed.ldj.gz""".format(
+            cmd = "esbulk -z -verbose -server {host} -w {workers} -index {index} -type {type} -id _id {date}-finc-fixed.ldj.gz""".format(
                 **self.config, date=self.date)
             output = shellout(cmd)
             put_dict("{host}/date/actual/5".format(**self.config),
