@@ -35,7 +35,7 @@ class LODKXPTask(BaseTask):
         for i in range(span.days+1):
             day = (lastupdate+timedelta(days=i)).strftime("%y%m%d")
             if os.path.isfile("{path}/{prefix}{date}.tar.gz".format(path=source["path"], prefix=source["prefix"],date=day)):
-                files.add(day)
+                files.add("{path}/{prefix}{date}.tar.gz".format(path=source["path"], prefix=source["prefix"],date=day))
 
     def closest(self):
         return daily(date=self.date)
