@@ -8,6 +8,7 @@ import os
 import gzip
 
 from es2json import esidfilegenerator
+from es2json import eprint
 
 import luigi
 import luigi.contrib.esindex
