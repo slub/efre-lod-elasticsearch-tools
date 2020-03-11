@@ -47,7 +47,7 @@ class LODKXPCopy(LODKXPTask):
         copies per day in config["dates"] the day delta to the working directoy
         """
         for fd in self.files:
-            cmdstring = "cp {path} ./".format(**self.config, path=fd)
+            cmdstring = "cp {path} ./".format(path=fd)
             try:
                 shellout(cmdstring)
             except Exception as e:
@@ -59,7 +59,7 @@ class LODKXPCopy(LODKXPTask):
         checks whether all the day deltas which are needed are there
         """
         for fd in self.files:
-            if not os.path.exists("{f}".format(**self.config, f=fd.split("/")[-1])):
+            if not os.path.exists("{f}".format(f=fd.split("/")[-1])):
                 return False
         return True
 
@@ -80,8 +80,7 @@ class LODKXPExtract(LODKXPTask):
         """
         for fd in self.files:
             if os.path.exists("{fd}".format(fd=fd)):
-                cmdstring = "tar xvzf {fd} && cat *-tit.mrc | gzip >> {yesterday}-tit.mrc.gz && cat *-lok.mrc | gzip >> {yesterday}-lok.mrc.gz && rm *.mrc".format(
-                    **self.config, fd=fd, yesterday=self.yesterday.strftime("%y%m%d"))
+                cmdstring = "tar xvzf {fd} && cat *-tit.mrc | gzip >> {yesterday}-tit.mrc.gz && cat *-lok.mrc | gzip >> {yesterday}-lok.mrc.gz && rm *.mrc".format(fd=fd, yesterday=self.yesterday.strftime("%y%m%d"))
                 shellout(cmdstring)
         return 0
 
