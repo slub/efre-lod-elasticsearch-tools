@@ -22,6 +22,7 @@ class LODKXPTask(BaseTask):
     -loads configuration
     -calculates which days are missing and should be updated from the directoy, where /data1/ongoing/kxp/kxp_source/lftp_kxp.pl copies the data to
     """
+    files = set()
     with open('lodkxp_config.json') as data_file:
         config = json.load(data_file)
     PPNs = []
@@ -29,10 +30,11 @@ class LODKXPTask(BaseTask):
     yesterday = date.today() - timedelta(1)
     lastupdate = datetime.strptime(config.get("lastupdate"), "%y%m%d")
     span = yesterday-lastupdate.date()
-    for i in range(span.days+1):
-        day = (lastupdate+timedelta(days=i)).strftime("%y%m%d")
-        if os.path.isfile("{path}/TA-MARCVBFL-006-{date}.tar.gz".format(path=config.get("path"), date=day)):
-            config["dates"].append(day)
+    for source in config["path"]:
+        for i in range(span.days+1):
+            day = (lastupdate+timedelta(days=i)).strftime("%y%m%d")
+            if os.path.isfile("{path}/{prefix}{date}.tar.gz".format(path=source["path"], prefix=source["prefix"],date=day)):
+                files.add(day)
 
     def closest(self):
         return daily(date=self.date)
@@ -44,23 +46,22 @@ class LODKXPCopy(LODKXPTask):
         """
         copies per day in config["dates"] the day delta to the working directoy
         """
-        for n, dat in enumerate(self.config.get("dates")):
-            cmdstring = "cp {path}/TA-MARCVBFL-006-{date}.tar.gz ./".format(
-                **self.config, date=dat)
+        for fd in self.files:
+            cmdstring = "cp {path} ./".format(**self.config, path=fd)
             try:
                 shellout(cmdstring)
             except Exception as e:
-                continue
+                eprint(e)
         return 0
 
     def complete(self):
         """
         checks whether all the day deltas which are needed are there
         """
-        for n, day in enumerate(self.config.get("dates")):
-            if os.path.exists("TA-MARCVBFL-006-{date}.tar.gz".format(**self.config, date=day)):
-                return True
-        return False
+        for fd in self.files:
+            if not os.path.exists("{f}".format(**self.config, f=fd.split("/")[-1])):
+                return False
+        return True
 
 
 class LODKXPExtract(LODKXPTask):
@@ -77,10 +78,10 @@ class LODKXPExtract(LODKXPTask):
         extracts the daily deltas according to the days
         returns a marc.gz file for the title data and one for the local data
         """
-        for day in self.config.get("dates"):
-            if os.path.exists("TA-MARCVBFL-006-{_date}.tar.gz".format(**self.config, _date=day)):
-                cmdstring = "tar xvzf TA-MARCVBFL-006-{_date}.tar.gz && gzip < 006-tit.mrc >> {yesterday}-tit.mrc.gz  && gzip < 006-lok.mrc >> {yesterday}-lok.mrc.gz && rm 006-tit.mrc 006-lok.mrc".format(
-                    **self.config, _date=day, yesterday=self.yesterday.strftime("%y%m%d"))
+        for fd in self.files:
+            if os.path.exists("{fd}".format(fd=fd)):
+                cmdstring = "tar xvzf {fd} && cat *-tit.mrc | gzip >> {yesterday}-tit.mrc.gz && cat *-lok.mrc | gzip >> {yesterday}-lok.mrc.gz && rm *.mrc".format(
+                    **self.config, fd=fd, yesterday=self.yesterday.strftime("%y%m%d"))
                 shellout(cmdstring)
         return 0
 
