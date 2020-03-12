@@ -139,6 +139,10 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
             return True
         idfile = days[-1].strftime("%Y%m%d")+".ids"
         targetfile = days[-1].strftime("%Y%m%d")+".ldj.gz"
+        if not os.path.isfile(idfile):
+            return False
+        if not os.path.isfile(targetfile):
+            return False
         es_ids_ts = set()
         for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
                                         port="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[1],
