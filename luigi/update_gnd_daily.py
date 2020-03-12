@@ -129,9 +129,14 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
         targetfile = days[-1].strftime("%Y%m%d")+".ldj.gz"
         ingest_cmd = "esbulk -server {host} -index {index} -type {type} -id 001 -verbose -w 1 -z {fd}".format(**self.config, fd=targetfile)
         shellout(ingest_cmd)
+        self.config["lastupdate"] = days[-1].strftime("%Y-%m-%d")
+        with open('lodgnd_daily_conf.json', 'w') as data_file:
+            print(json.dumps(self.config), file=data_file)
 
     def complete(self):
         days = self.get_days()
+        if days[-1].strftime("%Y-%m-%d") == self.config["lastupdate"]:
+            return True
         idfile = days[-1].strftime("%Y%m%d")+".ids"
         targetfile = days[-1].strftime("%Y%m%d")+".ldj.gz"
         es_ids_ts = set()
