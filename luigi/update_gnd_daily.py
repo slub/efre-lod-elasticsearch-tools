@@ -76,17 +76,16 @@ class LODGNDDailyGenerateDailyDeltas(LODGNDDaily):
                 print("processing {date}".format(date=targetdate))
                 shellout(metha_cat_cmd)
 
-    def complete(self):
+    def output(self):
         days = self.get_days()
+        retlist = []
         for n, day in enumerate(days):
             if n < (len(days)-1):
                 yyyy = days[n].strftime("%Y")
                 targetdate = days[n].strftime("%Y%m%d")
                 targetfile = "{base-dir}/{YYYY}/TA-MARC-GND-{targetdate}.mrc.gz".format(**self.config, YYYY=yyyy, targetdate=targetdate)
-                if not os.path.isfile(targetfile):
-                    print(targetfile)
-                    return False
-        return True
+                retlist.append(luigi.LocalTarget(targetfile))
+        return retlist
 
 
 class LODGNDDailyTransform2ldj(LODGNDDaily):
@@ -105,7 +104,7 @@ class LODGNDDailyTransform2ldj(LODGNDDaily):
                 yyyy = days[n].strftime("%Y")
                 targetdate = days[n].strftime("%Y%m%d")
                 sourcefile = "{base-dir}/{YYYY}/TA-MARC-GND-{targetdate}.mrc.gz".format(**self.config, YYYY=yyyy, targetdate=targetdate)
-                transformation = "zcat {sfd} | ~/src/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py | ~/src/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | uconv -x any-nfc | gzip >> {tfd}".format(sfd=sourcefile, tfd=targetfile)
+                transformation = "zcat {sfd} | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | uconv -x any-nfc | gzip >> {tfd}".format(sfd=sourcefile, tfd=targetfile)
                 shellout(transformation)
         id_cmd = "zcat {tfd} | jq -rc '.[\"001\"]' >> {idf}".format(tfd=targetfile, idf=idfile)
         shellout(id_cmd)
