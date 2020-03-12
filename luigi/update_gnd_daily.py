@@ -71,7 +71,7 @@ class LODGNDDailyGenerateDailyDeltas(LODGNDDaily):
                 yyyy = days[n].strftime("%Y")
                 targetdate = days[n].strftime("%Y%m%d")
                 targetfile = "{base-dir}/{YYYY}/TA-MARC-GND-{targetdate}.mrc.gz".format(**self.config, YYYY=yyyy, targetdate=targetdate)
-                metha_cat_cmd = "metha-cat -from {fr} -until {to} -base-dir {base-dir} -format {format} -set {set} {access} | ".format(**self.config, fr=fr, to=to)
+                metha_cat_cmd = "metha-cat -from {fr} -until {to} -base-dir {base-dir}/oai -format {format} -set {set} {access} | ".format(**self.config, fr=fr, to=to)
                 metha_cat_cmd += "xmlcutty -root collection -path /Records/Record/metadata/record | yaz-marcdump -i marcxml -o marc -f UTF-8 - | gzip > {fd}".format(fd=targetfile)
                 print("processing {date}".format(date=targetdate))
                 shellout(metha_cat_cmd)
