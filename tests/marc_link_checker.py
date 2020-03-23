@@ -60,6 +60,19 @@ def traverse(dict_or_list, path):
                 for k, v in traverse(v, path + str([k])):
                     yield k, v
 
+def check_key(key):
+    """
+    by the Marc21 standard, there are some already as invalid marked control numbers in the record, such as 035.*.z, we check, if we dont want to print them
+    """
+    field = int(key.split("'")[1])
+    subfield = key.split("'")[-2]
+
+    # https://www.loc.gov/marc/bibliographic/bd035.html
+    if field == 35 and subfield == 'z':
+        return False
+
+    return True
+
 def run():
     parser = argparse.ArgumentParser(description='Test your internal open data links!')
     parser.add_argument(
@@ -112,13 +125,14 @@ def run():
                     for obj in target_source_map["(DE-627)"+doc["_id"]]:
                         for key, base in obj.items():
                             attrib = "(DE-627)"+doc["_id"]
-                            sys.stdout.write("{},{},{},{},{},{}\n".format(base,
-                                                                       key,
-                                                                       attrib,
-                                                                       check_other_indices(attrib.split("/")[-1]),
-                                                                       check_rawdata(doc["_index"],attrib.split("/")[-1]),
-                                                                       check_swb(attrib.split("/")[-1])))
-                            sys.stdout.flush()
+                            if check_key(key):
+                                sys.stdout.write("{},{},{},{},{},{}\n".format(base,
+                                                                            key,
+                                                                            attrib,
+                                                                            check_other_indices(attrib.split("/")[-1]),
+                                                                            check_rawdata(doc["_index"],attrib.split("/")[-1]),
+                                                                            check_swb(attrib.split("/")[-1])))
+                                sys.stdout.flush()
 
 
 if __name__ == "__main__":
