@@ -34,6 +34,8 @@ from es2json import esidfilegenerator
 from es2json import esgenerator
 from datetime import date
 from datetime import datetime
+from datetime import timedelta
+from dateutil import rrule
 
 
 class DeleteTask(BaseTask):
@@ -44,7 +46,7 @@ class DeleteTask(BaseTask):
     with open('deletions_conf.json') as data_file:    
         config = json.load(data_file)
 
-    global_ass_ppns = set()
+    lastupdate = datetime.strptime(config["lastupdate"], "%y%m%d")
 
     def get_ass_ppns(self):
         ass_ppns = set()
@@ -68,11 +70,13 @@ class DeleteTask(BaseTask):
                 ass_ppns.add(lok_record["004"][0])
         return ass_ppns
 
-class DelPPNs(DeleteTask):
+
+class DelPPNDailySlices(DeleteTask):
     """
     we get the DeleteLists.
     """
     delete_lines = set()
+    days = {}
 
     def run(self):
         """
@@ -86,34 +90,69 @@ class DelPPNs(DeleteTask):
         """
         we iterate thru the set and extract the correct PPNs and put them into the correct files, which are line-delimited PPNs
         """
-        ppns = set()
         for line in self.delete_lines:
-            # dissect line
-            del_record = {}
             ts = line[0:11].replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
-            del_record["ts"] = datetime.strptime(ts, "%y%j%H%M%S").isoformat()
+            ts = datetime.strptime(ts, "%y%j%H%M%S").strftime("%y%m%d")
+            if ts not in self.days:
+                self.days[ts] = [line]
+            elif ts in self.days:
+                self.days[ts].append(line)
 
-            del_record["d_type"] = line[11:12]
-            del_record["xpn"] = line[12:22].strip()
-            if del_record["d_type"] == '9':
-                del_record["type"] = "local"
-                del_record["iln"] = line[22:26]
-            if del_record["d_type"] == "9" and del_record["iln"] == self.config["ILN"]:
-                ppns.add(json.dumps(del_record))  # converting this already to a string because a dict would be unhashable and we need a set for deduplication
+        for day, lines in self.days.items():
+            if int(day) >= int(self.lastupdate.strftime("%y%m%d")):
+                with open("{path}{day}-LOEKXP".format(path=self.config["slices_path"], day=day), "wt") as outp:
+                    for line in lines:
+                        print(line, file=outp)
 
-            #  __xpn is an PPN for title data 
-            elif del_record["d_type"] == "A":
-                del_record["type"] = "title"
-                ppns.add(json.dumps(del_record))
+    def complete(self):
+        if not self.delete_lines:
+            return False
+        for day, lines in self.days.items():
+            if int(day) >= int(self.lastupdate.strftime("%y%m%d")):
+                if not os.path.isfile("{path}{day}-LOEKXP".format(path=self.config["slices_path"], day=day)):
+                    return False
+        return True
 
-            # __xpn is a authority data
-            elif del_record["d_type"] in ("B", "C", "D"):
-                del_record["type"] = "authority"
-                ppns.add(json.dumps(del_record))
 
-            # everything else is not in our interest
-            else:
+class DelPPNDelete(DeleteTask):
+    def requires(self):
+        """
+        requires DelPPNDailySlices().complerte()
+        """
+        return DelPPNDailySlices()
+
+    def run(self):
+        ppns = set()
+        for day in rrule.rrule(rrule.DAILY, dtstart=self.lastupdate, until=datetime.today()):
+            datefile = "{path}{date}-LOEKXP".format(path=self.config["slices_path"],date=day.strftime("%y%m%d"))
+            if not os.path.isfile(datefile):
                 continue
+            with open(datefile, "rt") as date_fd:
+                for line in date_fd:
+                    # dissect line
+                    del_record = {}
+                    ts = line[0:11].replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
+                    del_record["ts"] = datetime.strptime(ts, "%y%j%H%M%S").isoformat()
+                    del_record["d_type"] = line[11:12]
+                    del_record["xpn"] = line[12:22].strip()
+                    if del_record["d_type"] == "9":
+                        del_record["type"] = "local"
+                        del_record["iln"] = line[22:26]
+                        ppns.add(json.dumps(del_record))  # converting this already to a string because a dict would be unhashable and we need a set for deduplication
+
+                    #  __xpn is an PPN for title data 
+                    elif del_record["d_type"] == "A":
+                        del_record["type"] = "title"
+                        ppns.add(json.dumps(del_record))
+
+                    # __xpn is a authority data
+                    elif del_record["d_type"] in ("B", "C", "D"):
+                        del_record["type"] = "authority"
+                        ppns.add(json.dumps(del_record))
+
+                    # everything else is not in our interest
+                    else:
+                        continue
 
         with open("delete_records-{date}.ldj".format(date=self.today), "w") as outp:
             for record in ppns:
@@ -126,12 +165,15 @@ class DelPPNs(DeleteTask):
         """
         ass_ppns = self.get_ass_ppns()
         ndjson_header = {"Content-type": "application/x-ndjson"}
-        self.global_ass_ppns = self.get_ass_ppns()
         successfull_deletions = set()
         for _type in self.config["indices"]:
+            if _type == "local":
+                query = {"query": {"bool": {"must": [{"match": {"type.keyword": _type}}, {"match": {"iln.keyword": self.config["ILN"]}}]}}}
+            else:
+                query = {"query": {"match": {"type.keyword": _type}}}
             for index in self.config["indices"][_type]:
                 bulk = ""
-                for delPPN in esgenerator(host=self.config["host"], port=self.config["port"],index="delete_ppns", type="ppn", source="False",body={"query": {"match": {"type.keyword": _type}}}):
+                for delPPN in esgenerator(host=self.config["host"], port=self.config["port"], index="delete_ppns", type="ppn", source="False", body=query):
                     bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": delPPN["_id"]}}) + "\n"
                 if bulk:
                     url = "http://{host}:{port}/{_index}/_bulk".format(**index)
@@ -142,12 +184,12 @@ class DelPPNs(DeleteTask):
         deathList = set()
         for ppn in ass_ppns:
             url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["local"][0])
-            query = {"query": {"bool": {"must": [{"match": {"004.keyword": ppn}}, {"match": {"852.__.a.keyword": self.config["ISIL"]}}]}}}
+            query = {"query": {"bool": {"must": {"match": {"004.keyword": ppn}}, "must_not": []}}}
+            for isil in self.config["ISIL"]:
+                query["query"]["bool"]["must_not"].append({"match": {"852.__.a.keyword": isil}})
             response = requests.post(url, json=query, headers={"Content-type": "application/json"}, params={"size": 0})
             if response.json()["hits"]["total"] > 0:
-                continue  # there are still other local data records pointing to that epn, so you live
-            elif response.json()["hits"]["total"] == 0:
-                deathList.add(ppn)
+                deathList.add(ppn)  # there is no other data record pointing to this (defined by must_not search, so you die!)
         for index in self.config["indices"]["title"]:
             bulk = ""
             for ppn in deathList:
@@ -159,9 +201,12 @@ class DelPPNs(DeleteTask):
                 for item in response.json().get("items"):
                     if item["delete"].get("result") == "deleted":
                         successfull_deletions.add("http://{host}:{port}/{index}/{type}/{id}".format(**index,index=item["delete"]["_index"],type=item["delete"]["_type"],id=item["delete"]["_id"]))
-        with open("deletions-{date}.txt".format(date=self.today), "w") as outp:
+        with open("deletions-{date}.txt".format(date=self.today), "wt") as outp:
             for line in successfull_deletions:
                 print(line, file=outp)
+        self.config["lastupdate"] = self.today
+        with open('deletions_conf.json', 'wt') as data_file:
+            print(json.dumps(self.config, indent=4),file=data_file)
 
     def output(self):
         return luigi.LocalTarget("deletions-{date}.txt".format(date=self.today))
