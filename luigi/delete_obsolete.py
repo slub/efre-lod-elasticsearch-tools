@@ -191,16 +191,17 @@ class DelPPNDelete(DeleteTask):
             if response.json()["hits"]["total"] > 0:
                 deathList.add(ppn)  # there is no other data record pointing to this (defined by must_not search, so you die!)
         for index in self.config["indices"]["title"]:
-            bulk = ""
-            for ppn in deathList:
-                if ppn:  # avoid empty ppn
-                    bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
-            if bulk:
-                url = "http://{host}:{port}/{_index}/_bulk".format(**index)
-                response = requests.post(url, data=bulk, headers=ndjson_header)
-                for item in response.json().get("items"):
-                    if item["delete"].get("result") == "deleted":
-                        successfull_deletions.add("http://{host}:{port}/{index}/{type}/{id}".format(**index,index=item["delete"]["_index"],type=item["delete"]["_type"],id=item["delete"]["_id"]))
+            if index["delete_associated"]: # we don't want to delete source data records of non-associated records
+                bulk = ""
+                for ppn in deathList:
+                    if ppn:  # avoid empty ppn
+                        bulk += json.dumps({"delete": {"_index": index["_index"], "_type": index["_doc_type"], "_id": ppn}}) + "\n"
+                if bulk:
+                    url = "http://{host}:{port}/{_index}/_bulk".format(**index)
+                    response = requests.post(url, data=bulk, headers=ndjson_header)
+                    for item in response.json().get("items"):
+                        if item["delete"].get("result") == "deleted":
+                            successfull_deletions.add("http://{host}:{port}/{index}/{type}/{id}".format(**index,index=item["delete"]["_index"],type=item["delete"]["_type"],id=item["delete"]["_id"]))
         with open("deletions-{date}.txt".format(date=self.today), "wt") as outp:
             for line in successfull_deletions:
                 print(line, file=outp)
