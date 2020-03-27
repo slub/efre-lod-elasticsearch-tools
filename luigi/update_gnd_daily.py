@@ -137,8 +137,6 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
 
     def complete(self):
         days = self.get_days()
-        if days[-1].strftime("%Y-%m-%d") == self.config["lastupdate"]:
-            return True
         idfile = days[-1].strftime("%Y%m%d")+".ids"
         targetfile = days[-1].strftime("%Y%m%d")+".ldj.gz"
         if not os.path.isfile(idfile):
@@ -188,6 +186,9 @@ class LODGNDDailyDeleteRecords(LODGNDDaily):
             response = requests.post(url, data=bulk, headers=ndjson_header)
 
     def complete(self):
+        days = self.get_days()
+        if days[-1].strftime("%Y-%m-%d") == self.config["lastupdate"]:
+            return True
         url = "{host}/{index}/{type}/_search".format(**self.config)
         r = requests.post(url, json=self.query, params={"size":0}, headers={"Content-type": "application/json"})
         return not r.json()["hits"]["total"]
