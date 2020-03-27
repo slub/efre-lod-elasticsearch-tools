@@ -6,9 +6,12 @@ from datetime import datetime, timedelta
 import os
 import luigi
 import gzip
+import requests
 from gluish.task import BaseTask
 from gluish.utils import shellout
-from es2json import put_dict, esidfilegenerator
+from es2json import put_dict
+from es2json import esidfilegenerator
+from es2json import esgenerator
 
 
 class LODGNDDaily(BaseTask):
@@ -130,7 +133,7 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
         shellout(ingest_cmd)
         self.config["lastupdate"] = days[-1].strftime("%Y-%m-%d")
         with open('lodgnd_daily_conf.json', 'w') as data_file:
-            print(json.dumps(self.config), file=data_file)
+            print(json.dumps(self.config, indent=4), file=data_file)
 
     def complete(self):
         days = self.get_days()
@@ -145,7 +148,10 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
         es_ids_ts = set()
         for record in esidfilegenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
                                         port="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[1],
-                                        index="gnd_marc21", type="mrc", idfile=idfile, source="005"):
+                                        index="{index}".format(**self.config),
+                                        type="{type}".format(**self.config),
+                                        idfile=idfile,
+                                        source="005"):
             if not record["found"]:
                 return False
             es_ids_ts.add(json.dumps({record["_id"]: record["_source"]["005"][0]}))
@@ -155,3 +161,33 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
                 if json.dumps({rec["_id"]: rec["005"][0]}) not in es_ids_ts:
                     return False
         return True
+
+
+class LODGNDDailyDeleteRecords(LODGNDDaily):
+    query = {"query": {"bool": {"must": [{"regexp": {"_LEADER.keyword": ".{5}[d].{18}"}}, {"match": {"682.__.i": "Loeschung"}}]}}}
+
+    def requires(self):
+        """
+        requires LODGNDDailyFillRawDataIndex
+        """
+        return LODGNDDailyFillRawDataIndex()
+
+    def run(self):
+        bulk = ""
+        ndjson_header = {"Content-type": "application/x-ndjson"}
+        successfull_deletions = set()
+        for delPPN in esgenerator(host="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[0],
+                                  port="{host}".format(**self.config).rsplit("/")[-1].rsplit(":")[1],
+                                  index="{index}".format(**self.config),
+                                  type="{type}".format(**self.config),
+                                  source="False",
+                                  body=self.query):
+            bulk += json.dumps({"delete": {"_index": self.config["index"], "_type": self.config["type"], "_id": delPPN["_id"]}}) + "\n"
+        if bulk:
+            url = "{host}/{index}/_bulk".format(**self.config)
+            response = requests.post(url, data=bulk, headers=ndjson_header)
+
+    def complete(self):
+        url = "{host}/{index}/{type}/_search".format(**self.config)
+        r = requests.post(url, json=self.query, params={"size":0}, headers={"Content-type": "application/json"})
+        return not r.json()["hits"]["total"]
