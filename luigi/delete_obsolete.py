@@ -184,14 +184,14 @@ class DelPPNDelete(DeleteTask):
         deathList = set()
         for ppn in ass_ppns:
             url = "http://{host}:{port}/{_index}/_search".format(**self.config["indices"]["local"][0])
-            query = {"query": {"bool": {"must": {"match": {"004.keyword": ppn}}, "must_not": []}}}
+            query = {"query": {"bool": {"filter": {"bool": {"should": []}}, "must": {"match": {"004.keyword": ppn}}}}}
             for isil in self.config["ISIL"]:
-                query["query"]["bool"]["must_not"].append({"match": {"852.__.a.keyword": isil}})
+                query["query"]["bool"]["filter"]["bool"]["should"].append({"match": {"852.__.a.keyword": isil}})
             response = requests.post(url, json=query, headers={"Content-type": "application/json"}, params={"size": 0})
-            if response.json()["hits"]["total"] > 0:
+            if response.json()["hits"]["total"] == 0:
                 deathList.add(ppn)  # there is no other data record pointing to this (defined by must_not search, so you die!)
         for index in self.config["indices"]["title"]:
-            if index["delete_associated"]: # we don't want to delete source data records of non-associated records
+            if index["delete_associated"]:  # we don't want to delete source data records of non-associated records
                 bulk = ""
                 for ppn in deathList:
                     if ppn:  # avoid empty ppn
@@ -201,7 +201,7 @@ class DelPPNDelete(DeleteTask):
                     response = requests.post(url, data=bulk, headers=ndjson_header)
                     for item in response.json().get("items"):
                         if item["delete"].get("result") == "deleted":
-                            successfull_deletions.add("http://{host}:{port}/{index}/{type}/{id}".format(**index,index=item["delete"]["_index"],type=item["delete"]["_type"],id=item["delete"]["_id"]))
+                            successfull_deletions.add("associated: http://{host}:{port}/{index}/{type}/{id}".format(**index,index=item["delete"]["_index"],type=item["delete"]["_type"],id=item["delete"]["_id"]))
         with open("deletions-{date}.txt".format(date=self.today), "wt") as outp:
             for line in successfull_deletions:
                 print(line, file=outp)
