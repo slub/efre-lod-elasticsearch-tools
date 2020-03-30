@@ -181,13 +181,12 @@ class LODGNDDailyDeleteRecords(LODGNDDaily):
         if bulk:
             url = "{host}/{index}/_bulk".format(**self.config)
             response = requests.post(url, data=bulk, headers=ndjson_header)
-        self.config["lastupdate"] = days[-1].strftime("%Y-%m-%d")
+        self.config["lastupdate"] = self.get_days()[-1].strftime("%Y-%m-%d")
         with open('lodgnd_daily_conf.json', 'w') as data_file:
             print(json.dumps(self.config, indent=4), file=data_file)
 
     def complete(self):
-        days = self.get_days()
-        if days[-1].strftime("%Y-%m-%d") == self.config["lastupdate"]:
+        if self.get_days()[-1].strftime("%Y-%m-%d") == self.config["lastupdate"]:
             return True
         url = "{host}/{index}/{type}/_search".format(**self.config)
         r = requests.post(url, json=self.query, params={"size":0}, headers={"Content-type": "application/json"})
