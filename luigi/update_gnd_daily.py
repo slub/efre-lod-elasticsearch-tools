@@ -131,9 +131,6 @@ class LODGNDDailyFillRawDataIndex(LODGNDDaily):
         targetfile = days[-1].strftime("%Y%m%d")+".ldj.gz"
         ingest_cmd = "esbulk -server {host} -index {index} -type {type} -id _id -verbose -w 1 -z {fd}".format(**self.config, fd=targetfile)
         shellout(ingest_cmd)
-        self.config["lastupdate"] = days[-1].strftime("%Y-%m-%d")
-        with open('lodgnd_daily_conf.json', 'w') as data_file:
-            print(json.dumps(self.config, indent=4), file=data_file)
 
     def complete(self):
         days = self.get_days()
@@ -184,6 +181,9 @@ class LODGNDDailyDeleteRecords(LODGNDDaily):
         if bulk:
             url = "{host}/{index}/_bulk".format(**self.config)
             response = requests.post(url, data=bulk, headers=ndjson_header)
+        self.config["lastupdate"] = days[-1].strftime("%Y-%m-%d")
+        with open('lodgnd_daily_conf.json', 'w') as data_file:
+            print(json.dumps(self.config, indent=4), file=data_file)
 
     def complete(self):
         days = self.get_days()
