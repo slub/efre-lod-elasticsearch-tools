@@ -109,7 +109,7 @@ class LODGNDDailyTransform2ldj(LODGNDDaily):
                 sourcefile = "{base-dir}/{YYYY}/TA-MARC-GND-{targetdate}.mrc.gz".format(**self.config, YYYY=yyyy, targetdate=targetdate)
                 transformation = "zcat {sfd} | ~/git/efre-lod-elasticsearch-tools/helperscripts/marc2jsonl.py | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_mrc_id.py | ~/git/efre-lod-elasticsearch-tools/helperscripts/fix_gnd_id.py | uconv -x any-nfc | gzip >> {tfd}".format(sfd=sourcefile, tfd=targetfile)
                 shellout(transformation)
-        id_cmd = "zcat {tfd} | jq -rc _id >> {idf}".format(tfd=targetfile, idf=idfile)
+        id_cmd = "zcat {tfd} | jq -rc ._id >> {idf}".format(tfd=targetfile, idf=idfile)
         shellout(id_cmd)
 
     def output(self):
