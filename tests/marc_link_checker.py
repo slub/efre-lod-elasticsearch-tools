@@ -29,7 +29,7 @@ def uniq(lst):
 
 
 def oldgnd2newgnd(_id):
-    query = {"_source": False,"query": {"match": {"035.__.z": str(_id)}}}
+    query = {"_source": False,"query": {"match": {"035.__.z.keyword": "(DE-588)"+str(_id)}}}
     url = "http://{host}:{port}/{index}/{type}/_search".format(**mapping["(DE-588)"])
     r = requests.post(url, json=query, headers=header)
     if r.ok and r.json()["hits"]["total"]>0:
