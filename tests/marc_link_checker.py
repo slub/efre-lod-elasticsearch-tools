@@ -186,7 +186,7 @@ def run():
         target_source_map = {}
         for record in records:
             entity = None
-            if "682" in record["_source"] and "Umlenkung" in str(record["_source"]["682"][0]["__"][0]):
+            if "Umlenkung" in str(record["_source"].get("682")):
                 continue
             for value in getmarcvalues(record["_source"], "079..v" , None):
                 entity = value
