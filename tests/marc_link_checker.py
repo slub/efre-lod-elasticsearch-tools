@@ -90,6 +90,26 @@ def check_aut(ppn):
     return False
 
 
+def get_swb_ts(ppn):
+    aut = ppn[:8]
+    xpn = ppn[8:]
+    provider = mapping[aut]["aut_provider"]
+    if provider == "swb": 
+        url = "https://sru.bsz-bw.de/ognd"
+        params = {
+            "operation": "searchRetrieve",
+            "maximumRecords": 10,
+            "recordSchema": "marcxmlk10os",
+            "query": "pica.ppn=\"{}\"".format(xpn)
+        }
+        sru_xml_data = requests.get(url, params=params)
+        if sru_xml_data.ok:
+            for line in sru_xml_data.text.split("\n"):
+                if "\"005\"" in line:
+                    return float(line.split(">")[1].split("<")[0])
+    return 0.0
+
+
 def traverse(dict_or_list, path):
     """
     iterate through a python dict or list, yield all the values
@@ -166,6 +186,8 @@ def run():
         target_source_map = {}
         for record in records:
             entity = None
+            if "682" in record["_source"] and "Umlenkung" in str(record["_source"]["682"][0]["__"][0]):
+                continue
             for value in getmarcvalues(record["_source"], "079..v" , None):
                 entity = value
             if not entity:
@@ -178,7 +200,7 @@ def run():
                         mget_bodys[isil]["docs"].append(line)
                         if value not in target_source_map:
                             target_source_map[value] = []
-                        target_source_map[value].append({key: {"id":"http://{host}:{port}/{index}/{typ}/".format(host=host,port=port,index=index,typ=doc_type)+record["_source"]["001"], "type":entity}})
+                        target_source_map[value].append({key: {"id":"http://{host}:{port}/{index}/{typ}/".format(host=host,port=port,index=index,typ=doc_type)+record["_source"]["001"], "type":entity, "ts": record["_source"]["005"][0]}})
         for isil in mget_bodys:
             if mget_bodys[isil]["docs"]:
                 r = requests.post("http://{host}:{port}/_mget".format(host=mapping[isil]["host"], port=mapping[isil]["port"]), json=mget_bodys[isil], headers=header)
@@ -195,8 +217,12 @@ def run():
                                     if deprecated_gnds:
                                         comment+="GND ist veraltet, mögliche, aktuelle GND(s): {}".format(";".join(deprecated_gnds))
                                 if check_key(key):
+                                    ts_swb = get_swb_ts("(DE-627)"+base["id"].split("/")[-1])
+                                    if ts_swb != float(base["ts"]):
+                                        comment += ";zeitstempel im SWB weicht ab! hier: {} swb: {}".format(base["ts"],ts_swb)
                                     sys.stdout.write("{},{},{},{},{}\n".format(base["id"], str(key.split("'")[1])+str(key.split("'")[-2]), attrib, base["type"],comment))
                                     sys.stdout.flush()
+                                        
 
 
 if __name__ == "__main__":
