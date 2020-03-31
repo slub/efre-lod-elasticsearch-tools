@@ -195,7 +195,7 @@ def run():
                                     if deprecated_gnds:
                                         comment+="GND ist veraltet, mögliche, aktuelle GND(s): {}".format(";".join(deprecated_gnds))
                                 if check_key(key):
-                                    sys.stdout.write("{},{},{},{},{}\n".format(base["id"], key, attrib, base["type"],comment))
+                                    sys.stdout.write("{},{},{},{},{}\n".format(base["id"], str(key.split("'")[1])+str(key.split("'")[-2]), attrib, base["type"],comment))
                                     sys.stdout.flush()
 
 
