@@ -171,7 +171,8 @@ def run():
         else:
             _id = slashsplit[5]
 
-    sys.stdout.write("{},{},{},{},{}\n".format("subject",
+    sys.stdout.write("{} ; {} ; {} ; {} ; {}\n".format("KXP",
+                                                       "GND",
                                                   "path",
                                                   "not found id",
                                                   "entity",
@@ -186,6 +187,7 @@ def run():
         target_source_map = {}
         for record in records:
             entity = None
+            gnd = None
             if "Umlenkung" in str(record["_source"].get("682")):
                 continue
             for value in getmarcvalues(record["_source"], "079..v" , None):
@@ -193,6 +195,10 @@ def run():
             if not entity:
                 for value in getmarcvalues(record["_source"], "079..b" , None):
                     entity = value
+            if not gnd:
+                for value in getmarcvalues(record, "035..a", None):
+                    if value.startswith("(DE-588)"):
+                        gnd = value
             for key, value in traverse(record["_source"], ""):
                 for isil in mapping:
                     if isinstance(value, str) and value.startswith(isil):
@@ -200,7 +206,7 @@ def run():
                         mget_bodys[isil]["docs"].append(line)
                         if value not in target_source_map:
                             target_source_map[value] = []
-                        target_source_map[value].append({key: {"id":"http://{host}:{port}/{index}/{typ}/".format(host=host,port=port,index=index,typ=doc_type)+record["_source"]["001"], "type":entity, "ts": record["_source"]["005"][0]}})
+                        target_source_map[value].append({key: {"id":"http://{host}:{port}/{index}/{typ}/".format(host=host,port=port,index=index,typ=doc_type)+record["_source"]["001"], "type":entity, "ts": record["_source"]["005"][0], "gnd": gnd}})
         for isil in mget_bodys:
             if mget_bodys[isil]["docs"]:
                 r = requests.post("http://{host}:{port}/_mget".format(host=mapping[isil]["host"], port=mapping[isil]["port"]), json=mget_bodys[isil], headers=header)
@@ -220,7 +226,7 @@ def run():
                                     ts_swb = get_swb_ts("(DE-627)"+base["id"].split("/")[-1])
                                     if ts_swb > float(base["ts"]):
                                         comment += ";zeitstempel im SWB weicht ab! hier: {} swb: {}".format(base["ts"],ts_swb)
-                                    sys.stdout.write("{},{},{},{},{}\n".format(base["id"], str(key.split("'")[1])+str(key.split("'")[-2]), attrib, base["type"],comment))
+                                    sys.stdout.write("{} ; {} ; {} ; {} ; {}\n".format(base["id"], base["gnd"], str(key.split("'")[1])+str(key.split("'")[-2]), attrib, base["type"],comment))
                                     sys.stdout.flush()
                                         
 
