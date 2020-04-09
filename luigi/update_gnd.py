@@ -204,14 +204,14 @@ class GNDconcatChunks(GNDTask):
                 with gzip.open("chunks/" + f, "rt") as chunk:
                     for line in chunk:
                         jline = json.loads(line)
-                        for date in ("https://d-nb.info/standards/elementset/gnd#dateOfBirth", "https://d-nb.info/standards/elementset/gnd#dateOfDeath"):
+                        for date in ("dateOfBirth", "dateOfDeath"):
                             if date in jline and isinstance(jline[date], list):
                                 for i, item in enumerate(jline[date]):
                                     if isinstance(item, str):
                                         jline[date][i] = {"@value": item}
                             elif date in jline and isinstance(jline[date], str):
                                 jline[date] = {"@value": jline[date]}
-                        name = "https://d-nb.info/standards/elementset/gnd#variantNameForThePerson"
+                        name = "variantNameForThePerson"
                         if name in jline and isinstance(jline[name], list):
                             for n, elem in enumerate(jline[name]):
                                 if isinstance(elem, dict):
