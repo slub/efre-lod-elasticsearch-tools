@@ -226,7 +226,7 @@ def run():
                                     ts_swb = get_swb_ts("(DE-627)"+base["id"].split("/")[-1])
                                     if ts_swb > float(base["ts"]):
                                         comment += ";zeitstempel im SWB weicht ab! hier: {} swb: {}".format(base["ts"],ts_swb)
-                                    sys.stdout.write("{} ; {} ; {} ; {} ; {}\n".format(base["id"], base["gnd"], str(key.split("'")[1])+str(key.split("'")[-2]), attrib, base["type"],comment))
+                                    sys.stdout.write("{} ; {} ; {} ; {} ; {}\n".format(base["id"], base["gnd"], str(key.split("'")[1])+'.'+str(key.split("'")[-2]), attrib, base["type"],comment))
                                     sys.stdout.flush()
                                         
 
