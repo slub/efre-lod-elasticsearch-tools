@@ -20,7 +20,7 @@ mapping={"author":{         "fields":["hasOccupation","about","workLocation","sa
                             "index":["persons","organizations","fidmove-enriched-aut"]},
          "contributor":{    "fields":["hasOccupation","about","workLocation","geo","adressRegion","sameAs"],
                             "index":["persons","organizations","fidmove-enriched-aut"]},
-         "workLocation":{   "fields":["geo","adressRegion","sameAs"],
+         "workLocation":{   "fields":["geo","adressRegion","sameAs.@id"],
                             "index":["geo"]},
          "location":{   "fields":["geo","adressRegion","sameAs"],
                             "index":["geo"]},
@@ -56,17 +56,17 @@ def isAlive(node):
         return True
 
 def enrich_record(node,entity,host,port,map):
-    toDel=[]
+    toDel = []
     for field in mapping:
-        if isinstance(node.get(field),dict):
-            ret=enrich_record(node.get(field),field,host,port,map)
+        if isinstance(node.get(field), dict):
+            ret = enrich_record(node.get(field), field, host, port, map)
             if ret:
                 node[field]=ret
-        elif isinstance(node.get(field),list):
-            for n,fld in enumerate(node.get(field)):
-                ret=enrich_record(fld,field,host,port,map)
+        elif isinstance(node.get(field), list):
+            for n, fld in enumerate(node.get(field)):
+                ret = enrich_record(fld, field, host, port, map)
                 if ret:
-                    node[field][n]=ret
+                    node[field][n] = ret
                 else:
                     del node[field][n]
         else:
@@ -76,40 +76,45 @@ def enrich_record(node,entity,host,port,map):
     if entity:
         if node.get("@id"):
             for index in mapping[entity].get("index"):
-                #print(node.get("@id"))
                 url="http://"+host+":"+port+"/"+index+"/schemaorg/"+node.get("@id").split("/")[-1]
                 r=get(url)
-                #if entity=="relatedEvent":
-                    #print(r,url)
-                if ( r.ok and entity!="person" ) or ( r.ok and entity=="person" and isAlive(r.json().get("_source")) ):
+                if (r.ok and entity != "person") or (r.ok and entity == "person" and isAlive(r.json().get("_source"))):
                     for key in mapping[entity]["fields"]:
+                        if "." in key:
+                            dat = r.json()["_source"]
+                            for level in key.split('.'):
+                                if isinstance(dat, list):
+                                    ret = []
+                                    for elem in dat:
+                                        ret.append(elem[level])
+                                    data = ret
+                            if dat:
+                                node[key] = litter(node.get(key), dat)
                         if key in r.json().get("_source"):
-                            node[key]=litter(node.get(key),r.json()["_source"][key])
+                            node[key] = litter(node.get(key), r.json()["_source"][key])
                 elif r.ok and not isAlive(r.json().get("_source")):
                     return None
-        elif node.get("sameAs") and isinstance(node.get("sameAs"),str):
-            search=es.search(index=",".join(mapping[entity]["index"]),doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":node.get("sameAs")}}},_source=True)
-            if search.get("hits").get("total")>0:
-                for response in search.get("hits").get("hits"):
-                    data=response.get("_source")
-                    if isAlive(data) or entity!="person":
-                        for key in mapping[entity]["fields"]:
-                            if data.get(key):
-                                node[key]=data.get(key)
-                        break
-                    elif not isAlive(data) and entity=="person":
-                        break
-                
-        elif node.get("sameAs") and isinstance(node.get("sameAs"),list):
+        elif node.get("sameAs") and isinstance(node.get("sameAs"), list):
             for sameAs in node.get("sameAs"):
-                search=es.search(index=",".join(mapping[entity]["index"]),doc_type="schemaorg",body={"query":{"term":{"sameAs.keyword":sameAs}}},_source=True)
+                search=es.search(index=",".join(mapping[entity]["index"]),doc_type="schemaorg",body={"query":{"term":{"sameAs.@id.keyword":sameAs["@id"]}}},_source=True)
                 if search.get("hits").get("total")>0:
                     for response in search.get("hits").get("hits"):
                         data=response.get("_source")
                         if isAlive(data) or entity!="person":
                             for key in mapping[entity]["fields"]:
-                                if data.get(key):
-                                    node[key]=data.get(key)
+                                if "." in key:
+                                    dat = r.json()["_source"]
+                                    for level in key.split('.'):
+                                        if isinstance(dat, list):
+                                            ret = []
+                                            for elem in dat:
+                                                ret.append(elem[level])
+                                            dat = ret
+                                    if dat:
+                                        node[key] = litter(node.get(key), data)
+                                else:
+                                    if data.get(key):
+                                        node[key] = data.get(key)
                             break
                         elif not isAlive(data) and entity=="person":
                             break
