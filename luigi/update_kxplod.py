@@ -185,7 +185,7 @@ class LODKXPMerge(LODKXPTask):
         """
         iterates over the id-file from LODKXPTransform2ldj, searches for the right titledata (de-14) and merges them with the merge_lok_with_tit script. finally, the data gets loaded into the kxp-de14 index
         """
-        shellout(""". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/merge_lok_with_tit.py -selectbody \'{{\"query\": {{\"match\": {{\"852.__.a.keyword\": \"DE-14\"}}}}}}\' -title_server {rawdata_host}/kxp-tit/mrc -local_server {rawdata_host}/kxp-lok/mrc -idfile {date}-lok-ppns.txt | tee data.ldj | esbulk -server {rawdata_host} -index kxp-de14 -type mrc -id 001 -w 1 -verbose && jq -rc \'.\"001\"' data.ldj > ids.txt && rm data.ldj""", rawdata_host=self.config.get(
+        shellout(""". ~/git/efre-lod-elasticsearch-tools/init_environment.sh && ~/git/efre-lod-elasticsearch-tools/helperscripts/merge_lok_with_tit.py -selectbody \'{{\"query\": {{\"match\": {{\"852.__.a.keyword\": \"DE-14\"}}}}}}\' -title_server {rawdata_host}/kxp-tit/mrc -local_server {rawdata_host}/kxp-lok/mrc -idfile {date}-lok-ppns.txt | tee data.ldj | esbulk -server {rawdata_host} -index kxp-de14 -type mrc -id 001 -w 1 -verbose && jq -rc \'.\"001\"' data.ldj && rm data.ldj""", rawdata_host=self.config.get(
             "rawdata_host"), date=self.yesterday.strftime("%y%m%d"))
 
     def complete(self):

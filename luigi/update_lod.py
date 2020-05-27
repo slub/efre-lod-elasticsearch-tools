@@ -225,8 +225,10 @@ class LODUpdate(LODTask):
             for f in os.listdir(path+"/"+index):
                 cmd = "zcat {fd} | ".format(fd=path+"/"+index+"/"+f)  # with -pipeline, all the data get's thru, not only enriched docs
                 cmd += "entityfacts.py   -pipeline -stdin -searchserver {host}/ef/gnd/ | ".format(**self.config)
-                cmd += "gnd_sachgruppen.py   -pipeline -stdin -searchserver {host} | ".format(**self.config)
-                cmd += "wikidata.py          -pipeline -stdin | "
+                cmd += "gnd_sachgruppen.py      -pipeline -stdin -searchserver {host} | ".format(**self.config)
+                cmd += "wikidata.py             -pipeline -stdin | "
+                cmd += "wikipedia.py            -pipeline -stdin | "
+                cmd += "wikipedia_categories.py -pipeline -stdin | "
                 if index == "geo":
                     cmd += "geonames.py       -pipeline -stdin -searchserver {geonames_host} | ".format(**self.config)
                 cmd += "esbulk -verbose -server {host} -w 1 -size 20 -index {index} -type schemaorg -id identifier".format(**self.config, index=index)
