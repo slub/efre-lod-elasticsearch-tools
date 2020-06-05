@@ -36,15 +36,19 @@ def transpose_to_ldj(record):
 
 def main():
     try:
-        for n, record in enumerate(MARCReader(sys.stdin.buffer.read(), to_unicode=True)):
-            sys.stdout.write(json.dumps(transpose_to_ldj(record), sort_keys=True)+"\n")
-            sys.stdout.flush()
+        for n, record in enumerate(MARCReader(sys.stdin.buffer.read())):
+            try:
+                sys.stdout.write(json.dumps(transpose_to_ldj(record), sort_keys=True)+"\n")
+                sys.stdout.flush()
+            except AttributeError as e:
+                eprint("attribut error: {}".format(e))
+                eprint(record)
+                continue
     except UnicodeDecodeError as e:
         eprint("unicode decode error: {}".format(e))
         eprint(record)
-    except pymarc.exceptions.RecordLengthInvalid as e:
-        eprint("Invalid Record Length error: {}".format(e))
-        eprint(record)
+
+
 
 if __name__ == "__main__":
     main()
