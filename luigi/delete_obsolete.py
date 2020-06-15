@@ -68,7 +68,7 @@ class DeleteTask(BaseTask):
                                                   source="False",
                                                   body=query)]
         if not iterable:
-            return False
+            return []
         for lok_record in esidfilegenerator(host=self.config["indices"]["local"][0]["host"],
                                             port=self.config["indices"]["local"][0]["port"],
                                             index=self.config["indices"]["local"][0]["_index"],
