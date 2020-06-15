@@ -42,7 +42,7 @@ def swbTime2normalTime(timestring):
     ts = timestring.replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
     if ts[2:5] == '000':
         str_list = list(ts)
-        str_list[5] = '1'
+        str_list[4] = '1'
         ts = ''.join(str_list)
     return datetime.strptime(ts, "%y%j%H%M%S").strftime("%y%m%d")
 
