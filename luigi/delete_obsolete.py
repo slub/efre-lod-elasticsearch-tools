@@ -38,6 +38,15 @@ from datetime import timedelta
 from dateutil import rrule
 
 
+def swbTime2normalTime(timestring):
+    ts = timestring.replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
+    if ts[2:5] == '000':
+        str_list = list(ts)
+        str_list[5] = '1'
+        ts = ''.join(newstr)
+    return datetime.strptime(ts, "%y%j%H%M%S").strftime("%y%m%d")
+
+
 class DeleteTask(BaseTask):
     """
     Just a base class for DeleteStuff
@@ -91,8 +100,7 @@ class DelPPNDailySlices(DeleteTask):
         we iterate thru the set and extract the correct PPNs and put them into the correct files, which are line-delimited PPNs
         """
         for line in self.delete_lines:
-            ts = line[0:11].replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
-            ts = datetime.strptime(ts, "%y%j%H%M%S").strftime("%y%m%d")
+            ts = swbTime2normalTime(line[0:11])
             if ts not in self.days:
                 self.days[ts] = [line]
             elif ts in self.days:
@@ -131,8 +139,7 @@ class DelPPNDelete(DeleteTask):
                 for line in date_fd:
                     # dissect line
                     del_record = {}
-                    ts = line[0:11].replace('-', '0')  # YYDDDHHMMSS or %y%j%H%M%S
-                    del_record["ts"] = datetime.strptime(ts, "%y%j%H%M%S").isoformat()
+                    del_record["ts"] = swbTime2normalTime(line[0:11])
                     del_record["d_type"] = line[11:12]
                     del_record["xpn"] = line[12:22].strip()
                     if del_record["d_type"] == "9":
